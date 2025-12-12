@@ -65,20 +65,25 @@ interface FolderNode {
   fileCount: number;
 }
 
+// --- Safe Helper: Build Folder Tree ---
 const buildFolderTree = (models: Model[]): FolderNode => {
+  // SAFETY CHECK: If models is missing, return an empty tree
+  if (!models || !Array.isArray(models)) {
+    return { name: 'Root', fullPath: '', children: {}, fileCount: 0 };
+  }
+
   const root: FolderNode = { name: 'Root', fullPath: '', children: {}, fileCount: 0 };
   
   models.forEach(model => {
-    // Determine path from modelUrl or filePath
     let pathStr = model.modelUrl || model.filePath || '';
-    // Clean up path: remove /models prefix and standardise slashes
     pathStr = pathStr.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
     
-    // Remove filename (last part) to get just the folder path
+    if (!pathStr) return;
+
     const parts = pathStr.split('/');
     parts.pop(); 
     
-    if (parts.length === 0) return; // Root file, no folder
+    if (parts.length === 0) return; 
 
     let current = root;
     let currentPath = '';
@@ -93,6 +98,57 @@ const buildFolderTree = (models: Model[]): FolderNode => {
     });
   });
   return root;
+};
+
+// --- Safe Helper: Build Collection Tree ---
+const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
+  // SAFETY CHECK: If collections is missing, return empty array
+  if (!collections || !Array.isArray(collections)) {
+    return [];
+  }
+
+  const nodeMap = new Map<string, CollectionNode>();
+  const rootNodes: CollectionNode[] = [];
+
+  // 1. Initialize
+  collections.forEach(col => {
+    if (!col || !col.id) return; // Skip invalid data
+    nodeMap.set(col.id, { 
+      id: col.id, 
+      label: col.name || 'Unnamed', 
+      fullPath: col.name || 'Unnamed', 
+      children: [] 
+    });
+  });
+
+  // 2. Link
+  collections.forEach(col => {
+    if (!col || !col.id) return;
+    const node = nodeMap.get(col.id);
+    if (!node) return;
+
+    if (col.parentId && nodeMap.has(col.parentId)) {
+      const parent = nodeMap.get(col.parentId);
+      // Prevent circular crash: ensure parent is not self
+      if (parent && parent.id !== node.id) {
+        parent.children.push(node);
+        node.fullPath = `${parent.fullPath} / ${node.label}`;
+      } else {
+        rootNodes.push(node);
+      }
+    } else {
+      rootNodes.push(node);
+    }
+  });
+
+  // 3. Sort
+  const sortNodes = (nodes: CollectionNode[]) => {
+    nodes.sort((a, b) => a.label.localeCompare(b.label));
+    nodes.forEach(n => sortNodes(n.children));
+  };
+  sortNodes(rootNodes);
+
+  return rootNodes;
 };
 
 // --- Helper: Recursive Folder Item Component ---
@@ -149,43 +205,6 @@ interface CollectionNode {
   children: CollectionNode[];
 }
 
-const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
-  const nodeMap = new Map<string, CollectionNode>();
-  const rootNodes: CollectionNode[] = [];
-
-  // 1. Initialize all nodes
-  collections.forEach(col => {
-    nodeMap.set(col.id, { 
-      id: col.id, 
-      label: col.name, 
-      fullPath: col.name, 
-      children: [] 
-    });
-  });
-
-  // 2. Link parents and children
-  collections.forEach(col => {
-    const node = nodeMap.get(col.id)!;
-    if (col.parentId && nodeMap.has(col.parentId)) {
-      const parent = nodeMap.get(col.parentId)!;
-      parent.children.push(node);
-      // Update path to include parent (simple visual aid)
-      node.fullPath = `${parent.fullPath} / ${node.label}`;
-    } else {
-      rootNodes.push(node);
-    }
-  });
-
-  // 3. Sort alphabetically at every level
-  const sortNodes = (nodes: CollectionNode[]) => {
-    nodes.sort((a, b) => a.label.localeCompare(b.label));
-    nodes.forEach(n => sortNodes(n.children));
-  };
-  sortNodes(rootNodes);
-
-  return rootNodes;
-};
-
 // --- Helper: Recursive Collection Item Component ---
 const CollectionTreeItem = ({ node, level, onSelect }: { 
   node: CollectionNode, 
@@ -237,7 +256,7 @@ export function FilterSidebar({
   onSettingsClick,
   categories,
   models,
-  collections,       // <--- Added
+  collections = [],       // <--- Added
   onOpenCollection,  // <--- Added
   initialFilters
 }: FilterSidebarProps) {
