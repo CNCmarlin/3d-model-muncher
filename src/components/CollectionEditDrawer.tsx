@@ -3,11 +3,10 @@ import { Plus, List } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
 import { ScrollArea } from './ui/scroll-area';
 import { Input } from './ui/input';
-import { Label } from "./ui/label"; // Ensure Label is imported
+import { Label } from "./ui/label"; 
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import TagsInput from './TagsInput';
-// [NEW] Imports for the Parent Dropdown
 import { 
   Select, 
   SelectContent, 
@@ -19,15 +18,11 @@ import { toast } from "sonner";
 import type { Collection } from '../types/collection';
 import type { Category } from '../types/category';
 
-// [RENAMED] Changed 'Props' to 'CollectionEditDrawerProps' for clarity
 interface CollectionEditDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   collection: Collection | null;
-  
-  // [NEW] List of all collections for parent selection
-  collections: Collection[];
-  
+  collections?: Collection[]; // Made optional with ? to match your current usage, but we will default it
   categories: Category[];
   onSaved?: (updated: Collection) => void;
   initialModelIds?: string[];
@@ -38,7 +33,7 @@ export default function CollectionEditDrawer({
   open, 
   onOpenChange, 
   collection, 
-  collections, // [NEW] Extract this prop
+  collections = [], // Default to empty array
   categories, 
   onSaved, 
   initialModelIds = [], 
@@ -47,7 +42,6 @@ export default function CollectionEditDrawer({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<string>('Uncategorized');
-  // [NEW] State for Parent ID (default 'root')
   const [parentId, setParentId] = useState<string>("root");
   
   const [tags, setTags] = useState<string[]>([]);
@@ -59,8 +53,7 @@ export default function CollectionEditDrawer({
   const [createMode, setCreateMode] = useState<'new' | 'existing'>('new');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Filter out the current collection from the parent list to avoid cycles
-  // (A collection cannot be its own parent)
+  // Filter out self to prevent circular parents
   const availableParents = collections.filter(c => 
     (!collection || c.id !== collection.id)
   );
@@ -69,22 +62,19 @@ export default function CollectionEditDrawer({
     if (!open) return;
     
     if (collection) {
-      // Edit Mode
       setName(collection.name || '');
       setDescription(collection.description || '');
       setCategory(collection.category && collection.category.trim() ? collection.category : 'Uncategorized');
-      setParentId(collection.parentId || "root"); // [NEW] Load existing parent
+      setParentId(collection.parentId || "root");
       setTags(Array.isArray(collection.tags) ? collection.tags : []);
       setImages(Array.isArray(collection.images) ? collection.images : []);
       
       setSelectedExistingId('');
       setCreateMode('new');
     } else {
-      // Create Mode
       setName('');
       setDescription('');
       setCategory('Uncategorized');
-      // [NEW] Default to 'root' unless explicitly nested in future logic
       setParentId(removalCollection ? (removalCollection.id || "root") : "root");
       setTags([]);
       setImages([]);
@@ -137,7 +127,6 @@ export default function CollectionEditDrawer({
       let payload: any;
 
       if (!isEdit && createMode === 'existing') {
-        // Add models to EXISTING collection
         const existing = existingCollections.find(c => c.id === selectedExistingId);
         if (!existing) throw new Error('Selected collection not found');
         
@@ -152,17 +141,14 @@ export default function CollectionEditDrawer({
           tags: (existing as any).tags || [],
           images: (existing as any).images || [],
           coverModelId: (existing as any).coverModelId,
-          // Preserve existing parent/children structure
           parentId: existing.parentId,
           childCollectionIds: existing.childCollectionIds
         };
       } else {
-        // Create NEW or UPDATE existing
         payload = {
           name: name.trim(),
           description,
           category: (category && category.trim()) ? category : 'Uncategorized',
-          // [NEW] Send parentId (convert "root" string to null)
           parentId: parentId === "root" ? null : parentId,
           tags,
           images,
@@ -172,7 +158,6 @@ export default function CollectionEditDrawer({
           payload.id = collection!.id;
           payload.modelIds = collection!.modelIds;
           payload.coverModelId = collection!.coverModelId;
-          // Preserve children if editing parent
           payload.childCollectionIds = collection!.childCollectionIds;
         } else {
           payload.modelIds = Array.isArray(initialModelIds) ? initialModelIds : [];
@@ -188,7 +173,6 @@ export default function CollectionEditDrawer({
       const res = await resp.json();
       if (!resp.ok || !res.success) throw new Error(res?.error || 'Failed to save');
       
-      // Dispatch event so App knows to refresh immediately
       window.dispatchEvent(new CustomEvent('collection-created', { detail: res.collection }));
       
       toast.success(isEdit ? "Collection updated" : "Collection created");
@@ -202,7 +186,6 @@ export default function CollectionEditDrawer({
     }
   };
 
-  // Logic for removing items from a collection
   const removalTarget = removalCollection ?? collection;
   const removableIds = Array.isArray(initialModelIds) ? initialModelIds.filter(id => (removalTarget?.modelIds || []).includes(id)) : [];
   const canRemove = !!removalTarget?.id && removableIds.length > 0 && !isRemoving;
@@ -263,7 +246,6 @@ export default function CollectionEditDrawer({
         <ScrollArea className="h-[calc(100vh-8rem)] pr-2">
           <div className="space-y-4 p-4">
             
-            {/* Removal Warning Block */}
             {removalTarget?.id && removableIds.length > 0 && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
                 <div>
@@ -284,7 +266,6 @@ export default function CollectionEditDrawer({
               </div>
             )}
 
-            {/* Create Mode Toggle (New vs Existing) */}
             {!collection?.id && (
               <div className="flex items-center justify-between">
                 <div className="font-semibold text-lg text-card-foreground">Choose</div>
@@ -311,7 +292,6 @@ export default function CollectionEditDrawer({
               </div>
             )}
 
-            {/* EXISTING Collection Picker */}
             {!collection?.id && createMode === 'existing' && (
               <div className="space-y-2">
                 <Label>Add to existing collection</Label>
@@ -337,7 +317,6 @@ export default function CollectionEditDrawer({
               </div>
             )}
 
-            {/* NEW / EDIT Collection Form */}
             {(!!collection?.id || createMode === 'new') && (
               <>
                 <div className="space-y-2">
@@ -360,7 +339,6 @@ export default function CollectionEditDrawer({
                   />
                 </div>
 
-                {/* [NEW] Parent Collection Selector */}
                 <div className="space-y-2">
                   <Label>Parent Collection</Label>
                   <Select value={parentId} onValueChange={setParentId}>
