@@ -1,67 +1,74 @@
-# Multi-stage build for optimized production image
-FROM node:20-alpine AS builder
+# [CHANGE] Use node:20-slim (Debian) instead of alpine for better Puppeteer/WebGL support
+FROM node:20-slim AS builder
 
-# Set working directory
 WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies (including devDependencies like TypeScript)
 RUN npm install
-
-# Copy source code
 COPY . .
-
-# Build the frontend
 RUN npm run build
-
-# [FIX 1] Build the backend using your script instead of listing files manually
-# This ensures thumbnailGenerator.ts, configManager.ts, and everything else is included
 RUN npm run build:backend
 
-# Production stage
-FROM node:20-alpine AS production
+# [CHANGE] Use node:20-slim for production as well
+FROM node:20-slim AS production
 
-# [FIX 2] Install Chromium for Puppeteer (Required for Alpine Linux)
-RUN apk add --no-cache \
+# [CHANGE] Install dependencies required for Puppeteer on Debian
+# We no longer use 'apk', we use 'apt-get'.
+RUN apt-get update && apt-get install -y \
     chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    lsb-release \
+    wget \
+    xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
 
-# Tell Puppeteer to skip downloading Chrome and use the one we just installed
+# [CHANGE] Update Environment variables for Debian Chromium location
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files and install only production dependencies
 COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
-# Copy built files from builder stage
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/dist-backend ./dist-backend
 COPY --from=builder /app/server.js ./server.js
-
-# Ensure server-utils (runtime adapters/helpers) are included
 COPY --from=builder /app/server-utils ./server-utils
-
-# Copy configuration files
-# We copy the 'data' folder structure if you want defaults, 
-# but usually config is created at runtime.
-# This copies your src/config defaults just in case.
 COPY --from=builder /app/src/config ./src/config
 
-# Create models and data directory
 RUN mkdir -p models data
 
-# Expose port 3001
 EXPOSE 3001
 
-# Start the server
 CMD ["node", "server.js"]
