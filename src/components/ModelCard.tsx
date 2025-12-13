@@ -1,278 +1,144 @@
-import * as React from "react";
-import { Check, Clock, Download, ChevronDown } from "lucide-react";
-import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "./ui/dropdown-menu";
-import { Checkbox } from "./ui/checkbox";
+import { useState, useRef } from "react";
 import { Model } from "../types/model";
-import { ConfigManager } from "../utils/configManager";
-import { getLabel } from "../constants/labels";
-import type { AppConfig } from "../types/config";
+import { AppConfig } from "../types/config";
+import { Badge } from "./ui/badge";
+import { Checkbox } from "./ui/checkbox";
 import { ImageWithFallback } from "./ImageWithFallback";
 import { resolveModelThumbnail } from "../utils/thumbnailUtils";
-import { triggerDownload, normalizeModelPath } from "../utils/downloadUtils";
+import { HardDrive, Box } from "lucide-react";
+import { Grid3DViewer } from "./Grid3DViewer"; // <--- Import the new component
 
 interface ModelCardProps {
   model: Model;
   onClick: (e: React.MouseEvent) => void;
   isSelectionMode?: boolean;
   isSelected?: boolean;
-  onSelectionChange?: (modelId: string, shiftKey?: boolean) => void;
-  // Optional config passed from parent for live updates
-  config?: AppConfig;
+  onSelectionChange?: (id: string, shiftKey: boolean) => void;
+  config?: AppConfig | null;
 }
 
-export function ModelCard({ 
-  model, 
-  onClick, 
+export function ModelCard({
+  model,
+  onClick,
   isSelectionMode = false,
   isSelected = false,
-  onSelectionChange
-  , config
+  onSelectionChange,
+  config,
 }: ModelCardProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [show3D, setShow3D] = useState(false);
+  const hoverTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const showBadge = config?.settings?.showPrintedBadge !== false;
   
-  const handleSelectionClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onSelectionChange) {
-      onSelectionChange(model.id, e.shiftKey);
+  // Resolve the URL (prefer local filePath served via API, or direct modelUrl)
+  // Ensure your API serves files correctly!
+  const modelUrl = model.modelUrl || model.filePath;
+
+  // Handle Hover with Delay
+  const handleMouseEnter = () => {
+    // Don't load 3D if in selection mode (distracting) or if no URL
+    if (isSelectionMode || !modelUrl) return; 
+    
+    setIsHovered(true);
+    // Wait 600ms before triggering the heavy 3D load
+    // This allows the user to scroll past without triggering 50 downloads
+    hoverTimer.current = setTimeout(() => {
+      setShow3D(true);
+    }, 600);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    setShow3D(false);
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
     }
   };
 
-  const handleDownloadClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Use shared triggerDownload which normalizes paths and triggers the browser download
-    // Compute basename only so saved filename doesn't include directory prefix
-  const safeName = model.modelUrl ? model.modelUrl.replace(/^\/+/, '').replace(/\\/g, '/').split('/').pop() || '' : '';
-  triggerDownload(model.modelUrl, e.nativeEvent as any as MouseEvent, safeName);
-  };
-
-  const downloadUrl = (url: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    // reuse normalization helper when building menu items' download links
-  const resolved = normalizeModelPath(url);
-  if (!resolved) return;
-  const fileName = resolved.split(/[/\\]/).pop() || '';
-    const link = document.createElement('a');
-    link.href = resolved;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const thumbnailSrc = resolveModelThumbnail(model);
-
   return (
-    <Card
-      className={`flex flex-col cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 ${
-        isSelectionMode && isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
+    <div
+      className={`group relative flex flex-col bg-card rounded-lg border transition-all duration-200 overflow-hidden cursor-pointer hover:shadow-md ${
+        isSelected ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"
       }`}
       onClick={onClick}
-      onMouseDown={(e: React.MouseEvent) => {
-        // Prevent native text selection when Shift-clicking in selection mode
-        if (isSelectionMode && e.shiftKey) {
-          e.preventDefault();
-        }
-      }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-      <CardHeader className="p-0">
-        <div className="relative aspect-[4/3] overflow-hidden rounded-t-lg">
-          <ImageWithFallback
-            src={thumbnailSrc}
-            alt={model.name}
-            className="w-full h-full object-cover"
-          />
-          
-          {/* Selection Checkbox - Top Left */}
-          {isSelectionMode && (
-            <div className="absolute top-3 left-3">
-              <div className="flex items-center justify-center w-8 h-8 bg-background/90 backdrop-blur-sm rounded-lg border shadow-sm">
-                <Checkbox
-                  checked={isSelected}
-                  // rely on click to toggle so shiftKey is captured; avoid double toggle
-                  onCheckedChange={() => { /* handled in onClick to capture shiftKey */ }}
-                  onClick={handleSelectionClick}
-                  onMouseDown={(e: React.MouseEvent) => {
-                    // Prevent native text selection when Shift-clicking the checkbox in selection mode
-                    if (isSelectionMode && e.shiftKey) e.preventDefault();
-                  }}
-                  className="w-5 h-5 shrink-0"
+      {/* Aspect Ratio Container */}
+      <div className="relative w-full aspect-[4/3] bg-muted overflow-hidden">
+        
+        {/* 1. Static Image (Always shown initially) */}
+        {(!show3D) && (
+          <div className="absolute inset-0">
+            <ImageWithFallback
+              src={resolveModelThumbnail(model)}
+              alt={model.name}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          </div>
+        )}
+
+        {/* 2. 3D Viewer (Loads after hover delay) */}
+        {show3D && modelUrl && (
+          <div className="absolute inset-0 z-10 bg-background/50 animate-in fade-in duration-300">
+             <div className="w-full h-full" onClick={(e) => e.stopPropagation()}>
+                <Grid3DViewer 
+                  url={modelUrl} 
+                  color={config?.settings?.defaultModelColor || '#aaaaaa'}
                 />
-              </div>
+             </div>
+          </div>
+        )}
+
+        {/* Overlays / Badges */}
+        <div className="absolute top-2 right-2 flex flex-col gap-1 items-end pointer-events-none z-20">
+          {isSelectionMode && (
+            <div className="pointer-events-auto">
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => {}}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectionChange?.(model.id, e.nativeEvent.shiftKey);
+                }}
+                className="bg-background/80 backdrop-blur-sm"
+              />
             </div>
           )}
           
-          {/* Hidden Badge - Top Left (when not in selection mode) */}
-          {!isSelectionMode && model.hidden && (
-            <div className="absolute top-3 left-3">
-              <Badge variant="outline" className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-300 shadow-sm">
-                Hidden
-              </Badge>
-            </div>
+          {model.isPrinted && showBadge && (
+            <Badge variant="default" className="bg-green-600/90 hover:bg-green-600/90 backdrop-blur-sm shadow-sm">Printed</Badge>
           )}
-          
-          {/* Hidden Badge - Bottom Left (when in selection mode) */}
-          {isSelectionMode && model.hidden && (
-            <div className="absolute bottom-3 left-3">
-              <Badge variant="outline" className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-300 shadow-sm">
-                Hidden
-              </Badge>
-            </div>
-          )}
-          
-          {/* Print Status - Top Right (toggleable via config.showPrintedBadge) */}
-          {(() => {
-            // Prefer passed-in config for live updates, otherwise load persisted config
-            const effectiveCfg = config || ConfigManager.loadConfig();
-            const showPrintedBadge = effectiveCfg?.settings?.showPrintedBadge !== false; // default true
-
-            // Always show the Not Printed badge when the model has not been printed.
-            if (!model.isPrinted) {
-              return (
-                <div className="absolute top-3 right-3">
-                  <Badge variant="secondary">
-                    <Clock className="h-3 w-3 mr-1" />
-                    Not Printed
-                  </Badge>
-                </div>
-              );
-            }
-
-            // If model is printed, only show the Printed badge when enabled in settings
-            if (model.isPrinted && showPrintedBadge) {
-              return (
-                <div className="absolute top-3 right-3">
-                  <Badge className="bg-green-700 hover:bg-green-600">
-                    <Check className="h-3 w-3 mr-1" />
-                    Printed
-                  </Badge>
-                </div>
-              );
-            }
-
-            return null;
-          })()}
         </div>
-      </CardHeader>
-      
-      <CardContent className="p-4 flex-1">
-        <h3 className={`mb-2 line-clamp-2 transition-colors ${
-          isSelectionMode && isSelected ? 'text-primary font-medium' : ''
-        }`}>
+        
+        {/* Loading Indicator (Visual feedback while 3D initializes) */}
+        {isHovered && !show3D && (
+            <div className="absolute bottom-2 right-2 z-20">
+                <Badge variant="secondary" className="gap-1 opacity-70">
+                    <Box className="h-3 w-3 animate-pulse" />
+                    <span className="text-[10px]">Loading 3D...</span>
+                </Badge>
+            </div>
+        )}
+      </div>
+
+      {/* Metadata Footer */}
+      <div className="p-3 flex flex-col gap-2 relative bg-card z-20 border-t">
+        <h3 className="font-semibold text-sm truncate leading-tight" title={model.name}>
           {model.name}
         </h3>
-        <div className="flex flex-wrap gap-1 mb-3">
-          {(model.tags || []).slice(0, 3).map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-          {(model.tags || []).length > 3 && (
-            <Badge variant="outline" className="text-xs">
-              +{(model.tags || []).length - 3}
-            </Badge>
-          )}
-        </div>
-        <div className="text-muted-foreground space-y-1">
-          {(() => {
-            // Prefer config passed in as prop for live updates, otherwise read persisted config
-            const cfg = (arguments.length > 0 && (arguments as any)[0]?.config) || undefined;
-            const effectiveCfg = cfg || ConfigManager.loadConfig();
-            const primary = effectiveCfg?.settings?.modelCardPrimary || 'printTime';
-            const secondary = effectiveCfg?.settings?.modelCardSecondary || 'filamentUsed';
-
-            const fieldValue = (key: string) => {
-              switch (key) {
-                case 'printTime': return model.printTime || '';
-                case 'filamentUsed': return model.filamentUsed || '';
-                case 'fileSize': return model.fileSize || '';
-                case 'category': return model.category || '';
-                case 'designer': return (model as any).designer || '';
-                case 'layerHeight': return model.printSettings?.layerHeight || '';
-                case 'nozzle': return model.printSettings?.nozzle || '';
-                case 'price': return typeof model.price === 'number' ? `$${model.price.toFixed(2)}` : (model.price ? String(model.price) : '');
-                default: return '';
-              }
-            };
-
-            const labelForKey = (key: string) => getLabel(key) + ':';
-
-            const rows: Array<{ label: string; value: string }> = [];
-            if (primary && primary !== 'none') {
-              rows.push({ label: labelForKey(primary), value: fieldValue(primary) });
-            }
-            if (secondary && secondary !== 'none' && secondary !== primary) {
-              rows.push({ label: labelForKey(secondary), value: fieldValue(secondary) });
-            }
-
-            if (rows.length === 0) return null;
-
-            return rows.map((r, i) => (
-              <div className="flex justify-between" key={i}>
-                <span>{r.label}</span>
-                <span>{r.value}</span>
-              </div>
-            ));
-          })()}
-        </div>
-      </CardContent>
-      
-      {/* Footer area: always render to reserve space so toggling into selection/edit mode doesn't shift layout */}
-      <CardFooter className="p-4 pt-0 mt-auto min-h-[56px]">
-        {/* When not in selection mode show actions, otherwise render an invisible placeholder to reserve space */}
-        {!isSelectionMode ? (
-          <div className="w-full relative">
-            <div className="flex w-full">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 flex items-center justify-center"
-                onClick={handleDownloadClick}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download
-              </Button>
-
-              {/* Related files trigger - only render if related_files exists and has length */}
-              {(model as any).related_files && (model as any).related_files.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                      className="ml-2 w-9"
-                      aria-label="Related files"
-                    >
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {((model as any).related_files || []).map((f: any, i: number) => {
-                      const item = typeof f === 'string' ? { name: f.split('/').pop() || f, url: f } : { name: f.name || (f.url || '').split('/').pop() || 'file', url: f.url || f.path || '' };
-                      return (
-                        <DropdownMenuItem key={i} onClick={(e: any) => downloadUrl(item.url, e)}>
-                          {item.name}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-normal truncate max-w-[100px]">
+             {model.category}
+          </Badge>
+          <div className="flex items-center gap-1">
+             <HardDrive className="h-3 w-3" />
+             <span>{model.fileSize}</span>
           </div>
-        ) : (
-          // Invisible placeholder to keep footer height stable during selection/edit mode
-          <div aria-hidden className="w-full h-full opacity-0" />
-        )}
-      </CardFooter>
-    </Card>
+        </div>
+      </div>
+    </div>
   );
 }
- 

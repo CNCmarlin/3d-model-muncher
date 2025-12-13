@@ -139,6 +139,12 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' })); // Increased limit for large model payloads
+const MODELS_DIR = path.join(__dirname, 'models'); 
+// Ensure the folder exists to prevent crashes
+if (!fs.existsSync(MODELS_DIR)) {
+    fs.mkdirSync(MODELS_DIR);
+}
+app.use('/models', express.static(MODELS_DIR));
 
 // Collections storage helpers (persist under data/collections.json)
 // Allow override via env var and use a test-specific file when running under Vitest/Node test env.
@@ -995,6 +1001,10 @@ app.post('/api/save-model', async (req, res) => {
 
 // API endpoint to get all model data
 app.get('/api/models', async (req, res) => {
+  // DEBUG LOG - Paste this right after "app.get('/api/models'..."
+  const currentPath = getAbsoluteModelsPath();
+  console.log('🔍 DEBUG: Server is scanning this folder:', currentPath);
+  console.log('📂 DEBUG: Does this folder exist?', require('fs').existsSync(currentPath));
   try {
     const absolutePath = getAbsoluteModelsPath();
     serverDebug(`API /models scanning directory: ${absolutePath}`);
@@ -1455,6 +1465,8 @@ app.post('/api/regenerate-munchie-files', async (req, res) => {
       }
     }
 
+    
+
     scanForModels(modelsDir);
 
     // Helper to regenerate from an absolute model file path and target jsonPath
@@ -1637,6 +1649,121 @@ app.post('/api/regenerate-munchie-files', async (req, res) => {
   }
 });
 
+  // --- API: Generate Thumbnails (The Photo Shoot) ---
+app.post('/api/generate-thumbnails', async (req, res) => {
+  try {
+    const { modelIds, force = false } = req.body;
+    const modelsDir = getAbsoluteModelsPath();
+    // Import the generator (ensure you ran npm run build:backend!)
+    const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
+    
+    // We need the server's own URL so Puppeteer can visit it
+    const baseUrl = `http://localhost:${PORT}`;
+    
+    // [FIX] Define 'config' right here at the top so it is available later
+    const config = ConfigManager.loadConfig();
+    
+    // [DEBUG] Add these two lines to see what is happening in your console!
+    console.log("🔍 FULL CONFIG LOADED:", JSON.stringify(config, null, 2));
+    console.log("🎨 Target Color Key:", config?.settings?.defaultModelColor);
+
+    // Robust check: try accessing it via .settings, or directly, or fallback
+    const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#6366f1'; 
+    
+    console.log("🚀 FINAL COLOR DECISION:", globalDefaultColor);
+   
+
+    
+    
+    let processed = 0;
+    let errors = [];
+    let skipped = 0;
+ 
+    // ... (rest of your existing logic for finding targets) ...
+    // Let's implement a simple "Scan All" for now if no IDs provided
+    let targets = [];
+    
+    function findTargets(dir) {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          findTargets(fullPath);
+        } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
+            try {
+              const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+              // Filter by IDs if provided
+              if (modelIds && modelIds.length > 0 && !modelIds.includes(data.id)) continue;
+              
+              // Determine Source File (.3mf or .stl)
+              let sourceFile;
+              if (entry.name.endsWith('-stl-munchie.json')) {
+                  sourceFile = fullPath.replace('-stl-munchie.json', '.stl');
+                  if (!fs.existsSync(sourceFile)) sourceFile = fullPath.replace('-stl-munchie.json', '.STL');
+              } else {
+                  sourceFile = fullPath.replace('-munchie.json', '.3mf');
+              }
+              
+              if (fs.existsSync(sourceFile)) {
+                  targets.push({ jsonPath: fullPath, sourcePath: sourceFile, data });
+              }
+            } catch(e) {}
+        }
+      }
+    }
+    findTargets(modelsDir);
+ 
+    console.log(`📸 Starting photo shoot for ${targets.length} models...`);
+ 
+    for (const target of targets) {
+      try {
+        const thumbName = path.basename(target.sourcePath) + '-thumb.png';
+        const thumbPath = path.join(path.dirname(target.sourcePath), thumbName);
+        const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
+ 
+        // Skip if exists and not forced
+        if (fs.existsSync(thumbPath) && !force) {
+          skipped++;
+          continue;
+        }
+ 
+        // [FIX] Priority: User Specific -> Model Specific -> Global Config -> Fallback
+        const modelColor = target.data.userDefined?.color || target.data.color || globalDefaultColor;
+
+        // GENERATE!
+        await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor);
+ 
+        // Update JSON to point to new image
+        let json = target.data;
+        let changed = false;
+        
+        if (!json.images) json.images = [];
+        
+        // Add if not present
+        if (!json.images.includes(relativeThumbUrl)) {
+            json.images.unshift(relativeThumbUrl); // Make it first!
+            changed = true;
+        }
+ 
+        if (changed) {
+            fs.writeFileSync(target.jsonPath, JSON.stringify(json, null, 2));
+        }
+        
+        processed++;
+      } catch (err) {
+        console.error("Thumbnail error:", err);
+        errors.push({ id: target.data.id, error: err.message });
+      }
+    }
+ 
+    res.json({ success: true, processed, skipped, errors });
+ 
+  } catch (error) {
+    console.error('General generation error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // API endpoint to upload .3mf / .stl files and generate their munchie.json files
 app.post('/api/upload-models', upload.array('files'), async (req, res) => {
   try {
@@ -1776,8 +1903,37 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
           const jdir = path.dirname(jsonPath);
           if (!fs.existsSync(jdir)) fs.mkdirSync(jdir, { recursive: true });
           fs.writeFileSync(jsonPath, JSON.stringify(mergedMetadata, null, 2), 'utf8');
-          await postProcessMunchieFile(jsonPath);
-          processed.push(jsonRel);
+          try {
+            // Dynamic import to allow server start even if build is pending
+            const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
+            
+            const thumbName = path.basename(modelFilePath) + '-thumb.png';
+            const thumbPath = path.join(path.dirname(modelFilePath), thumbName);
+            // Use server's internal address
+            const baseUrl = `http://localhost:${PORT}`; 
+            
+            console.log(`📸 Auto-generating thumbnail for: ${derivedId}`);
+            
+            // Await generation so the thumbnail exists when the UI refreshes
+            await generateThumbnail(modelFilePath, thumbPath, baseUrl);
+            
+            // Update JSON to include the new thumbnail image
+            const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
+            const freshJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+            
+            if (!freshJson.images) freshJson.images = [];
+            // Add to the START of the images list so it becomes the default
+            freshJson.images.unshift(relativeThumbUrl);
+            
+            fs.writeFileSync(jsonPath, JSON.stringify(freshJson, null, 2), 'utf8');
+         } catch (genErr) {
+            // Don't fail the upload if just the image generation fails
+            console.error("Auto-thumbnail failed:", genErr);
+         }
+         // -------------------------------
+
+         await postProcessMunchieFile(jsonPath);
+         processed.push(jsonRel);
         } catch (e) {
           errors.push({ file: base, error: e && e.message ? e.message : String(e) });
         }
@@ -3197,6 +3353,21 @@ app.post('/api/restore-munchie-files/upload', upload.single('backupFile'), async
   } catch (error) {
     console.error('File upload restore error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// [FIX] Explicitly serve the capture.html file for Puppeteer
+// Check if it's in 'public' (standard) or root
+app.get('/capture.html', (req, res) => {
+  const publicPath = path.join(__dirname, 'public', 'capture.html');
+  const rootPath = path.join(__dirname, 'capture.html');
+  
+  if (fs.existsSync(publicPath)) {
+    res.sendFile(publicPath);
+  } else if (fs.existsSync(rootPath)) {
+    res.sendFile(rootPath);
+  } else {
+    res.status(404).send('Capture file not found on server');
   }
 });
 

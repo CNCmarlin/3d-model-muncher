@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Progress } from "./ui/progress";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import * as LucideIcons from 'lucide-react';
+
 const {
   ArrowLeft,
   GripVertical,
@@ -1685,7 +1686,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                     <div className="space-y-2">
                       <Label htmlFor="default-theme">Default Theme</Label>
                       <Select 
-                        value={localConfig.settings.defaultTheme}
+                        value={localConfig.settings?.defaultTheme ?? 'system'}
                         onValueChange={(value: string) => handleConfigFieldChange('settings.defaultTheme', value)}
                       >
                         <SelectTrigger>
@@ -1702,7 +1703,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                     <div className="space-y-2">
                       <Label htmlFor="default-view">Default View</Label>
                       <Select 
-                        value={localConfig.settings.defaultView}
+                        value={localConfig.settings?.defaultView ?? 'grid'}
                         onValueChange={(value: string) => handleConfigFieldChange('settings.defaultView', value)}
                       >
                         <SelectTrigger>
@@ -1718,7 +1719,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                     <div className="space-y-2">
                       <Label htmlFor="grid-density">Default Grid Density</Label>
                       <Select 
-                        value={localConfig.settings.defaultGridDensity.toString()}
+                        value={(localConfig.settings?.defaultGridDensity ?? 4).toString()}
                         onValueChange={(value: string) => handleConfigFieldChange('settings.defaultGridDensity', parseInt(value))}
                       >
                         <SelectTrigger>
@@ -1738,7 +1739,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                     <div className="space-y-2">
                       <Label htmlFor="default-model-view">Default Model View</Label>
                       <Select 
-                        value={localConfig.settings.defaultModelView}
+                        value={localConfig.settings?.defaultModelView ?? 'images'}
                         onValueChange={(value: string) => handleConfigFieldChange('settings.defaultModelView', value)}
                       >
                         <SelectTrigger>
@@ -1770,7 +1771,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                         <div>
                           <Label className="text-xs">Primary Field</Label>
                           <Select
-                            value={localConfig.settings.modelCardPrimary}
+                            value={localConfig.settings?.modelCardPrimary ?? 'none'}
                             onValueChange={(value: string) => handleConfigFieldChange('settings.modelCardPrimary', value)}
                           >
                             <SelectTrigger>
@@ -1793,7 +1794,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                         <div>
                           <Label className="text-xs">Secondary Field</Label>
                           <Select
-                            value={localConfig.settings.modelCardSecondary}
+                            value={localConfig.settings?.modelCardSecondary ?? 'none'}
                             onValueChange={(value: string) => handleConfigFieldChange('settings.modelCardSecondary', value)}
                           >
                             <SelectTrigger>
@@ -1822,8 +1823,8 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                       <div className="flex items-center gap-3">
                         <Switch
                           id="hide-printed-badge"
-                          // The switch represents "hide" so invert the stored showPrintedBadge value
-                          checked={!localConfig.settings.showPrintedBadge}
+                          // Safe access with fallback to false
+                          checked={!(localConfig.settings?.showPrintedBadge ?? true)}
                           onCheckedChange={(v) => handleConfigFieldChange('settings.showPrintedBadge', !Boolean(v))}
                         />
                         <p className="text-xs text-muted-foreground">Toggle to hide the Printed badge on model cards and list views.</p>
@@ -1832,7 +1833,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
 
                     <div className="flex items-center space-x-3 pt-6 md:col-span-2">
                       <Switch
-                        checked={localConfig.settings.autoSave}
+                        checked={localConfig.settings?.autoSave ?? false}
                         onCheckedChange={(checked: boolean) => handleConfigFieldChange('settings.autoSave', checked)}
                         id="auto-save"
                       />
@@ -1850,7 +1851,8 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                       <div className="space-y-2">
                         <Label>Default Category</Label>
                         <Select 
-                          value={localConfig.filters.defaultCategory}
+                          // [FIX] Safe check for filters object
+                          value={localConfig.filters?.defaultCategory ?? 'all'}
                           onValueChange={(value: string) => handleConfigFieldChange('filters.defaultCategory', value)}
                         >
                           <SelectTrigger>
@@ -1870,7 +1872,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                       <div className="space-y-2">
                         <Label>Default Print Status</Label>
                         <Select 
-                          value={localConfig.filters.defaultPrintStatus}
+                          value={localConfig.filters?.defaultPrintStatus ?? 'all'}
                           onValueChange={(value: string) => handleConfigFieldChange('filters.defaultPrintStatus', value)}
                         >
                           <SelectTrigger>
@@ -1887,7 +1889,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                       <div className="space-y-2">
                         <Label>Default License</Label>
                         <Select 
-                          value={localConfig.filters.defaultLicense}
+                          value={localConfig.filters?.defaultLicense ?? 'all'}
                           onValueChange={(value: string) => handleConfigFieldChange('filters.defaultLicense', value)}
                         >
                           <SelectTrigger>
@@ -1905,7 +1907,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                       <div className="space-y-2">
                         <Label>Default Sort By</Label>
                         <Select 
-                          value={localConfig.filters.defaultSortBy || 'none'}
+                          value={localConfig.filters?.defaultSortBy ?? 'none'}
                           onValueChange={(value: string) => handleConfigFieldChange('filters.defaultSortBy', value)}
                         >
                           <SelectTrigger>
@@ -1921,7 +1923,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                         </Select>
                       </div>
                     </div>
-                  </div>                  
+                  </div>               
                   <Separator />
 
                   {/* Image generation */}
@@ -1998,6 +2000,50 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                         </p>
                       </div>
                     </div>
+                    {/* [NEW] Thumbnail Generation Section */}
+                    <div className="pt-4 border-t mt-4">
+                        <h4 className="text-sm font-medium mb-2">Thumbnail Generation</h4>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">Generate Missing Thumbnails</p>
+                            <p className="text-xs text-muted-foreground">
+                              Uses the server's background generator to create clean PNG snapshots for models that don't have them.
+                            </p>
+                          </div>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={async () => {
+                              const confirm = window.confirm("This process uses significant server CPU. It may take a few seconds per model. Continue?");
+                              if (!confirm) return;
+                              
+                              toast.info("Starting background generation...");
+                              try {
+                                const res = await fetch('/api/generate-thumbnails', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ force: false }) // Set true to overwrite existing
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  toast.success(`Generated ${data.processed} thumbnails`, {
+                                    description: `Skipped: ${data.skipped}, Errors: ${data.errors.length}`
+                                  });
+                                  // Trigger a refresh of the grid
+                                  window.dispatchEvent(new CustomEvent('collection-updated')); 
+                                } else {
+                                  toast.error("Generation failed", { description: data.error });
+                                }
+                              } catch (e) {
+                                toast.error("Request failed");
+                              }
+                            }}
+                          >
+                            <Box className="mr-2 h-4 w-4" />
+                            Generate All
+                          </Button>
+                        </div>
+                      </div>
                   </div>
 
                   <Separator />
@@ -2011,37 +2057,36 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                       <Label>G-code Storage Behavior</Label>
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
-                          <input
-                            type="radio"
-                            id="gcode-parse-only"
-                            name="gcode-storage"
-                            value="parse-only"
-                            checked={!localConfig.settings?.gcodeStorageBehavior || localConfig.settings.gcodeStorageBehavior === 'parse-only'}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                handleConfigFieldChange('settings.gcodeStorageBehavior', 'parse-only');
-                              }
-                            }}
-                            className="w-4 h-4"
-                          />
-                          <Label htmlFor="gcode-parse-only" className="font-normal cursor-pointer">
-                            Parse only (don't save file)
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="radio"
-                            id="gcode-save-link"
-                            name="gcode-storage"
-                            value="save-and-link"
-                            checked={localConfig.settings?.gcodeStorageBehavior === 'save-and-link'}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                handleConfigFieldChange('settings.gcodeStorageBehavior', 'save-and-link');
-                              }
-                            }}
-                            className="w-4 h-4"
-                          />
+                        <input
+                              type="radio"
+                              id="gcode-parse-only"
+                              name="gcode-storage"
+                              value="parse-only"
+                              // [FIX] Safe check
+                              checked={!localConfig.settings?.gcodeStorageBehavior || localConfig.settings?.gcodeStorageBehavior === 'parse-only'}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handleConfigFieldChange('settings.gcodeStorageBehavior', 'parse-only');
+                                }
+                              }}
+                              className="w-4 h-4"
+                            />
+                            {/* ... (label) ... */}
+                            {/* ... (second radio button) ... */}
+                            <input
+                              type="radio"
+                              id="gcode-save-link"
+                              name="gcode-storage"
+                              value="save-and-link"
+                              // [FIX] Safe check
+                              checked={localConfig.settings?.gcodeStorageBehavior === 'save-and-link'}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  handleConfigFieldChange('settings.gcodeStorageBehavior', 'save-and-link');
+                                }
+                              }}
+                              className="w-4 h-4"
+                            />
                           <Label htmlFor="gcode-save-link" className="font-normal cursor-pointer">
                             Save file and add to related files
                           </Label>
@@ -2060,10 +2105,11 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                       <div className="space-y-2">
                         <Label htmlFor="model-dir">Model Directory</Label>
                         <div className="flex gap-2 items-center">
-                          <Input
+                        <Input
                             id="model-dir"
                             className="flex-1"
-                            value={isEditingModelDir ? tempModelDir : localConfig.settings.modelDirectory}
+                            // [FIX] Safe fallback
+                            value={isEditingModelDir ? tempModelDir : (localConfig.settings?.modelDirectory ?? './models')}
                             readOnly={!isEditingModelDir}
                             placeholder="./models"
                             onChange={(e: any) => { if (isEditingModelDir) setTempModelDir(e.target.value); }}
