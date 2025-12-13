@@ -139,12 +139,6 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' })); // Increased limit for large model payloads
-const MODELS_DIR = path.join(__dirname, 'models'); 
-// Ensure the folder exists to prevent crashes
-if (!fs.existsSync(MODELS_DIR)) {
-    fs.mkdirSync(MODELS_DIR);
-}
-app.use('/models', express.static(MODELS_DIR));
 
 // Collections storage helpers (persist under data/collections.json)
 // Allow override via env var and use a test-specific file when running under Vitest/Node test env.
@@ -469,6 +463,10 @@ function ensureModelsStaticHandler() {
 
 app.use('/models', (req, res, next) => {
   ensureModelsStaticHandler();
+  // Debug log to confirm exactly where we are looking
+  if (req.method === 'GET') {
+      console.log(`[Static Serve] Request: ${req.url} | Serving from: ${currentModelsPath}`);
+  }
   return currentModelsStaticHandler(req, res, next);
 });
 
@@ -1714,8 +1712,15 @@ app.post('/api/generate-thumbnails', async (req, res) => {
     findTargets(modelsDir);
  
     console.log(`📸 Starting photo shoot for ${targets.length} models...`);
+
+    const MAX_CONSECUTIVE_ERRORS = 5;
+    let consecutiveErrors = 0;
  
     for (const target of targets) {
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.warn(`🚨 Aborting thumbnail generation: ${MAX_CONSECUTIVE_ERRORS} consecutive errors detected.`);
+        break; 
+      }
       try {
         const thumbName = path.basename(target.sourcePath) + '-thumb.png';
         const thumbPath = path.join(path.dirname(target.sourcePath), thumbName);
@@ -1750,13 +1755,20 @@ app.post('/api/generate-thumbnails', async (req, res) => {
         }
         
         processed++;
+        consecutiveErrors = 0;
       } catch (err) {
         console.error("Thumbnail error:", err);
         errors.push({ id: target.data.id, error: err.message });
+        consecutiveErrors++;
       }
     }
- 
-    res.json({ success: true, processed, skipped, errors });
+    res.json({ 
+      success: true, 
+      processed, 
+      skipped, 
+      errors,
+      aborted: consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
+    });
  
   } catch (error) {
     console.error('General generation error:', error);
