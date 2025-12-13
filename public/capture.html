@@ -32,10 +32,15 @@
         import { STLLoader } from 'three/addons/loaders/STLLoader.js';
         import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
 
+        window.captureReady = false;
+        window.modelLoaded = false;
+
         const params = new URLSearchParams(window.location.search);
         const fileUrl = params.get('url');
         const fileType = params.get('type') || 'stl';
         const color = params.get('color') || '#6366f1';
+
+        console.time('Thumbnail Generation Total');
 
         console.log("🎨 Applying Color:", color); // Check your console logs!
 
@@ -76,7 +81,18 @@
         if (fileUrl) {
             const loader = fileType === '3mf' ? new ThreeMFLoader() : new STLLoader();
 
+            console.timeEnd('Model File Load');
+
             loader.load(fileUrl, (geometry) => {
+
+                
+                window.modelLoaded = true;
+
+                console.timeEnd('Model File Load'); // END file loading timer
+                window.modelLoaded = true;
+                
+                console.time('Geometry Processing & Camera Fit');
+
                 let mesh;
 
                 // --- Geometry Prep ---
@@ -125,6 +141,8 @@
 
                 scene.add(mesh);
 
+                console.time('Geometry Processing & Camera Fit');
+
                 // --- Camera Fitting ---
                 mesh.updateMatrixWorld(true);
 
@@ -132,6 +150,13 @@
                 const size = box.getSize(new THREE.Vector3());
                 const center = box.getCenter(new THREE.Vector3());
                 const maxDim = Math.max(size.x, size.y, size.z);
+
+                if (maxDim === 0) {
+                    console.error("CRASH DEBUG: Bounding box size is zero! Cannot calculate camera distance.");
+                    // Fail fast but set ready flag to prevent hard Puppeteer timeout crash
+                    window.captureReady = true; 
+                    return; 
+                }
 
                 const fovRad = camera.fov * (Math.PI / 180);
                 let cameraDist = Math.abs(maxDim / 2 / Math.tan(fovRad / 2));
@@ -145,12 +170,36 @@
                 camera.position.copy(defaultVector).multiplyScalar(cameraDist);
                 camera.lookAt(center);
 
-                setTimeout(() => { window.captureReady = true; }, 500);
+                console.timeEnd('Geometry Processing & Camera Fit'); // END processing timer
 
-            }, undefined, (err) => {
-                console.error("Error", err);
-                window.captureReady = true;
-            });
+
+                // Ensure a render cycle completes before setting the final flag
+                renderer.render(scene, camera);
+
+                // Final flag setting with a small delay for render frame capture
+                setTimeout(() => { 
+                    window.captureReady = true; 
+                    console.log('Capture Ready Flag Set.');
+                    console.timeEnd('Thumbnail Generation Total');
+                }, 250); 
+
+            }, 
+            // Progress Callback
+            (xhr) => {
+                if (xhr.lengthComputable) {
+                    const percent = Math.round( ( xhr.loaded / xhr.total ) * 100 );
+                    console.log(`[LOAD PROGRESS] ${fileUrl}: ${percent}% loaded`);
+                }
+            }, 
+            // Error Callback
+            (err) => {
+                console.error("THREE.js LOADER ERROR: Failed to load model file.", err);
+                window.captureReady = true; // Fail fast and allow puppeteer to finish with error
+                console.timeEnd('Thumbnail Generation Total');
+            });
+        } else {
+            console.error("ERROR: No file URL provided.");
+            window.captureReady = true;
         }
     </script>
 </body>
