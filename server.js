@@ -140,6 +140,15 @@ const upload = multer({
 app.use(cors());
 app.use(express.json({ limit: '100mb' })); // Increased limit for large model payloads
 
+app.use('/models', (req, res, next) => {
+  ensureModelsStaticHandler();
+  // Debug log to confirm exactly where we are looking
+  if (req.method === 'GET') {
+      console.log(`[Static Serve] Request: ${req.url} | Serving from: ${currentModelsPath}`);
+  }
+  return currentModelsStaticHandler(req, res, next);
+});
+
 // Collections storage helpers (persist under data/collections.json)
 // Allow override via env var and use a test-specific file when running under Vitest/Node test env.
 const collectionsFilePath = (() => {
@@ -460,15 +469,6 @@ function ensureModelsStaticHandler() {
     currentModelsStaticHandler = (req, res, next) => next();
   }
 }
-
-app.use('/models', (req, res, next) => {
-  ensureModelsStaticHandler();
-  // Debug log to confirm exactly where we are looking
-  if (req.method === 'GET') {
-      console.log(`[Static Serve] Request: ${req.url} | Serving from: ${currentModelsPath}`);
-  }
-  return currentModelsStaticHandler(req, res, next);
-});
 
 // Helper function to get the models directory (always from source)
 function getModelsDirectory() {
@@ -1656,7 +1656,7 @@ app.post('/api/generate-thumbnails', async (req, res) => {
     const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
     
     // We need the server's own URL so Puppeteer can visit it
-    const baseUrl = `http://localhost:${PORT}`;
+    const baseUrl = `http://127.0.0.1:${PORT}`;
     
     // [FIX] Define 'config' right here at the top so it is available later
     const config = ConfigManager.loadConfig();
