@@ -1736,8 +1736,7 @@ app.post('/api/generate-thumbnails', async (req, res) => {
         const modelColor = target.data.userDefined?.color || target.data.color || globalDefaultColor;
 
         // GENERATE!
-        await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor);
- 
+        await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir); // <-- ADDED modelsDir 
         // Update JSON to point to new image
         let json = target.data;
         let changed = false;
@@ -1922,7 +1921,8 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
             const thumbName = path.basename(modelFilePath) + '-thumb.png';
             const thumbPath = path.join(path.dirname(modelFilePath), thumbName);
             // Use server's internal address
-            const baseUrl = `http://localhost:${PORT}`; 
+            const BASE_URL = process.env.HOST_URL || `http://localhost:${PORT}`; 
+            const baseUrl = BASE_URL;
             
             console.log(`📸 Auto-generating thumbnail for: ${derivedId}`);
             
