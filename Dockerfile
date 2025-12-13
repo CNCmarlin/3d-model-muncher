@@ -66,6 +66,7 @@ COPY --from=builder /app/dist-backend ./dist-backend
 COPY --from=builder /app/server.js ./server.js
 COPY --from=builder /app/server-utils ./server-utils
 COPY --from=builder /app/src/config ./src/config
+COPY --from=builder /app/public ./public
 
 RUN mkdir -p models data
 
