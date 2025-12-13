@@ -3,6 +3,8 @@ const path = require('path');
 
 const MODELS_DIR = path.join(process.cwd(), 'models');
 const DATA_DIR = path.join(process.cwd(), 'data');
+// New: Fixtures directory for binary files we can't generate with code
+const FIXTURES_DIR = path.join(__dirname, 'fixtures');
 
 // Ensure directories exist
 if (!fs.existsSync(MODELS_DIR)) fs.mkdirSync(MODELS_DIR, { recursive: true });
@@ -86,6 +88,41 @@ structure.forEach((item, index) => {
   console.log(`✅ Created: ${item.folder}/${item.name}`);
 });
 
+// --- 2.5 New: Seed the 3MF Fixture ---
+const threeMFSource = path.join(FIXTURES_DIR, 'simple_cube.3mf');
+const threeMFTargetFolder = path.join(MODELS_DIR, 'Tests');
+const threeMFTargetFile = path.join(threeMFTargetFolder, 'simple_cube.3mf');
+const threeMFJson = path.join(threeMFTargetFolder, 'simple_cube-munchie.json');
+
+if (fs.existsSync(threeMFSource)) {
+    if (!fs.existsSync(threeMFTargetFolder)) fs.mkdirSync(threeMFTargetFolder, { recursive: true });
+    
+    // Copy the binary file
+    fs.copyFileSync(threeMFSource, threeMFTargetFile);
+    
+    const threeMFId = 'seed-cube-3mf';
+    // Add to generated IDs if you want it in a collection later
+    generatedIds.push(threeMFId);
+
+    const metadata3mf = {
+        id: threeMFId,
+        name: 'Simple Cube (3MF)',
+        description: 'Seeded 3MF file from fixtures',
+        fileName: 'simple_cube.3mf',
+        category: 'Tests',
+        tags: ['test', 'dev', '3mf'],
+        fileSize: fs.statSync(threeMFTargetFile).size,
+        created: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        userDefined: { color: '#00ff00' }
+    };
+    
+    fs.writeFileSync(threeMFJson, JSON.stringify(metadata3mf, null, 2));
+    console.log('✅ Created: Tests/simple_cube.3mf');
+} else {
+    console.warn('⚠️  Skipping 3MF seed: fixtures/simple_cube.3mf not found. Please download it first.');
+}
+
 // --- 3. Create Nested Collections ---
 const collections = [
   {
@@ -109,7 +146,7 @@ const collections = [
     name: "Sci-Fi Build",
     description: "Nested inside Projects",
     modelIds: [generatedIds[2], generatedIds[3]],
-    parentId: "col-root-2", // <--- THE NESTING MAGIC
+    parentId: "col-root-2", 
     childCollectionIds: []
   }
 ];

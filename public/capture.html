@@ -1,12 +1,22 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-  <meta charset="utf-8">
-  <style>
-    body { margin: 0; overflow: hidden; background: transparent; }
-    canvas { width: 100vw; height: 100vh; display: block; }
-  </style>
-  <script type="importmap">
+    <meta charset="utf-8">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: transparent;
+        }
+
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+    <script type="importmap">
     {
       "imports": {
         "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
@@ -15,115 +25,134 @@
     }
   </script>
 </head>
+
 <body>
-  <script type="module">
-    import * as THREE from 'three';
-    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-    import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
+    <script type="module">
+        import * as THREE from 'three';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
 
-    const params = new URLSearchParams(window.location.search);
-    const fileUrl = params.get('url');
-    const fileType = params.get('type') || 'stl';
-    const color = params.get('color') || '#6366f1'; 
+        const params = new URLSearchParams(window.location.search);
+        const fileUrl = params.get('url');
+        const fileType = params.get('type') || 'stl';
+        const color = params.get('color') || '#6366f1';
 
-    console.log("🎨 Applying Color:", color); // Check your console logs!
+        console.log("🎨 Applying Color:", color); // Check your console logs!
 
-    // 1. Setup Scene
-    const scene = new THREE.Scene();
-    scene.background = null; 
+        // 1. Setup Scene
+        const scene = new THREE.Scene();
+        scene.background = null;
 
-    // 2. Setup Lights 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambientLight);
+        // 2. Setup Lights 
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
-    dirLight1.position.set(5, 5, 5);
-    scene.add(dirLight1);
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight1.position.set(5, 5, 5);
+        scene.add(dirLight1);
 
-    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
-    dirLight2.position.set(-5, 3, -5);
-    scene.add(dirLight2);
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        dirLight2.position.set(-5, 3, -5);
+        scene.add(dirLight2);
 
-    // 3. Setup Camera 
-    const camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 0.1, 2000);
-    const defaultVector = new THREE.Vector3(-66, 79, 83).normalize();
+        // 3. Setup Camera 
+        const camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const defaultVector = new THREE.Vector3(-66, 79, 83).normalize();
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-    // 4. Render Loop
-    function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    }
-    animate();
-
-    window.captureReady = false;
-
-    // 5. Loader Logic
-    if (fileUrl) {
-      const loader = fileType === '3mf' ? new ThreeMFLoader() : new STLLoader();
-
-      loader.load(fileUrl, (geometry) => {
-        let mesh;
-
-        // --- Geometry Prep ---
-        if (fileType === 'stl') {
-          geometry.center(); 
-          geometry.rotateX(-Math.PI / 2);
-          geometry.computeVertexNormals();
-          
-          const material = new THREE.MeshStandardMaterial({ 
-             color: color, 
-             roughness: 0.5,
-             metalness: 0.1
-          });
-          mesh = new THREE.Mesh(geometry, material);
-        } else {
-          // 3MF Handling
-          mesh = geometry;
-          
-          // [FIX] FORCE COLOR OVERRIDE FOR 3MF
-          // 3MFs are groups of meshes. We must paint every child mesh.
-          mesh.traverse((child) => {
-            if (child.isMesh) {
-              child.material = new THREE.MeshStandardMaterial({ 
-                color: color, 
-                roughness: 0.5, 
-                metalness: 0.1 
-              });
-            }
-          });
-
-          const box = new THREE.Box3().setFromObject(mesh);
-          const center = box.getCenter(new THREE.Vector3());
-          mesh.position.sub(center); 
-          mesh.rotation.x = -Math.PI / 2;
+        // 4. Render Loop
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
         }
+        animate();
 
-        scene.add(mesh);
+        window.captureReady = false;
 
-        // --- Camera Fitting ---
-        const box = new THREE.Box3().setFromObject(mesh);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        
-        const fovRad = camera.fov * (Math.PI / 180);
-        let cameraDist = Math.abs(maxDim / 2 / Math.tan(fovRad / 2));
-        cameraDist *= 1.2;
+        // 5. Loader Logic
+        if (fileUrl) {
+            const loader = fileType === '3mf' ? new ThreeMFLoader() : new STLLoader();
 
-        camera.position.copy(defaultVector).multiplyScalar(cameraDist);
-        camera.lookAt(center);
+            loader.load(fileUrl, (geometry) => {
+                let mesh;
 
-        setTimeout(() => { window.captureReady = true; }, 500);
+                // --- Geometry Prep ---
+                if (fileType === 'stl') {
+                    // 1. Center the geometry vertices (local space)
+                    geometry.center();
 
-      }, undefined, (err) => {
-        console.error("Error", err);
-        window.captureReady = true; 
-      });
-    }
-  </script>
+                    // 2. DO NOT rotate the geometry here. Let the Mesh object handle it below.
+                    // geometry.rotateX(-Math.PI / 2); // <--- DELETE THIS LINE!
+
+                    geometry.computeVertexNormals();
+
+                    const material = new THREE.MeshStandardMaterial({
+                        color: color,
+                        roughness: 0.5,
+                        metalness: 0.1,
+                        side: THREE.DoubleSide // Added for consistency
+                    });
+                    mesh = new THREE.Mesh(geometry, material);
+
+                    // 3. Set the mesh position and rotation (World Space)
+                    const box = new THREE.Box3().setFromObject(mesh);
+                    const center = box.getCenter(new THREE.Vector3());
+                    mesh.position.sub(center);
+                    mesh.rotation.x = -Math.PI / 2; // <--- ADDED ROTATION HERE
+
+                } else {
+                    // 3MF Handling (UNCHANGED, but ensured color is correct)
+                    mesh = geometry;
+                    mesh.traverse((child) => {
+                        if (child.isMesh) {
+                            child.material = new THREE.MeshStandardMaterial({
+                                color: color,
+                                roughness: 0.5,
+                                metalness: 0.1,
+                                side: THREE.DoubleSide // Added for consistency
+                            });
+                        }
+                    });
+
+                    const box = new THREE.Box3().setFromObject(mesh);
+                    const center = box.getCenter(new THREE.Vector3());
+                    mesh.position.sub(center);
+                    mesh.rotation.x = -Math.PI / 2;
+                }
+
+                scene.add(mesh);
+
+                // --- Camera Fitting ---
+                mesh.updateMatrixWorld(true);
+
+                const box = new THREE.Box3().setFromObject(mesh);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+
+                const fovRad = camera.fov * (Math.PI / 180);
+                let cameraDist = Math.abs(maxDim / 2 / Math.tan(fovRad / 2));
+
+                if (fileType === 'stl') {
+                    cameraDist *= 2.0; // Use a larger margin (e.g., 1.5 instead of 1.2)
+                } else {
+                    cameraDist *= 1.2; // Keep 3MF margin smaller
+                }
+
+                camera.position.copy(defaultVector).multiplyScalar(cameraDist);
+                camera.lookAt(center);
+
+                setTimeout(() => { window.captureReady = true; }, 500);
+
+            }, undefined, (err) => {
+                console.error("Error", err);
+                window.captureReady = true;
+            });
+        }
+    </script>
 </body>
+
 </html>
