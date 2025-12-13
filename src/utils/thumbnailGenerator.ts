@@ -26,23 +26,38 @@ export async function generateThumbnail(modelUrl: string, outputPath: string, ba
     page.on('pageerror', (err: any) => console.log('PAGE ERROR:', err.toString()));
     await page.setViewport({ width: 512, height: 512 });
 
+    // ------------------------------------------------------------------
+    // [FIX] Convert Absolute Filesystem Path to Server URL Path (404 FIX v3)
+    // ------------------------------------------------------------------
     let cleanUrl: string;
 
     // 1. Calculate the path relative to the models root directory
     // Example: /app/models/Dir/file.stl --> Dir/file.stl
-    const relativePath = path.relative(modelsDir, modelUrl);
+    let relativePath = path.relative(modelsDir, modelUrl);
 
-    // 2. Prepend the web server context path (`/models`)
-    // Example: Dir/file.stl --> /models/Dir/file.stl
-    cleanUrl = '/models/' + relativePath;
-
-    // 3. Normalize slashes (crucial for Windows systems running in containers)
-    cleanUrl = cleanUrl.replace(/\\/g, '/');
+    // 2. Normalize and Clean the path string for URL use:
+    //    - Ensure forward slashes (path.posix.sep)
+    //    - Trim any leading/trailing slashes that path.relative might leave.
     
-    // Check if the path starts with /models/ or the correct context
-    if (!cleanUrl.startsWith('/models/')) {
-        console.warn(`[ThumbnailGen] Path sanity check failed. Cleaned URL: ${cleanUrl}. Original URL: ${modelUrl}`);
-        // Fallback or attempt to correct if path.relative returned something unexpected
+    // We use POSIX separators and clean up potential leading slashes
+    // The replace(/\/\//g, '/') at the end of the URL construction is often not enough.
+
+    // Force POSIX separators and remove any leading/trailing slashes from the relative portion
+    let normalizedRelative = relativePath.replace(/\\/g, path.posix.sep).replace(/^\/+|\/+$/g, '');
+
+    // 3. Prepend the web server context path (`/models`)
+    // We use path.posix.join to safely build the final web path
+    cleanUrl = path.posix.join('/models', normalizedRelative); 
+    
+    // 4. Ensure it starts with a single leading slash (for URL context)
+    if (!cleanUrl.startsWith('/')) {
+        cleanUrl = '/' + cleanUrl;
+    }
+    
+    // Check if the path contains '..' (security check against path traversal)
+    if (cleanUrl.includes('..')) {
+        console.error(`[ThumbnailGen] Security check failed: Path traversal detected in ${cleanUrl}`);
+        // Fallback to a safe name or throw an error
         cleanUrl = '/models/' + path.basename(modelUrl);
     }
     
@@ -51,7 +66,8 @@ export async function generateThumbnail(modelUrl: string, outputPath: string, ba
     const is3mf = modelUrl.toLowerCase().endsWith('.3mf');
     const type = is3mf ? '3mf' : 'stl';
     
-    // Pass the CLEAN relative URL, not the absolute file path
+    // Pass the CLEAN relative URL
+    // The encodeURIComponent handles the spaces ('3D Printer' -> '3D%20Printer')
     const captureUrl = `${baseUrl}/capture.html?url=${encodeURIComponent(cleanUrl)}&type=${type}&color=${encodeURIComponent(modelColor)}`;
     // ------------------------------------------------------------------
     
