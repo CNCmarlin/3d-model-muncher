@@ -24,6 +24,7 @@ export async function generateThumbnail(modelUrl: string, outputPath: string, ba
     // This will let us see "404 Not Found" or "WebGL Error"
     page.on('console', msg => console.log('PAGE LOG:', msg.text()));
     page.on('pageerror', (err: any) => console.log('PAGE ERROR:', err.toString()));
+    page.on('error', err => console.error('PUPPETEER BROWSER ERROR:', err.toString()));
     await page.setViewport({ width: 512, height: 512 });
 
     // ------------------------------------------------------------------
@@ -74,10 +75,18 @@ export async function generateThumbnail(modelUrl: string, outputPath: string, ba
     console.log(`📸 Snapping: ${path.basename(modelUrl)}`);
     console.log(`   ➜ Loading URL: ${captureUrl}`); // Log this to verify!
 
+    console.log(`[THUMB GEN] Final Capture URL: ${captureUrl}`);
     await page.goto(captureUrl);
 
+    try {
+      await page.waitForFunction('window.modelLoaded === true', { timeout: 10000 }); // Wait for 10s only
+      console.log("PAGE LOG: Model file successfully loaded into memory.");
+  } catch (e) {
+      console.warn("PAGE LOG: Model file load took longer than 10 seconds.");
+  }
+
     // [FIX] Increased timeout to 30s (3D models can be heavy)
-    await page.waitForFunction('window.captureReady === true', { timeout: 30000 });
+    await page.waitForFunction('window.captureReady === true', { timeout: 130000 });
 
     await page.screenshot({ path: outputPath, omitBackground: true });
     console.log(`✅ Saved: ${outputPath}`);
