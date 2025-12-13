@@ -86,7 +86,7 @@ export async function generateThumbnail(modelUrl: string, outputPath: string, ba
   }
 
     // [FIX] Increased timeout to 30s (3D models can be heavy)
-    await page.waitForFunction('window.captureReady === true', { timeout: 130000 });
+    await page.waitForFunction('window.captureReady === true', { timeout: 30000 });
 
     await page.screenshot({ path: outputPath, omitBackground: true });
     console.log(`✅ Saved: ${outputPath}`);
