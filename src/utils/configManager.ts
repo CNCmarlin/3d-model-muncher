@@ -1,5 +1,6 @@
 import { AppConfig } from "../types/config";
 
+// We keep this for browser downloads, but server-side we look for 'config.json'
 const CONFIG_FILENAME = "3d-model-muncher-config.json";
 const STORAGE_KEY = "3d-model-muncher-config";
 
@@ -156,19 +157,34 @@ export class ConfigManager {
         const fs = require('fs');
         // @ts-ignore
         const path = require('path');
-        let configPath = path.join(process.cwd(), CONFIG_FILENAME);
+        
+        // [FIX] 1. Look in the data folder first (Primary Production Path)
+        let configPath = path.join(process.cwd(), 'data', 'config.json');
+        
+        // [FIX] 2. If not found, check root (Dev/Legacy Path)
         if (!fs.existsSync(configPath)) {
-          configPath = path.join(process.cwd(), 'src/config/default-config.json');
+             // Fallback to root directory
+             configPath = path.join(process.cwd(), CONFIG_FILENAME);
         }
-        const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        const validated = this.validateConfig(fileConfig);
-        return validated;
+
+        console.log(`[ConfigManager] Attempting to load server config from: ${configPath}`);
+
+        if (fs.existsSync(configPath)) {
+            const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            const validated = this.validateConfig(fileConfig);
+            return validated;
+        } else {
+            console.warn(`[ConfigManager] No config file found at ${configPath}, using defaults.`);
+            return this.getDefaultConfig();
+        }
+
       } catch (e) {
         console.warn('Failed to load config from file:', e);
         return this.getDefaultConfig();
       }
     }
 
+    // --- Browser / LocalStorage Logic ---
     try {
       const storedConfig = localStorage.getItem(STORAGE_KEY);
       console.debug('[ConfigManager] localStorage raw value for', STORAGE_KEY, storedConfig ? '(present)' : '(missing)');

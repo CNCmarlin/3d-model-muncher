@@ -11,6 +11,7 @@
   "files": [
     "src/utils/gcodeParser.ts",
     "src/utils/threeMFToJson.ts",
-    "src/utils/configManager.ts"
+    "src/utils/configManager.ts",
+    "src/utils/thumbnailGenerator.ts"
   ]
 }
