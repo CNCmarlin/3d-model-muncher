@@ -3,6 +3,7 @@ import { Search, Filter, Layers, X, Settings, FileText, Eye, CircleCheckBig, Fil
 import * as LucideIcons from 'lucide-react';
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { LICENSES } from '../constants/licenses';
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -336,6 +337,33 @@ export function FilterSidebar({
   // Available licenses (centralized)
   const availableLicenses = LICENSES;
 
+  // [NEW] Handler for "Smart Navigation"
+  // When a user clicks a folder, we clear categorical filters so they can see the folder's content.
+  const handleFolderSelect = (path: string) => {
+    // 1. Update local UI state to "Clean" defaults
+    setSearchTerm(path); // The folder path becomes the search
+    setSelectedCategory("all");
+    setSelectedPrintStatus("all");
+    setSelectedLicense("all");
+    setSelectedFileType("all");
+    setSelectedTags([]);
+    // We typically KEEP 'showHidden' and 'showMissingImages' as they are view preferences, not content filters.
+    // But resetting them is also a valid choice. Let's keep them stable for now.
+
+    // 2. Trigger the filter change with the new "Clean" state
+    onFilterChange({
+      search: path,
+      category: "all",
+      printStatus: "all",
+      license: "all",
+      fileType: "all",
+      tags: [],
+      showHidden: showHidden, // Maintain view preference
+      showMissingImages: showMissingImages, // Maintain view preference
+      sortBy: selectedSort,
+    });
+  };
+
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
     onFilterChange({
@@ -615,55 +643,66 @@ export function FilterSidebar({
               </div>
             </div>
 
-            {/* Folders Section */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Folder className="h-4 w-4 text-foreground" />
-                <label className="text-sm font-medium text-foreground">Folders</label>
-              </div>
-              <div className="border rounded-md p-2 bg-background/50">
-                <div 
-                    className="flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer mb-2"
-                    onClick={() => handleSearchChange("")} // Reset search/path when clicking "All Models"
-                >
-                    <FolderOpen className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">All Models</span>
-                </div>
-                {Object.values(folderTree.children).map(node => (
-                  <FolderTreeItem 
-                    key={node.fullPath} 
-                    node={node} 
-                    level={0} 
-                    onSelect={(path) => handleSearchChange(path)} // Clicking a folder populates the search bar
-                  />
-                ))}
-              </div>
-            </div>
+            {/* Folders & Collections Accordion */}
+            <Accordion type="multiple" className="w-full">
+              {/* Folders Item */}
+              <AccordionItem value="folders" className="border-b-0">
+                <AccordionTrigger className="py-2 hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <Folder className="h-4 w-4 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">Folders</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="pl-1">
+                    <div 
+                        className="flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer mb-1"
+                        onClick={() => handleFolderSelect("")} // <--- UPDATED: Use new handler 
+                        >
+                        <FolderOpen className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">All Models</span>
+                    </div>
+                    {Object.values(folderTree.children).map(node => (
+                      <FolderTreeItem 
+                        key={node.fullPath} 
+                        node={node} 
+                        level={0} 
+                        onSelect={(path) => handleFolderSelect(path)} // <--- UPDATED: Use new handler
+                      />
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
 
-            {/* Collections Tree Section (NEW) */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Layers className="h-4 w-4 text-foreground" />
-                <label className="text-sm font-medium text-foreground">Collections</label>
-              </div>
-              <div className="border rounded-md p-2 bg-background/50">
-                {collectionTree.length === 0 ? (
-                  <div className="text-xs text-muted-foreground p-2">No collections</div>
-                ) : (
-                  collectionTree.map(node => (
-                    <CollectionTreeItem 
-                      key={node.id} 
-                      node={node} 
-                      level={0} 
-                      onSelect={() => {
-                        const original = collections.find(c => c.id === node.id);
-                        if (original) onOpenCollection(original);
-                      }}
-                    />
-                  ))
-                )}
-              </div>
-            </div>
+              {/* Collections Item */}
+              <AccordionItem value="collections" className="border-b-0">
+                <AccordionTrigger className="py-2 hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-foreground" />
+                    <span className="text-sm font-medium text-foreground">Collections</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="pl-1">
+                    {collectionTree.length === 0 ? (
+                      <div className="text-xs text-muted-foreground p-2">No collections found</div>
+                    ) : (
+                      collectionTree.map(node => (
+                        <CollectionTreeItem 
+                          key={node.id} 
+                          node={node} 
+                          level={0} 
+                          onSelect={() => {
+                            const original = collections.find(c => c.id === node.id);
+                            if (original) onOpenCollection(original);
+                          }}
+                        />
+                      ))
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
 
             {/* Categories */}
             <div className="space-y-2">

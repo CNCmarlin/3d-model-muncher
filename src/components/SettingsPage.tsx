@@ -15,47 +15,26 @@ import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
 import { ScrollArea } from "./ui/scroll-area";
+import { CollectionEditorDialog } from "./CollectionEditorDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Progress } from "./ui/progress";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { AutoImportDialog } from "./AutoImportDialog"; // Ensure this import exists
 import * as LucideIcons from 'lucide-react';
 
-const {
-  ArrowLeft,
-  GripVertical,
-  Download,
-  Upload,
-  RefreshCw,
-  Save,
-  Settings: SettingsIcon,
-  AlertCircle,
-  Tag,
-  Edit2,
-  Trash2,
-  Eye,
-  BarChart3,
-  Search,
-  AlertTriangle,
-  FileCheck,
-  Files,
-  Heart,
-  Star,
-  Github,
-  Box,
-  Images,
-  Archive,
-  Plus,
-  FileText,
-  Clock,
-  HardDrive,
-  RotateCcw,
-  X
-} = LucideIcons;
+import {
+  ArrowLeft, GripVertical, Download, Upload, RefreshCw, Save,
+  Settings as SettingsIcon, AlertCircle, Tag, Edit2, Trash2, Eye,
+  BarChart3, Search, AlertTriangle, FileCheck, Files, Heart, Star,
+  Github, Box, Images, Archive, Plus, FileText, Clock, HardDrive,
+  RotateCcw, X, Library, FolderOpen
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { ImageWithFallback } from './ImageWithFallback';
 import { getLabel } from '../constants/labels';
 import { resolveModelThumbnail } from '../utils/thumbnailUtils';
+import { Collection } from "../types/collection";
 
 // Thumbnail resolver: prefer model object, fall back to explicit prop
 const ModelThumbnail = ({ thumbnail, name, model }: { thumbnail?: string | null; name: string; model?: any }) => {
@@ -77,10 +56,6 @@ const ModelThumbnail = ({ thumbnail, name, model }: { thumbnail?: string | null;
   )
 };
 
-
-
-
-
 interface SettingsPageProps {
   onBack: () => void;
   categories: Category[];
@@ -97,6 +72,7 @@ interface SettingsPageProps {
   settingsAction?: null | { type: 'hash-check' | 'generate'; fileType: '3mf' | 'stl' };
   // Callback to notify parent that action was handled (or cleared)
   onActionHandled?: () => void;
+  onCollectionCreatedForBulkEdit?: (collectionId: string) => void;
 }
 
 interface TagInfo {
@@ -105,9 +81,9 @@ interface TagInfo {
   models: Model[];
 }
 
-export function SettingsPage({ 
-  onBack, 
-  categories, 
+export function SettingsPage({
+  onBack,
+  categories,
   onCategoriesUpdate,
   config,
   onConfigUpdate,
@@ -118,6 +94,7 @@ export function SettingsPage({
   initialTab,
   settingsAction,
   onActionHandled,
+  onCollectionCreatedForBulkEdit,
 }: SettingsPageProps) {
   // Helper function to get a clean file path for display
   const getDisplayPath = (model: Model) => {
@@ -127,8 +104,11 @@ export function SettingsPage({
     }
     return model.name || 'Unknown';
   };
-
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorCollection, setEditorCollection] = useState<Collection | null>(null);
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
+  const [collectionsList, setCollectionsList] = useState<Collection[]>([]);
   // Start with the prop config if provided, otherwise fall back to ConfigManager (localStorage/defaults).
   const [localConfig, setLocalConfig] = useState<AppConfig>(() => {
     const initialConfig = config || ConfigManager.loadConfig();
@@ -191,7 +171,7 @@ export function SettingsPage({
   const [renameTagValue, setRenameTagValue] = useState('');
   const [tagSearchTerm, setTagSearchTerm] = useState('');
   const tagInputRef = useRef<HTMLInputElement | null>(null);
-  
+
   // Compute categories that appear in model munchie.json files but are not in the configured categories list.
   const unmappedCategories = useMemo(() => {
     const configuredLabels = new Set(localCategories.map(c => c.label.toLowerCase()));
@@ -219,12 +199,12 @@ export function SettingsPage({
   // If parent opened settings with an action, run it and then notify parent
   useEffect(() => {
     if (!settingsAction) return;
-  // Switch to integrity tab and capture fileType to avoid async state races
-  setSelectedTab('integrity');
+    // Switch to integrity tab and capture fileType to avoid async state races
+    setSelectedTab('integrity');
     const actionFileType = settingsAction.fileType;
     setSelectedFileType(actionFileType);
 
-  (async () => {
+    (async () => {
       try {
         if (settingsAction.type === 'hash-check') {
           // Call the hash check with the explicit file type
@@ -262,10 +242,10 @@ export function SettingsPage({
   // Load corrupted model data when hash check results change
   useEffect(() => {
     if (!hashCheckResult?.corruptedFiles) return;
-    
+
     const loadCorruptedModels = async () => {
       const newModels: Record<string, Model> = {};
-      
+
       for (const file of hashCheckResult.corruptedFiles) {
         try {
           // Extract directory and filename, removing any leading /models or models/
@@ -273,28 +253,28 @@ export function SettingsPage({
           const pathParts = normalizedPath.split(/[/\\]/);
           const fileName = pathParts.pop() || '';
           const directory = pathParts.join('/');
-          
+
           // Convert .3mf to -munchie.json or .stl to -stl-munchie.json if needed
           const lowerFileName = fileName.toLowerCase();
           const munchieFileName = fileName.endsWith('-munchie.json') || fileName.endsWith('-stl-munchie.json')
             ? fileName
-            : lowerFileName.endsWith('.stl') 
+            : lowerFileName.endsWith('.stl')
               ? fileName.replace(/\.stl$/i, '-stl-munchie.json')
               : lowerFileName.endsWith('.3mf')
                 ? fileName.replace(/\.3mf$/i, '-munchie.json')
                 : null; // Skip files that aren't model files
-          
+
           // Skip if we couldn't determine the munchie file name
           if (!munchieFileName) {
             console.log('Skipping non-model file:', fileName);
             continue;
           }
-          
+
           // Construct the final path, always starting with models/
-          const fullPath = directory 
+          const fullPath = directory
             ? `models/${directory}/${munchieFileName}`
             : `models/${munchieFileName}`;
-          
+
           const response = await fetch(`/api/load-model?filePath=${encodeURIComponent(fullPath)}`);
           if (response.ok) {
             const modelData = await response.json();
@@ -311,10 +291,10 @@ export function SettingsPage({
           console.error('Failed to load model data:', error);
         }
       }
-      
+
       setCorruptedModels(newModels);
     };
-    
+
     loadCorruptedModels();
   }, [hashCheckResult?.corruptedFiles]);
   const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
@@ -322,8 +302,8 @@ export function SettingsPage({
   const [openDuplicateGroupHash, setOpenDuplicateGroupHash] = useState<string | null>(null);
 
   // File type selection state - "3mf" or "stl" only
-// File type selection state - "3mf", "stl", or "all"
-const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">("all");
+  // File type selection state - "3mf", "stl", or "all"
+  const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">("all");
 
   // Lazy load experimental tab component from separate file
   const ExperimentalTab = lazy(() => import('./settings/ExperimentalTab'));
@@ -354,7 +334,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
   // State and handler for generating model JSONs via backend API
   const [isGeneratingJson, setIsGeneratingJson] = useState(false);
   const [generateResult, setGenerateResult] = useState<{ skipped?: number; generated?: number; verified?: number; processed?: number } | null>(null);
-  
+
   const handleGenerateModelJson = async (fileType?: "3mf" | "stl") => {
     const effectiveFileType = fileType || selectedFileType;
     // Clear any previous hash-check results so UI doesn't show stale verified counts
@@ -422,7 +402,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
         // Start or replace a loading toast
         if (statusToastId.current) {
           // update existing loading toast message by dismissing and creating a new one
-          try { toast.dismiss(statusToastId.current); } catch {}
+          try { toast.dismiss(statusToastId.current); } catch { }
         }
         statusToastId.current = toast.loading(statusMessage);
       } else if (saveStatus === 'saved') {
@@ -458,7 +438,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
   // Get all unique tags with their usage information
   const getAllTags = (): TagInfo[] => {
     const tagMap = new Map<string, TagInfo>();
-    
+
     if (!models) {
       return [];
     }
@@ -501,15 +481,15 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    
+
     if (draggedIndex === null || draggedIndex === index) return;
-    
+
     const newCategories = [...localCategories];
     const draggedItem = newCategories[draggedIndex];
-    
+
     newCategories.splice(draggedIndex, 1);
     newCategories.splice(index, 0, draggedItem);
-    
+
     setLocalCategories(newCategories);
     setDraggedIndex(index);
   };
@@ -520,13 +500,13 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
 
   const handleSaveCategories = () => {
     onCategoriesUpdate(localCategories);
-    
+
     // Update config with new categories
     const updatedConfig = {
       ...localConfig,
       categories: localCategories
     };
-    
+
     setLocalConfig(updatedConfig);
     handleSaveConfig(updatedConfig);
   };
@@ -543,7 +523,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, '') // remove non-alphanumeric except spaces
       .trim()
-    .replace(/\s+/g, '_');
+      .replace(/\s+/g, '_');
     let uniqueId = baseId;
     let counter = 1;
     while (localCategories.some(c => c.id === uniqueId)) {
@@ -559,8 +539,8 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       return;
     }
 
-  const normalizedIcon = normalizeIconName(newCategoryIcon || 'Folder');
-  const newCat: Category = { id: uniqueId, label, icon: normalizedIcon } as Category;
+    const normalizedIcon = normalizeIconName(newCategoryIcon || 'Folder');
+    const newCat: Category = { id: uniqueId, label, icon: normalizedIcon } as Category;
     const updatedCategories = [...localCategories, newCat];
     const updatedConfig: AppConfig = { ...localConfig, categories: updatedCategories };
 
@@ -619,7 +599,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     config.lastModified = new Date().toISOString();
     setSaveStatus('saving');
     setStatusMessage('Saving configuration...');
-    
+
     try {
       // Save to localStorage via ConfigManager
       ConfigManager.saveConfig(config);
@@ -654,7 +634,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
 
       setSaveStatus('saved');
       setStatusMessage('Configuration saved successfully');
-      
+
       // Auto-clear success message after 3 seconds
       setTimeout(() => {
         setSaveStatus('idle');
@@ -721,7 +701,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       ConfigManager.exportConfig(localConfig);
       setSaveStatus('saved');
       setStatusMessage('Configuration exported successfully');
-      
+
       setTimeout(() => {
         setSaveStatus('idle');
         setStatusMessage('');
@@ -752,10 +732,10 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       setLocalCategories(importedConfig.categories);
       onCategoriesUpdate(importedConfig.categories);
       onConfigUpdate?.(importedConfig);
-      
+
       setSaveStatus('saved');
       setStatusMessage('Configuration imported successfully');
-      
+
       setTimeout(() => {
         setSaveStatus('idle');
         setStatusMessage('');
@@ -778,10 +758,10 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     setLocalCategories(defaultConfig.categories);
     onCategoriesUpdate(defaultConfig.categories);
     onConfigUpdate?.(defaultConfig);
-    
+
     setSaveStatus('saved');
     setStatusMessage('Configuration reset to defaults');
-    
+
     setTimeout(() => {
       setSaveStatus('idle');
       setStatusMessage('');
@@ -790,10 +770,10 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
 
   const handleConfigFieldChange = (field: string, value: any) => {
     const updatedConfig = { ...localConfig };
-    
+
     if (field.includes('.')) {
       const [section, key] = field.split('.');
-      
+
       if (section === 'settings') {
         updatedConfig.settings = {
           ...updatedConfig.settings,
@@ -808,13 +788,13 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     } else {
       (updatedConfig as any)[field] = value;
     }
-    
+
     console.log('[SettingsPage] Updated config:', updatedConfig);
     setLocalConfig(updatedConfig);
-    
+
     // Always notify parent of config changes
     onConfigUpdate?.(updatedConfig);
-    
+
     // If auto-save is enabled, also save locally
     if (localConfig.settings.autoSave) {
       handleSaveConfig(updatedConfig);
@@ -882,7 +862,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     setRenameTagValue('');
     setSelectedTag(null);
     setViewTagModels(null);
-    
+
     if (saveErrors === 0) {
       setSaveStatus('saved');
       setStatusMessage(`Tag "${oldTag}" renamed to "${newTag.trim()}" and saved to files`);
@@ -890,7 +870,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       setSaveStatus('error');
       setStatusMessage(`Tag renamed but ${saveErrors} file(s) failed to save`);
     }
-    
+
     setTimeout(() => {
       setSaveStatus('idle');
       setStatusMessage('');
@@ -954,7 +934,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     onModelsUpdate(updatedModels);
     setSelectedTag(null);
     setViewTagModels(null);
-    
+
     if (saveErrors === 0) {
       setSaveStatus('saved');
       setStatusMessage(`Tag "${tagToDelete}" deleted from all models and saved to files`);
@@ -962,7 +942,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       setSaveStatus('error');
       setStatusMessage(`Tag deleted but ${saveErrors} file(s) failed to save`);
     }
-    
+
     setTimeout(() => {
       setSaveStatus('idle');
       setStatusMessage('');
@@ -995,24 +975,24 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       return;
     }
 
-  setSaveStatus('saving');
-  setStatusMessage(`Renaming category "${oldCategoryId}" to "${newIdTrimmed}"...`);
-    
+    setSaveStatus('saving');
+    setStatusMessage(`Renaming category "${oldCategoryId}" to "${newIdTrimmed}"...`);
+
     // Find the old category to get its label (since models store category by label, not ID)
     const oldCategory = localCategories.find(cat => cat.id === oldCategoryId);
     const oldCategoryLabel = oldCategory?.label || oldCategoryId;
-    
-    console.log('Category rename details:', { 
-      oldCategoryId, 
-      oldCategoryLabel, 
-      newCategoryId: newCategoryId.trim(), 
-      newCategoryLabel: newCategoryLabel.trim() 
+
+    console.log('Category rename details:', {
+      oldCategoryId,
+      oldCategoryLabel,
+      newCategoryId: newCategoryId.trim(),
+      newCategoryLabel: newCategoryLabel.trim()
     });
 
     // Update the category in the local categories list
     const normalizedNewIcon = normalizeIconName(renameCategoryIcon);
-    const updatedCategories = localCategories.map(cat => 
-      cat.id === oldCategoryId 
+    const updatedCategories = localCategories.map(cat =>
+      cat.id === oldCategoryId
         ? { ...cat, id: newIdTrimmed, label: newLabelTrimmed, icon: normalizedNewIcon }
         : cat
     );
@@ -1083,7 +1063,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     setIsCategoryRenameDialogOpen(false);
     setRenameCategoryValue('');
     setSelectedCategory(null);
-    
+
     if (saveErrors === 0) {
       setSaveStatus('saved');
       setStatusMessage(`Category "${oldCategoryLabel}" renamed to "${newCategoryLabel.trim()}" and saved to files`);
@@ -1091,7 +1071,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       setSaveStatus('error');
       setStatusMessage(`Category renamed but ${saveErrors} file(s) failed to save`);
     }
-    
+
     setTimeout(() => {
       setSaveStatus('idle');
       setStatusMessage('');
@@ -1110,7 +1090,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     const cat = localCategories.find(c => c.id === categoryId);
     if (!cat) return;
 
-  // This function is now called after user confirms in the dialog
+    // This function is now called after user confirms in the dialog
 
     setSaveStatus('saving');
     setStatusMessage(`Deleting category "${cat.label}"...`);
@@ -1118,8 +1098,8 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     // Remove category from localCategories
     const updatedCategories = localCategories.filter(c => c.id !== categoryId);
 
-  // Update models: set category to 'Uncategorized' where it matched the deleted category label
-  const updatedModels = models.map(m => ({ ...m, category: m.category === cat.label ? 'Uncategorized' : m.category }));
+    // Update models: set category to 'Uncategorized' where it matched the deleted category label
+    const updatedModels = models.map(m => ({ ...m, category: m.category === cat.label ? 'Uncategorized' : m.category }));
 
     // Save each affected model to its JSON file
     let saveErrors = 0;
@@ -1164,6 +1144,8 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
       }
     }
 
+
+
     // Update UI state and persist config
     setLocalCategories(updatedCategories);
     const updatedConfig = { ...localConfig, categories: updatedCategories };
@@ -1201,160 +1183,160 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     setIsDeleteConfirmOpen(true);
   };
 
- // Run scanModelFile for all models, update models, and produce a HashCheckResult
- const handleRunHashCheck = (fileType?: "3mf" | "stl" | "all") => {
-  // Clear any previous generate or duplicate results so the UI doesn't show stale counts
-  if (generateResult) setGenerateResult(null);
-  setDuplicateGroups([]);
-  setHashCheckResult(null);
-  setIsHashChecking(true);
-  setHashCheckProgress(0);
-  
-  // Determine which file type to scan (defaults to "all")
-  const effectiveFileType = fileType || selectedFileType;
-  const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : effectiveFileType === "stl" ? ".stl" : ".3mf & .stl";
-  
-  setStatusMessage(`Rescanning ${fileTypeText} files and comparing hashes...`);
-  
-  fetch('/api/hash-check', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fileType: effectiveFileType })
-  })
-    .then(resp => resp.json())
-    .then(data => {
-      if (!data.success) throw new Error(data.error || 'Hash check failed');
-      
-      // Map backend results to hash check result
-      let verified = typeof data.verified === 'number' ? data.verified : 0;
-      let corrupted = 0;
-      const corruptedFiles: CorruptedFile[] = [];
-      const duplicateGroups: DuplicateGroup[] = [];
-      const hashToModels: Record<string, Model[]> = {};
-      const updatedModels: Model[] = [];
-      const usedIds = new Set<string>(); // Track used IDs to prevent duplicates
+  // Run scanModelFile for all models, update models, and produce a HashCheckResult
+  const handleRunHashCheck = (fileType?: "3mf" | "stl" | "all") => {
+    // Clear any previous generate or duplicate results so the UI doesn't show stale counts
+    if (generateResult) setGenerateResult(null);
+    setDuplicateGroups([]);
+    setHashCheckResult(null);
+    setIsHashChecking(true);
+    setHashCheckProgress(0);
 
-      // Default Model shape for missing fields
-      const defaultModel: Model = {
-        id: '',
-        name: '',
-        thumbnail: '',
-        images: [],
-        tags: [],
-        isPrinted: false,
-        printTime: '',
-        filamentUsed: '',
-        category: 'Utility', 
-        description: '',
-        fileSize: '',
-        modelUrl: '',
-        license: '',
-        notes: '',
-        printSettings: { layerHeight: '', infill: '', nozzle: '' },
-        hash: '',
-        lastScanned: '',
-        source: '',
-        price: 0,
-        filePath: '' 
-      };
+    // Determine which file type to scan (defaults to "all")
+    const effectiveFileType = fileType || selectedFileType;
+    const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : effectiveFileType === "stl" ? ".stl" : ".3mf & .stl";
 
-      for (const r of data.results) {
-        // Try to find the full model in the current models array
-        const fullModel = models.find(m => {
-           // Try matching by name
-           if (m.name === r.baseName) return true;
-           
-           // Try matching by expected URL
-           const expectedUrl = r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '';
-           if (m.modelUrl === expectedUrl) return true;
-           
-           // Try matching by normalized URL
-           const normalizedModelUrl = m.modelUrl.replace(/\\/g, '/');
-           const normalizedExpectedUrl = expectedUrl.replace(/\\/g, '/');
-           if (normalizedModelUrl === normalizedExpectedUrl) return true;
-           
-           return false;
-        });
-        
-        // Create unique ID
-        const filePath = r.threeMF || r.stl || r.baseName;
-        let baseId = fullModel?.id || `hash-${filePath.replace(/[^a-zA-Z0-9]/g, '-')}-${r.hash?.substring(0, 8) || Date.now()}`;
-        
-        // Ensure ID is unique
-        let uniqueId = baseId;
-        let counter = 1;
-        while (usedIds.has(uniqueId)) {
-          uniqueId = `${baseId}-${counter}`;
-          counter++;
-        }
-        usedIds.add(uniqueId);
-        
-        const mergedModel = {
-          ...defaultModel,
-          ...fullModel,
-          id: uniqueId,
-          name: fullModel?.name || r.baseName.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '') || r.baseName,
-          modelUrl: r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '',
-          hash: r.hash,
-          status: r.status
+    setStatusMessage(`Rescanning ${fileTypeText} files and comparing hashes...`);
+
+    fetch('/api/hash-check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fileType: effectiveFileType })
+    })
+      .then(resp => resp.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Hash check failed');
+
+        // Map backend results to hash check result
+        let verified = typeof data.verified === 'number' ? data.verified : 0;
+        let corrupted = 0;
+        const corruptedFiles: CorruptedFile[] = [];
+        const duplicateGroups: DuplicateGroup[] = [];
+        const hashToModels: Record<string, Model[]> = {};
+        const updatedModels: Model[] = [];
+        const usedIds = new Set<string>(); // Track used IDs to prevent duplicates
+
+        // Default Model shape for missing fields
+        const defaultModel: Model = {
+          id: '',
+          name: '',
+          thumbnail: '',
+          images: [],
+          tags: [],
+          isPrinted: false,
+          printTime: '',
+          filamentUsed: '',
+          category: 'Utility',
+          description: '',
+          fileSize: '',
+          modelUrl: '',
+          license: '',
+          notes: '',
+          printSettings: { layerHeight: '', infill: '', nozzle: '' },
+          hash: '',
+          lastScanned: '',
+          source: '',
+          price: 0,
+          filePath: ''
         };
 
-        if (r.status === 'ok') {
-          verified++;
-        } else {
-          corrupted++;
-          // Add file info to corruptedFiles
-          const filePath = r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '';
-          corruptedFiles.push({
-            model: mergedModel,
-            filePath: filePath,
-            error: r.details || 'Unknown error',
-            actualHash: r.hash || 'UNKNOWN',
-            expectedHash: r.storedHash || 'UNKNOWN'
-          });
-        }
-        if (r.hash) {
-          if (!hashToModels[r.hash]) hashToModels[r.hash] = [];
-          hashToModels[r.hash].push(mergedModel);
-        }
-        updatedModels.push(mergedModel);
-      }
+        for (const r of data.results) {
+          // Try to find the full model in the current models array
+          const fullModel = models.find(m => {
+            // Try matching by name
+            if (m.name === r.baseName) return true;
 
-      // Identify duplicate groups
-      for (const hash in hashToModels) {
-        if (hashToModels[hash].length > 1) {
-          duplicateGroups.push({ hash, models: hashToModels[hash], totalSize: '0' });
+            // Try matching by expected URL
+            const expectedUrl = r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '';
+            if (m.modelUrl === expectedUrl) return true;
+
+            // Try matching by normalized URL
+            const normalizedModelUrl = m.modelUrl.replace(/\\/g, '/');
+            const normalizedExpectedUrl = expectedUrl.replace(/\\/g, '/');
+            if (normalizedModelUrl === normalizedExpectedUrl) return true;
+
+            return false;
+          });
+
+          // Create unique ID
+          const filePath = r.threeMF || r.stl || r.baseName;
+          let baseId = fullModel?.id || `hash-${filePath.replace(/[^a-zA-Z0-9]/g, '-')}-${r.hash?.substring(0, 8) || Date.now()}`;
+
+          // Ensure ID is unique
+          let uniqueId = baseId;
+          let counter = 1;
+          while (usedIds.has(uniqueId)) {
+            uniqueId = `${baseId}-${counter}`;
+            counter++;
+          }
+          usedIds.add(uniqueId);
+
+          const mergedModel = {
+            ...defaultModel,
+            ...fullModel,
+            id: uniqueId,
+            name: fullModel?.name || r.baseName.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '') || r.baseName,
+            modelUrl: r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '',
+            hash: r.hash,
+            status: r.status
+          };
+
+          if (r.status === 'ok') {
+            verified++;
+          } else {
+            corrupted++;
+            // Add file info to corruptedFiles
+            const filePath = r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '';
+            corruptedFiles.push({
+              model: mergedModel,
+              filePath: filePath,
+              error: r.details || 'Unknown error',
+              actualHash: r.hash || 'UNKNOWN',
+              expectedHash: r.storedHash || 'UNKNOWN'
+            });
+          }
+          if (r.hash) {
+            if (!hashToModels[r.hash]) hashToModels[r.hash] = [];
+            hashToModels[r.hash].push(mergedModel);
+          }
+          updatedModels.push(mergedModel);
         }
-      }
-      
-      setDuplicateGroups(duplicateGroups);
-      setHashCheckResult({
-        verified,
-        corrupted,
-        duplicateGroups,
-        corruptedFiles,
-        corruptedFileDetails: corruptedFiles,
-        lastCheck: new Date().toISOString()
+
+        // Identify duplicate groups
+        for (const hash in hashToModels) {
+          if (hashToModels[hash].length > 1) {
+            duplicateGroups.push({ hash, models: hashToModels[hash], totalSize: '0' });
+          }
+        }
+
+        setDuplicateGroups(duplicateGroups);
+        setHashCheckResult({
+          verified,
+          corrupted,
+          duplicateGroups,
+          corruptedFiles,
+          corruptedFileDetails: corruptedFiles,
+          lastCheck: new Date().toISOString()
+        });
+
+        onModelsUpdate(updatedModels);
+        setSaveStatus('saved');
+        setStatusMessage('Hash check complete. See results.');
+        setTimeout(() => {
+          setSaveStatus('idle');
+          setStatusMessage('');
+        }, 4000);
+      })
+      .catch(error => {
+        setSaveStatus('error');
+        setStatusMessage('Model scan failed');
+        console.error('Model scan error:', error);
+      })
+      .finally(() => {
+        setIsHashChecking(false);
+        setHashCheckProgress(0);
       });
-      
-      onModelsUpdate(updatedModels);
-      setSaveStatus('saved');
-      setStatusMessage('Hash check complete. See results.');
-      setTimeout(() => {
-        setSaveStatus('idle');
-        setStatusMessage('');
-      }, 4000);
-    })
-    .catch(error => {
-      setSaveStatus('error');
-      setStatusMessage('Model scan failed');
-      console.error('Model scan error:', error);
-    })
-    .finally(() => {
-      setIsHashChecking(false);
-      setHashCheckProgress(0);
-    });
-};
+  };
 
   const handleRemoveDuplicates = async (group: DuplicateGroup, keepModelId: string): Promise<boolean> => {
     // Find models to remove (all except the one to keep)
@@ -1383,7 +1365,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     }
     setSaveStatus('saving');
     setStatusMessage('Deleting duplicate files...');
-  try {
+    try {
       const resp = await fetch('/api/delete-models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1485,7 +1467,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     const totalTags = allTags.length;
     const totalUsages = allTags.reduce((sum, tag) => sum + tag.count, 0);
     const avgUsage = totalTags > 0 ? (totalUsages / totalTags).toFixed(1) : '0';
-    
+
     return { totalTags, totalUsages, avgUsage };
   };
 
@@ -1581,7 +1563,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
         setSaveStatus('saved');
         setStatusMessage(`Restore completed: ${result.summary}`);
         console.log('Restore results:', result);
-        
+
       } else {
         // Handle plain JSON files
         const buffer = await file.arrayBuffer();
@@ -1608,7 +1590,7 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
         setStatusMessage(`Restore completed: ${result.summary}`);
         console.log('Restore results:', result);
       }
-      
+
     } catch (error) {
       setSaveStatus('error');
       setStatusMessage('Failed to restore from backup');
@@ -1624,800 +1606,986 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
     }
   };
 
+  const handleSaveCollection = async (collectionData: Collection) => {
+    // 1. Detect if this is a new collection (editorCollection is null during creation)
+    const isNew = !editorCollection;
+
+    const response = await fetch('/api/collections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(collectionData),
+    });
+    const result = await response.json();
+    if (!result.success) throw new Error(result.error);
+
+    // Manually trigger collection refresh in App.tsx via a custom event
+    window.dispatchEvent(new Event('collection-updated'));
+
+    // 2. If new, trigger the bulk edit workflow
+    if (isNew && onCollectionCreatedForBulkEdit) {
+        // Use the ID returned by the server, or fallback to the client-generated ID
+        const newCollectionId = result.collectionId || collectionData.id;
+        onCollectionCreatedForBulkEdit(newCollectionId);
+    }
+  };
+
+  const handleDeleteCollection = async (id: string) => {
+    const response = await fetch(`/api/collections/${id}`, {
+      method: 'DELETE',
+    });
+    const result = await response.json();
+    if (!result.success) throw new Error(result.error);
+
+    // Manually trigger collection refresh in App.tsx via a custom event
+    window.dispatchEvent(new Event('collection-updated'));
+  };
+
+  const handleCreateCollection = () => {
+    // Set the editor collection to null to signal to the dialog that this is a NEW item
+    setEditorCollection(null);
+    // Open the dialog
+    setIsEditorOpen(true);
+};
+
+  const fetchCollections = async () => {
+    try {
+      const resp = await fetch('/api/collections');
+      if (!resp.ok) throw new Error('Failed to fetch collections list.');
+      const data = await resp.json();
+      if (data.success) {
+        setCollectionsList(data.collections || []);
+      } else {
+        console.error("Collections fetch error:", data.error);
+      }
+    } catch (err) {
+      console.error("Failed fetching collections:", err);
+      // toast.error("Failed to load collections for management.");
+    }
+  };
+
+  useEffect(() => {
+    fetchCollections();
+
+    // Add a custom listener to refresh after save/delete/import actions
+    const handleRefresh = () => fetchCollections();
+    window.addEventListener('collection-updated', handleRefresh);
+
+    return () => {
+      window.removeEventListener('collection-updated', handleRefresh);
+    };
+  }, []);
+
+  // --- HANDLER: Opens the editor in EDIT mode ---
+  const handleEditCollection = (collection: Collection) => {
+    setEditorCollection(collection);
+    setIsEditorOpen(true);
+  };
+
   return (
-    <div className="h-full bg-background">
-      <ScrollArea className="h-full">
-        <div className="p-6 max-w-6xl mx-auto space-y-8">
-          {/* Header */}
-          <div className="flex items-center gap-4 pb-6 border-b">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onBack}
-              className="p-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl shadow-lg">
-                <SettingsIcon className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold">Settings</h1>
-                <p className="text-muted-foreground">Manage your 3D Model Muncher configuration</p>
-              </div>
-            </div>
+    <div className="h-full bg-background flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-4 p-6 border-b shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          className="p-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl shadow-lg">
+            <SettingsIcon className="h-6 w-6 text-white" />
           </div>
+          <div>
+            <h1 className="text-2xl font-semibold">Settings</h1>
+            <p className="text-muted-foreground">Manage your 3D Model Muncher configuration</p>
+          </div>
+        </div>
+      </div>
 
-          {/* Status Alert */}
-          {/* Inline status alert: only show inline for errors. Other statuses are shown as toasts. */}
-          {saveStatus === 'error' && statusMessage && (
-            <Alert className={`border-red-500 bg-red-50 dark:bg-red-950`}>
-              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-              <AlertDescription className={`text-red-700 dark:text-red-300`}>
-                {statusMessage}
-              </AlertDescription>
-            </Alert>
-          )}
+      {/* Status Alert */}
+      {/* Inline status alert: only show inline for errors. Other statuses are shown as toasts. */}
+      {saveStatus === 'error' && statusMessage && (
+        <div className="px-6 pt-6">
+          <Alert className={`border-red-500 bg-red-50 dark:bg-red-950`}>
+            <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+            <AlertDescription className={`text-red-700 dark:text-red-300`}>
+              {statusMessage}
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
 
-          {/* Settings Tabs */}
-          <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-            <TabsList className="flex flex-wrap w-full gap-1 h-auto p-1 justify-start">
-              <TabsTrigger value="general" className="flex-shrink-0">General</TabsTrigger>
-              <TabsTrigger value="categories" className="flex-shrink-0">Categories</TabsTrigger>
-              <TabsTrigger value="tags" className="flex-shrink-0">Tag Management</TabsTrigger>
-              <TabsTrigger value="backup" className="flex-shrink-0">Backup & Restore</TabsTrigger>
-              <TabsTrigger value="integrity" className="flex-shrink-0">File Integrity</TabsTrigger>
-              <TabsTrigger value="support" className="flex-shrink-0">Support</TabsTrigger>
-              <TabsTrigger value="config" className="flex-shrink-0">Configuration</TabsTrigger>
-              <TabsTrigger value="experimental" className="flex-shrink-0">Experimental</TabsTrigger>
-            </TabsList>
+      {/* Settings Tabs Container (Main Content Area) */}
+      <Tabs
+        value={selectedTab}
+        onValueChange={setSelectedTab}
+        orientation="vertical"
+        // [CHANGE] Added 'flex-col' for mobile (stacks menu atop content) 
+        // and 'md:flex-row' for desktop (places sidebar NEXT to content)
+        className="flex flex-col md:flex-row flex-1 overflow-hidden" 
+      >
 
-            {/* General Settings Tab */}
-            <TabsContent value="general" className="space-y-6">
-              {/* Application Settings */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Application Settings</CardTitle>
-                  <CardDescription>Configure default behavior and preferences. Changes are automatically saved to your browser&apos;s local storage.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="default-theme">Default Theme</Label>
-                      <Select 
-                        value={localConfig.settings?.defaultTheme ?? 'system'}
-                        onValueChange={(value: string) => handleConfigFieldChange('settings.defaultTheme', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="light">Light</SelectItem>
-                          <SelectItem value="dark">Dark</SelectItem>
-                          <SelectItem value="system">System</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+        {/* SIDEBAR NAVIGATION */}
+        <aside className="w-64 border-r bg-muted/10 flex-shrink-0 overflow-y-auto hidden md:block">
+          <TabsList className="flex flex-col h-auto p-4 space-y-1 bg-transparent justify-start w-full">
+            <TabsTrigger value="general" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              <SettingsIcon className="mr-2 h-4 w-4" /> General
+            </TabsTrigger>
+            <TabsTrigger value="collections" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              <Library className="mr-2 h-4 w-4" /> Collections
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              Categories
+            </TabsTrigger>
+            <TabsTrigger value="tags" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              Tag Management
+            </TabsTrigger>
+            <TabsTrigger value="backup" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              Backup & Restore
+            </TabsTrigger>
+            <TabsTrigger value="integrity" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              File Integrity
+            </TabsTrigger>
+            <TabsTrigger value="config" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              Configuration
+            </TabsTrigger>
+            <TabsTrigger value="support" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              Support
+            </TabsTrigger>
+            <TabsTrigger value="experimental" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              Experimental
+            </TabsTrigger>
+          </TabsList>
+        </aside>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="default-view">Default View</Label>
-                      <Select 
-                        value={localConfig.settings?.defaultView ?? 'grid'}
-                        onValueChange={(value: string) => handleConfigFieldChange('settings.defaultView', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="grid">Grid</SelectItem>
-                          <SelectItem value="list">List</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+        {/* Mobile Sidebar (Horizontal Scroll) */}
+        <div className="md:hidden border-b bg-muted/10 flex-shrink-0 overflow-x-auto">
+          <TabsList className="flex w-max p-2 space-x-1 bg-transparent">
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="collections">Collections</TabsTrigger>
+            <TabsTrigger value="categories">Categories</TabsTrigger>
+            <TabsTrigger value="tags">Tags</TabsTrigger>
+            <TabsTrigger value="backup">Backup</TabsTrigger>
+            <TabsTrigger value="integrity">Integrity</TabsTrigger>
+            <TabsTrigger value="config">Config</TabsTrigger>
+            <TabsTrigger value="support">Support</TabsTrigger>
+            <TabsTrigger value="experimental">Experimental</TabsTrigger>
+          </TabsList>
+        </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="grid-density">Default Grid Density</Label>
-                      <Select 
-                        value={(localConfig.settings?.defaultGridDensity ?? 4).toString()}
-                        onValueChange={(value: string) => handleConfigFieldChange('settings.defaultGridDensity', parseInt(value))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">1 Column</SelectItem>
-                          <SelectItem value="2">2 Columns</SelectItem>
-                          <SelectItem value="3">3 Columns</SelectItem>
-                          <SelectItem value="4">4 Columns</SelectItem>
-                          <SelectItem value="5">5 Columns</SelectItem>
-                          <SelectItem value="6">6 Columns</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto bg-background p-6">
 
-                    <div className="space-y-2">
-                      <Label htmlFor="default-model-view">Default Model View</Label>
-                      <Select 
-                        value={localConfig.settings?.defaultModelView ?? 'images'}
-                        onValueChange={(value: string) => handleConfigFieldChange('settings.defaultModelView', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="images">
-                            <div className="flex items-center gap-2">
-                              <Images className="h-4 w-4" />
-                              Images
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="3d">
-                            <div className="flex items-center gap-2">
-                              <Box className="h-4 w-4" />
-                              3D Model
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Choose which view opens by default when viewing model details
-                      </p>
-                    </div>
+          {/* General Settings Tab */}
+          <TabsContent value="general" className="space-y-6 mt-0">
+            {/* Application Settings */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Application Settings</CardTitle>
+                <CardDescription>Configure default behavior and preferences. Changes are automatically saved to your browser&apos;s local storage.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="default-theme">Default Theme</Label>
+                    <Select
+                      value={localConfig.settings?.defaultTheme ?? 'system'}
+                      onValueChange={(value: string) => handleConfigFieldChange('settings.defaultTheme', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="light">Light</SelectItem>
+                        <SelectItem value="dark">Dark</SelectItem>
+                        <SelectItem value="system">System</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                    <div className="space-y-2">
-                      <Label>Model Card Fields</Label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">Primary Field</Label>
-                          <Select
-                            value={localConfig.settings?.modelCardPrimary ?? 'none'}
-                            onValueChange={(value: string) => handleConfigFieldChange('settings.modelCardPrimary', value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">{getLabel('none')}</SelectItem>
-                              <SelectItem value="printTime">{getLabel('printTime')}</SelectItem>
-                              <SelectItem value="filamentUsed">{getLabel('filamentUsed')}</SelectItem>
-                              <SelectItem value="fileSize">{getLabel('fileSize')}</SelectItem>
-                              <SelectItem value="category">{getLabel('category')}</SelectItem>
-                              <SelectItem value="designer">{getLabel('designer')}</SelectItem>
-                              <SelectItem value="layerHeight">{getLabel('layerHeight')}</SelectItem>
-                              <SelectItem value="nozzle">{getLabel('nozzle')}</SelectItem>
-                              <SelectItem value="price">{getLabel('price')}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="default-view">Default View</Label>
+                    <Select
+                      value={localConfig.settings?.defaultView ?? 'grid'}
+                      onValueChange={(value: string) => handleConfigFieldChange('settings.defaultView', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="grid">Grid</SelectItem>
+                        <SelectItem value="list">List</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                        <div>
-                          <Label className="text-xs">Secondary Field</Label>
-                          <Select
-                            value={localConfig.settings?.modelCardSecondary ?? 'none'}
-                            onValueChange={(value: string) => handleConfigFieldChange('settings.modelCardSecondary', value)}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">{getLabel('none')}</SelectItem>
-                              <SelectItem value="printTime">{getLabel('printTime')}</SelectItem>
-                              <SelectItem value="filamentUsed">{getLabel('filamentUsed')}</SelectItem>
-                              <SelectItem value="fileSize">{getLabel('fileSize')}</SelectItem>
-                              <SelectItem value="category">{getLabel('category')}</SelectItem>
-                              <SelectItem value="designer">{getLabel('designer')}</SelectItem>
-                              <SelectItem value="layerHeight">{getLabel('layerHeight')}</SelectItem>
-                              <SelectItem value="nozzle">{getLabel('nozzle')}</SelectItem>
-                              <SelectItem value="price">{getLabel('price')}</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="grid-density">Default Grid Density</Label>
+                    <Select
+                      value={(localConfig.settings?.defaultGridDensity ?? 4).toString()}
+                      onValueChange={(value: string) => handleConfigFieldChange('settings.defaultGridDensity', parseInt(value))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 Column</SelectItem>
+                        <SelectItem value="2">2 Columns</SelectItem>
+                        <SelectItem value="3">3 Columns</SelectItem>
+                        <SelectItem value="4">4 Columns</SelectItem>
+                        <SelectItem value="5">5 Columns</SelectItem>
+                        <SelectItem value="6">6 Columns</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="default-model-view">Default Model View</Label>
+                    <Select
+                      value={localConfig.settings?.defaultModelView ?? 'images'}
+                      onValueChange={(value: string) => handleConfigFieldChange('settings.defaultModelView', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="images">
+                          <div className="flex items-center gap-2">
+                            <Images className="h-4 w-4" />
+                            Images
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="3d">
+                          <div className="flex items-center gap-2">
+                            <Box className="h-4 w-4" />
+                            3D Model
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Choose which view opens by default when viewing model details
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Model Card Fields</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Primary Field</Label>
+                        <Select
+                          value={localConfig.settings?.modelCardPrimary ?? 'none'}
+                          onValueChange={(value: string) => handleConfigFieldChange('settings.modelCardPrimary', value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">{getLabel('none')}</SelectItem>
+                            <SelectItem value="printTime">{getLabel('printTime')}</SelectItem>
+                            <SelectItem value="filamentUsed">{getLabel('filamentUsed')}</SelectItem>
+                            <SelectItem value="fileSize">{getLabel('fileSize')}</SelectItem>
+                            <SelectItem value="category">{getLabel('category')}</SelectItem>
+                            <SelectItem value="designer">{getLabel('designer')}</SelectItem>
+                            <SelectItem value="layerHeight">{getLabel('layerHeight')}</SelectItem>
+                            <SelectItem value="nozzle">{getLabel('nozzle')}</SelectItem>
+                            <SelectItem value="price">{getLabel('price')}</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      
-                      <p className="text-xs text-muted-foreground">Select which two properties (if any) are shown under the model name in the cards.</p>
-                    </div>
 
-                    <div className="space-y-2 mt-4">
-                      <Label htmlFor="hide-printed-badge">Hide printed badge</Label>
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          id="hide-printed-badge"
-                          // Safe access with fallback to false
-                          checked={!(localConfig.settings?.showPrintedBadge ?? true)}
-                          onCheckedChange={(v) => handleConfigFieldChange('settings.showPrintedBadge', !Boolean(v))}
-                        />
-                        <p className="text-xs text-muted-foreground">Toggle to hide the Printed badge on model cards and list views.</p>
+                      <div>
+                        <Label className="text-xs">Secondary Field</Label>
+                        <Select
+                          value={localConfig.settings?.modelCardSecondary ?? 'none'}
+                          onValueChange={(value: string) => handleConfigFieldChange('settings.modelCardSecondary', value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">{getLabel('none')}</SelectItem>
+                            <SelectItem value="printTime">{getLabel('printTime')}</SelectItem>
+                            <SelectItem value="filamentUsed">{getLabel('filamentUsed')}</SelectItem>
+                            <SelectItem value="fileSize">{getLabel('fileSize')}</SelectItem>
+                            <SelectItem value="category">{getLabel('category')}</SelectItem>
+                            <SelectItem value="designer">{getLabel('designer')}</SelectItem>
+                            <SelectItem value="layerHeight">{getLabel('layerHeight')}</SelectItem>
+                            <SelectItem value="nozzle">{getLabel('nozzle')}</SelectItem>
+                            <SelectItem value="price">{getLabel('price')}</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-3 pt-6 md:col-span-2">
+                    <p className="text-xs text-muted-foreground">Select which two properties (if any) are shown under the model name in the cards.</p>
+                  </div>
+
+                  <div className="space-y-2 mt-4">
+                    <Label htmlFor="hide-printed-badge">Hide printed badge</Label>
+                    <div className="flex items-center gap-3">
                       <Switch
-                        checked={localConfig.settings?.autoSave ?? false}
-                        onCheckedChange={(checked: boolean) => handleConfigFieldChange('settings.autoSave', checked)}
-                        id="auto-save"
+                        id="hide-printed-badge"
+                        // Safe access with fallback to false
+                        checked={!(localConfig.settings?.showPrintedBadge ?? true)}
+                        onCheckedChange={(v) => handleConfigFieldChange('settings.showPrintedBadge', !Boolean(v))}
                       />
-                      <Label htmlFor="auto-save">Auto-save configuration</Label>
+                      <p className="text-xs text-muted-foreground">Toggle to hide the Printed badge on model cards and list views.</p>
                     </div>
                   </div>
 
-                  <Separator />
+                  <div className="flex items-center space-x-3 pt-6 md:col-span-2">
+                    <Switch
+                      checked={localConfig.settings?.autoSave ?? false}
+                      onCheckedChange={(checked: boolean) => handleConfigFieldChange('settings.autoSave', checked)}
+                      id="auto-save"
+                    />
+                    <Label htmlFor="auto-save">Auto-save configuration</Label>
+                  </div>
+                </div>
 
-                  {/* Default Filters */}
-                  <div className="space-y-4">
-                    <h3 className="font-medium">Default Filters</h3>
-                    <p className="text-sm text-muted-foreground">Set default filter values when the app starts</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label>Default Category</Label>
-                        <Select 
-                          // [FIX] Safe check for filters object
-                          value={localConfig.filters?.defaultCategory ?? 'all'}
-                          onValueChange={(value: string) => handleConfigFieldChange('filters.defaultCategory', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Categories</SelectItem>
-                            {localCategories.map((category) => (
-                              <SelectItem key={category.id} value={category.id}>
-                                {category.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                <Separator />
 
-                      <div className="space-y-2">
-                        <Label>Default Print Status</Label>
-                        <Select 
-                          value={localConfig.filters?.defaultPrintStatus ?? 'all'}
-                          onValueChange={(value: string) => handleConfigFieldChange('filters.defaultPrintStatus', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Status</SelectItem>
-                            <SelectItem value="printed">Printed</SelectItem>
-                            <SelectItem value="not-printed">Not Printed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Default License</Label>
-                        <Select 
-                          value={localConfig.filters?.defaultLicense ?? 'all'}
-                          onValueChange={(value: string) => handleConfigFieldChange('filters.defaultLicense', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Licenses</SelectItem>
-                            {LICENSES.map((lic) => (
-                              <SelectItem key={lic} value={lic}>{lic}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Default Sort By</Label>
-                        <Select 
-                          value={localConfig.filters?.defaultSortBy ?? 'none'}
-                          onValueChange={(value: string) => handleConfigFieldChange('filters.defaultSortBy', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Default</SelectItem>
-                            <SelectItem value="modified_desc">Recently modified (newest)</SelectItem>
-                            <SelectItem value="modified_asc">Modified (oldest)</SelectItem>
-                            <SelectItem value="name_asc">Name A → Z</SelectItem>
-                            <SelectItem value="name_desc">Name Z → A</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                {/* Default Filters */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">Default Filters</h3>
+                  <p className="text-sm text-muted-foreground">Set default filter values when the app starts</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Default Category</Label>
+                      <Select
+                        // [FIX] Safe check for filters object
+                        value={localConfig.filters?.defaultCategory ?? 'all'}
+                        onValueChange={(value: string) => handleConfigFieldChange('filters.defaultCategory', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Categories</SelectItem>
+                          {localCategories.map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              {category.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </div>               
-                  <Separator />
 
-                  {/* Image generation */}
-                  <div className="space-y-4">
-                    <h3 className="font-medium">3D Model Viewer</h3>
-                    <div className="flex flex-col gap-3">
-                      <div className="flex flex-col">
-                        <Label className="text-xs mb-2">Default Model Color</Label>
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-2">
-                            <div className="relative">
-                              <input
-                                ref={colorInputRef}
-                                type="color"
-                                value={unsavedDefaultModelColor ?? '#aaaaaa'}
-                                onChange={(e: any) => setUnsavedDefaultModelColor(e.target.value)}
-                                title="Default model color"
-                                aria-label="Default model color picker"
-                                style={{
-                                  position: 'absolute',
-                                  inset: 0,
-                                  width: 40,
-                                  height: 40,
-                                  padding: 0,
-                                  margin: 0,
-                                  opacity: 0,
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: 'pointer'
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => colorInputRef.current?.click()}
-                                className="w-10 h-10 rounded-full border border-border shadow-sm flex items-center justify-center"
-                                title="Pick default model color"
-                                aria-hidden="true"
-                                style={{ background: unsavedDefaultModelColor || '#aaaaaa' }}
-                              />
-                            </div>
-                            <div className="text-sm font-mono text-xs">{(unsavedDefaultModelColor || '#aaaaaa').toUpperCase()}</div>
-                          </div>
+                    <div className="space-y-2">
+                      <Label>Default Print Status</Label>
+                      <Select
+                        value={localConfig.filters?.defaultPrintStatus ?? 'all'}
+                        onValueChange={(value: string) => handleConfigFieldChange('filters.defaultPrintStatus', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="printed">Printed</SelectItem>
+                          <SelectItem value="not-printed">Not Printed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                // Save the picked color into the config
-                                handleConfigFieldChange('settings.defaultModelColor', unsavedDefaultModelColor || '#aaaaaa');
-                                toast.success('Default model color saved');
+                    <div className="space-y-2">
+                      <Label>Default License</Label>
+                      <Select
+                        value={localConfig.filters?.defaultLicense ?? 'all'}
+                        onValueChange={(value: string) => handleConfigFieldChange('filters.defaultLicense', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Licenses</SelectItem>
+                          {LICENSES.map((lic) => (
+                            <SelectItem key={lic} value={lic}>{lic}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Default Sort By</Label>
+                      <Select
+                        value={localConfig.filters?.defaultSortBy ?? 'none'}
+                        onValueChange={(value: string) => handleConfigFieldChange('filters.defaultSortBy', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Default</SelectItem>
+                          <SelectItem value="modified_desc">Recently modified (newest)</SelectItem>
+                          <SelectItem value="modified_asc">Modified (oldest)</SelectItem>
+                          <SelectItem value="name_asc">Name A → Z</SelectItem>
+                          <SelectItem value="name_desc">Name Z → A</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+                <Separator />
+
+                {/* Image generation */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">3D Model Viewer</h3>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col">
+                      <Label className="text-xs mb-2">Default Model Color</Label>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <input
+                              ref={colorInputRef}
+                              type="color"
+                              value={unsavedDefaultModelColor ?? '#aaaaaa'}
+                              onChange={(e: any) => setUnsavedDefaultModelColor(e.target.value)}
+                              title="Default model color"
+                              aria-label="Default model color picker"
+                              style={{
+                                position: 'absolute',
+                                inset: 0,
+                                width: 40,
+                                height: 40,
+                                padding: 0,
+                                margin: 0,
+                                opacity: 0,
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer'
                               }}
-                              title="Save color"
-                            >
-                              Save
-                            </Button>
-
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                // Revert the unsaved color to the default, but do not persist
-                                const defaultColor = ConfigManager.getDefaultConfig().settings.defaultModelColor || '#aaaaaa';
-                                setUnsavedDefaultModelColor(defaultColor);
-                              }}
-                              title="Reset color"
-                            >
-                              Reset
-                            </Button>
+                            />
+                            <button
+                              type="button"
+                              onClick={() => colorInputRef.current?.click()}
+                              className="w-10 h-10 rounded-full border border-border shadow-sm flex items-center justify-center"
+                              title="Pick default model color"
+                              aria-hidden="true"
+                              style={{ background: unsavedDefaultModelColor || '#aaaaaa' }}
+                            />
                           </div>
+                          <div className="text-sm font-mono text-xs">{(unsavedDefaultModelColor || '#aaaaaa').toUpperCase()}</div>
                         </div>
 
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Pick the default color used by the 3D model viewer when a model does not provide a color.
-                        </p>
-                      </div>
-                    </div>
-                    {/* [NEW] Thumbnail Generation Section */}
-                    <div className="pt-4 border-t mt-4">
-                        <h4 className="text-sm font-medium mb-2">Thumbnail Generation</h4>
-                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">Generate Missing Thumbnails</p>
-                            <p className="text-xs text-muted-foreground">
-                              Uses the server's background generator to create clean PNG snapshots for models that don't have them.
-                            </p>
-                          </div>
-                          <Button 
-                            variant="outline" 
+                        <div className="flex items-center space-x-2">
+                          <Button
                             size="sm"
-                            onClick={async () => {
-                              const confirm = window.confirm("This process uses significant server CPU. It may take a few seconds per model. Continue?");
-                              if (!confirm) return;
-                              
-                              toast.info("Starting background generation...");
-                              try {
-                                const res = await fetch('/api/generate-thumbnails', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ force: false }) // Set true to overwrite existing
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                  toast.success(`Generated ${data.processed} thumbnails`, {
-                                    description: `Skipped: ${data.skipped}, Errors: ${data.errors.length}`
-                                  });
-                                  // Trigger a refresh of the grid
-                                  window.dispatchEvent(new CustomEvent('collection-updated')); 
-                                } else {
-                                  toast.error("Generation failed", { description: data.error });
-                                }
-                              } catch (e) {
-                                toast.error("Request failed");
-                              }
+                            onClick={() => {
+                              // Save the picked color into the config
+                              handleConfigFieldChange('settings.defaultModelColor', unsavedDefaultModelColor || '#aaaaaa');
+                              toast.success('Default model color saved');
                             }}
+                            title="Save color"
                           >
-                            <Box className="mr-2 h-4 w-4" />
-                            Generate All
+                            Save
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              // Revert the unsaved color to the default, but do not persist
+                              const defaultColor = ConfigManager.getDefaultConfig().settings.defaultModelColor || '#aaaaaa';
+                              setUnsavedDefaultModelColor(defaultColor);
+                            }}
+                            title="Reset color"
+                          >
+                            Reset
                           </Button>
                         </div>
                       </div>
-                  </div>
 
-                  <Separator />
-
-                  {/* G-code Settings */}
-                  <div className="space-y-4">
-                    <h3 className="font-medium">G-code Settings</h3>
-
-                    {/* Storage behavior radio group */}
-                    <div className="space-y-2">
-                      <Label>G-code Storage Behavior</Label>
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                        <input
-                              type="radio"
-                              id="gcode-parse-only"
-                              name="gcode-storage"
-                              value="parse-only"
-                              // [FIX] Safe check
-                              checked={!localConfig.settings?.gcodeStorageBehavior || localConfig.settings?.gcodeStorageBehavior === 'parse-only'}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  handleConfigFieldChange('settings.gcodeStorageBehavior', 'parse-only');
-                                }
-                              }}
-                              className="w-4 h-4"
-                            />
-                            {/* ... (label) ... */}
-                            {/* ... (second radio button) ... */}
-                            <input
-                              type="radio"
-                              id="gcode-save-link"
-                              name="gcode-storage"
-                              value="save-and-link"
-                              // [FIX] Safe check
-                              checked={localConfig.settings?.gcodeStorageBehavior === 'save-and-link'}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  handleConfigFieldChange('settings.gcodeStorageBehavior', 'save-and-link');
-                                }
-                              }}
-                              className="w-4 h-4"
-                            />
-                          <Label htmlFor="gcode-save-link" className="font-normal cursor-pointer">
-                            Save file and add to related files
-                          </Label>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Choose whether to save G-code files alongside models or just extract the metadata
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Pick the default color used by the 3D model viewer when a model does not provide a color.
                       </p>
                     </div>
                   </div>
-
-                  <Separator />
-
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="model-dir">Model Directory</Label>
-                        <div className="flex gap-2 items-center">
-                        <Input
-                            id="model-dir"
-                            className="flex-1"
-                            // [FIX] Safe fallback
-                            value={isEditingModelDir ? tempModelDir : (localConfig.settings?.modelDirectory ?? './models')}
-                            readOnly={!isEditingModelDir}
-                            placeholder="./models"
-                            onChange={(e: any) => { if (isEditingModelDir) setTempModelDir(e.target.value); }}
-                          />
-                          {!isEditingModelDir ? (
-                            <Button
-                              onClick={() => {
-                                setTempModelDir(localConfig.settings.modelDirectory || './models');
-                                setIsEditingModelDir(true);
-                              }}
-                              title="Edit model directory"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                          ) : (
-                            <div className="flex gap-2">
-                              <Button
-                                onClick={async () => {
-                                  try {
-                                    setSaveStatus('saving');
-                                    const newConfig = { ...localConfig, settings: { ...localConfig.settings, modelDirectory: tempModelDir } } as AppConfig;
-                                    const resp = await fetch('/api/save-config', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify(newConfig)
-                                    });
-                                    if (!resp.ok) {
-                                      const txt = await resp.text().catch(() => '');
-                                      throw new Error(`Save failed: ${resp.status} ${txt}`);
-                                    }
-                                    const body = await resp.json().catch(() => null);
-                                    if (!body || body.success === false) throw new Error(body?.error || 'Unknown error');
-                                    // Update local config with server-supplied final config when available
-                                    const updated = body.config || newConfig;
-                                    setLocalConfig(updated);
-                                    onConfigUpdate?.(updated);
-                                    setSaveStatus('saved');
-                                    toast.success('Model directory saved. The server will serve files from the new location.');
-                                    setIsEditingModelDir(false);
-                                    // ensure temp cleaned
-                                    setTempModelDir('');
-                                  } catch (err: any) {
-                                    console.error('Failed to save model directory:', err);
-                                    setSaveStatus('error');
-                                    toast.error('Failed to save model directory: ' + (err?.message || ''));
-                                  } finally {
-                                    setTimeout(() => setSaveStatus('idle'), 2500);
-                                  }
-                                }}
-                              >
-                                <Save className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                onClick={() => {
-                                  setIsEditingModelDir(false);
-                                  setTempModelDir('');
-                                }}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          )}
-                          </div>
-                        </div>
-                      <div className="col-span-1 md:col-span-2 text-sm text-muted-foreground">
-                        <p>
-                          Server reads model files from this directory. Enter an absolute path (e.g. <code>C:\\models</code>) or a path relative to the app (e.g. <code>./models</code>). Make sure the server process can write to the folder (network shares or external drives may need extra permissions).
-                          <br></br>(Unraid & Docker handle mappings differently and should use the default <code>./models</code>).
+                  {/* [NEW] Thumbnail Generation Section */}
+                  <div className="pt-4 border-t mt-4">
+                    <h4 className="text-sm font-medium mb-2">Thumbnail Generation</h4>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">Generate Missing Thumbnails</p>
+                        <p className="text-xs text-muted-foreground">
+                          Uses the server's background generator to create clean PNG snapshots for models that don't have them.
                         </p>
                       </div>
-                    </div>
-                  </div>
-                  <Separator />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const confirm = window.confirm("This process uses significant server CPU. It may take a few seconds per model. Continue?");
+                          if (!confirm) return;
 
-                  {/* Add Load Configuration button to Application Settings (matches Configuration tab) */}
-                  <div className="space-y-4">
-                    <h3 className="font-medium">Apply Server Configuration</h3>
-                    <p className="text-sm text-muted-foreground">Load the authoritative configuration from the server's <code>data/config.json</code>. This will clear local UI overrides.</p>
-                    <div className="flex items-center gap-3">
-                      <Button variant="outline" onClick={handleLoadServerConfig} className="gap-2">
-                        <Download className="h-4 w-4" />
-                        Load Configuration
+                          toast.info("Starting background generation...");
+                          try {
+                            const res = await fetch('/api/generate-thumbnails', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ force: false }) // Set true to overwrite existing
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                              toast.success(`Generated ${data.processed} thumbnails`, {
+                                description: `Skipped: ${data.skipped}, Errors: ${data.errors.length}`
+                              });
+                              // Trigger a refresh of the grid
+                              window.dispatchEvent(new CustomEvent('collection-updated'));
+                            } else {
+                              toast.error("Generation failed", { description: data.error });
+                            }
+                          } catch (e) {
+                            toast.error("Request failed");
+                          }
+                        }}
+                      >
+                        <Box className="mr-2 h-4 w-4" />
+                        Generate All
                       </Button>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="verbose-scan-logs">Verbose Scan Logs</Label>
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          id="verbose-scan-logs"
-                          checked={Boolean((localConfig as any).settings.verboseScanLogs)}
-                          onCheckedChange={(v: boolean) => handleConfigFieldChange('settings.verboseScanLogs', v)}
-                        />
-                        <div className="text-sm text-muted-foreground">Enable detailed per-directory scanning logs (debug-level). Useful for troubleshooting; keep off for normal use.</div>
-                      </div>
-                    </div>                    
                   </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                </div>
 
-            {/* Categories Tab */}
-            <TabsContent value="categories" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Categories</CardTitle>
-                  <CardDescription>
-                    Drag and drop to reorder categories. Click edit to rename categories and update all associated models.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                <Separator />
+
+                {/* G-code Settings */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">G-code Settings</h3>
+
+                  {/* Storage behavior radio group */}
                   <div className="space-y-2">
-                    {localCategories.map((category, index) => (
-                      <div
-                        key={category.id}
-                        draggable
-                        onDragStart={() => handleDragStart(index)}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDragEnd={handleDragEnd}
-                        className={`
-                          flex items-center gap-3 p-3 bg-muted rounded-lg border border-border
-                          cursor-move hover:bg-accent/50 transition-colors duration-200
-                          ${draggedIndex === index ? 'opacity-50' : ''}
-                        `}
-                      >
-                        <GripVertical className="h-4 w-4 text-muted-foreground" />
-                        <div className="flex items-center gap-2">
-                          {(() => {
-                            const IconComp = getLucideIconComponent(category.icon);
-                            return <IconComp className="h-4 w-4 text-muted-foreground" />;
-                          })()}
-                          <Badge variant="outline" className="font-medium">
-                            {category.label}
-                          </Badge>
-                        </div>
-                        <span className="text-sm text-muted-foreground">
-                          <span className="text-sm text-muted-foreground hidden sm:inline">
-                            ID: {category.id}
-                          </span>
-                        </span>
-                        <div className="flex items-center gap-2 ml-auto">
-                          <span className="text-sm text-muted-foreground hidden sm:inline">
-                            Used in {models.reduce((acc, m) => acc + (m.category === category.label ? 1 : 0), 0)} model{models.reduce((acc, m) => acc + (m.category === category.label ? 1 : 0), 0) !== 1 ? 's' : ''}
-                          </span>
-                          {!(category.id === 'uncategorized' || category.label === 'Uncategorized') && (
+                    <Label>G-code Storage Behavior</Label>
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="gcode-parse-only"
+                          name="gcode-storage"
+                          value="parse-only"
+                          // [FIX] Safe check
+                          checked={!localConfig.settings?.gcodeStorageBehavior || localConfig.settings?.gcodeStorageBehavior === 'parse-only'}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              handleConfigFieldChange('settings.gcodeStorageBehavior', 'parse-only');
+                            }
+                          }}
+                          className="w-4 h-4"
+                        />
+                        {/* ... (label) ... */}
+                        {/* ... (second radio button) ... */}
+                        <input
+                          type="radio"
+                          id="gcode-save-link"
+                          name="gcode-storage"
+                          value="save-and-link"
+                          // [FIX] Safe check
+                          checked={localConfig.settings?.gcodeStorageBehavior === 'save-and-link'}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              handleConfigFieldChange('settings.gcodeStorageBehavior', 'save-and-link');
+                            }
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <Label htmlFor="gcode-save-link" className="font-normal cursor-pointer">
+                          Save file and add to related files
+                        </Label>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Choose whether to save G-code files alongside models or just extract the metadata
+                    </p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="model-dir">Model Directory</Label>
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          id="model-dir"
+                          className="flex-1"
+                          // [FIX] Safe fallback
+                          value={isEditingModelDir ? tempModelDir : (localConfig.settings?.modelDirectory ?? './models')}
+                          readOnly={!isEditingModelDir}
+                          placeholder="./models"
+                          onChange={(e: any) => { if (isEditingModelDir) setTempModelDir(e.target.value); }}
+                        />
+                        {!isEditingModelDir ? (
+                          <Button
+                            onClick={() => {
+                              setTempModelDir(localConfig.settings.modelDirectory || './models');
+                              setIsEditingModelDir(true);
+                            }}
+                            title="Edit model directory"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={async () => {
+                                try {
+                                  setSaveStatus('saving');
+                                  const newConfig = { ...localConfig, settings: { ...localConfig.settings, modelDirectory: tempModelDir } } as AppConfig;
+                                  const resp = await fetch('/api/save-config', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(newConfig)
+                                  });
+                                  if (!resp.ok) {
+                                    const txt = await resp.text().catch(() => '');
+                                    throw new Error(`Save failed: ${resp.status} ${txt}`);
+                                  }
+                                  const body = await resp.json().catch(() => null);
+                                  if (!body || body.success === false) throw new Error(body?.error || 'Unknown error');
+                                  // Update local config with server-supplied final config when available
+                                  const updated = body.config || newConfig;
+                                  setLocalConfig(updated);
+                                  onConfigUpdate?.(updated);
+                                  setSaveStatus('saved');
+                                  toast.success('Model directory saved. The server will serve files from the new location.');
+                                  setIsEditingModelDir(false);
+                                  // ensure temp cleaned
+                                  setTempModelDir('');
+                                } catch (err: any) {
+                                  console.error('Failed to save model directory:', err);
+                                  setSaveStatus('error');
+                                  toast.error('Failed to save model directory: ' + (err?.message || ''));
+                                } finally {
+                                  setTimeout(() => setSaveStatus('idle'), 2500);
+                                }
+                              }}
+                            >
+                              <Save className="w-4 h-4" />
+                            </Button>
                             <Button
                               variant="ghost"
-                              size="sm"
-                              onClick={(e: React.MouseEvent) => {
-                                e.stopPropagation();
-                                startRenameCategory(category);
+                              onClick={() => {
+                                setIsEditingModelDir(false);
+                                setTempModelDir('');
                               }}
-                              className="gap-2"
                             >
-                              <Edit2 className="h-4 w-4" />
-                              Edit
+                              Cancel
                             </Button>
-                          )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-span-1 md:col-span-2 text-sm text-muted-foreground">
+                      <p>
+                        Server reads model files from this directory. Enter an absolute path (e.g. <code>C:\\models</code>) or a path relative to the app (e.g. <code>./models</code>). Make sure the server process can write to the folder (network shares or external drives may need extra permissions).
+                        <br></br>(Unraid & Docker handle mappings differently and should use the default <code>./models</code>).
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <Separator />
+
+                {/* Add Load Configuration button to Application Settings (matches Configuration tab) */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">Apply Server Configuration</h3>
+                  <p className="text-sm text-muted-foreground">Load the authoritative configuration from the server's <code>data/config.json</code>. This will clear local UI overrides.</p>
+                  <div className="flex items-center gap-3">
+                    <Button variant="outline" onClick={handleLoadServerConfig} className="gap-2">
+                      <Download className="h-4 w-4" />
+                      Load Configuration
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="verbose-scan-logs">Verbose Scan Logs</Label>
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        id="verbose-scan-logs"
+                        checked={Boolean((localConfig as any).settings.verboseScanLogs)}
+                        onCheckedChange={(v: boolean) => handleConfigFieldChange('settings.verboseScanLogs', v)}
+                      />
+                      <div className="text-sm text-muted-foreground">Enable detailed per-directory scanning logs (debug-level). Useful for troubleshooting; keep off for normal use.</div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* [NEW] Collections Tab */}
+          <TabsContent value="collections" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Library className="w-5 h-5" />
+                  <span>Collections Management</span>
+                </CardTitle>
+                <CardDescription>
+                  Manage, edit, and delete the master definitions for all collections in your library.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex space-x-2 mb-4">
+                  {/* 1. Create New Collection Button */}
+                  <Button
+                    onClick={handleCreateCollection}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Create New Collection
+                  </Button>
+
+                  {/* 2. Auto-Import Button */}
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowImportDialog(true)}
+                  >
+                    <FolderOpen className="mr-2 h-4 w-4" />
+                    Auto-Import Collections
+                  </Button>
+                </div>
+
+                <Separator className="my-4" />
+
+                {/* Collections List */}
+                {collectionsList.length === 0 ? (
+                  <p className="text-muted-foreground italic">No collections defined yet. Use the buttons above to get started.</p>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+                    {collectionsList.map((collection) => (
+                      <div
+                        key={collection.id}
+                        className="flex items-center justify-between p-3 bg-muted rounded-lg border cursor-pointer hover:bg-muted/70 transition-colors"
+                        onClick={() => handleEditCollection(collection)} // <-- EDIT HANDLER
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-medium truncate">{collection.name}</span>
+                          <span className="text-xs text-muted-foreground truncate">
+                            Models: {collection.modelIds.length} | Category: {collection.category || 'None'}
+                          </span>
                         </div>
+                        <Button variant="ghost" size="sm" className="ml-4 flex-shrink-0">
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
                       </div>
                     ))}
                   </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                  {/* Unmapped categories found in munchie.json files */}
-                  {unmappedCategories.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">Unmapped Categories</h4>
-                      <p className="text-xs text-muted-foreground">Categories discovered in model metadata that are not defined in your configuration. You can add them as configured categories.</p>
-                      <div className="space-y-2 mt-2">
-                        {unmappedCategories.map((uc) => (
-                          <div key={uc.label} className="flex items-center gap-3 p-3 bg-muted/60 rounded-lg border border-border">
-                            <div className="flex items-center gap-2">
-                              <Box className="h-4 w-4 text-muted-foreground" />
-                              <Badge variant="outline" className="font-medium">{uc.label}</Badge>
-                            </div>
-                            <div className="ml-auto flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground hidden sm:inline">Used in {uc.count} model{uc.count !== 1 ? 's' : ''}</span>
-                              <Button size="sm" variant="ghost" onClick={() => {
-                                // Add this unmapped label as a new configured category using a generated id
-                                const newId = uc.label.trim().toLowerCase().replace(/\s+/g, '_');
-                                const normalizedIcon = normalizeIconName('Folder');
-                                const newCat: Category = { id: newId, label: uc.label.trim(), icon: normalizedIcon } as Category;
-                                const exists = localCategories.find(c => c.label.toLowerCase() === newCat.label.toLowerCase() || c.id === newCat.id);
-                                if (exists) {
-                                  setStatusMessage(`Category "${uc.label}" already exists`);
-                                  setTimeout(() => setStatusMessage(''), 2500);
-                                  return;
-                                }
-                                const updated = [...localCategories, newCat];
-                                setLocalCategories(updated);
-                                const updatedConfig: AppConfig = { ...localConfig, categories: updated };
-                                // Persist config
-                                handleSaveConfig(updatedConfig).then(() => {
-                                  onCategoriesUpdate(updated);
-                                  onConfigUpdate?.(updatedConfig);
-                                  setStatusMessage(`Added category "${uc.label}"`);
-                                  setTimeout(() => setStatusMessage(''), 2500);
-                                }).catch(err => {
-                                  console.error('Failed to add category from unmapped list', err);
-                                  setStatusMessage('Failed to add category');
-                                  setTimeout(() => setStatusMessage(''), 2500);
-                                });
-                              }} className="gap-2">
-                                <Plus className="h-4 w-4" />
-                                Add
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
+          {/* Categories Tab */}
+          <TabsContent value="categories" className="space-y-6 mt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle>Categories</CardTitle>
+                <CardDescription>
+                  Drag and drop to reorder categories. Click edit to rename categories and update all associated models.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  {localCategories.map((category, index) => (
+                    <div
+                      key={category.id}
+                      draggable
+                      onDragStart={() => handleDragStart(index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragEnd={handleDragEnd}
+                      className={`
+                        flex items-center gap-3 p-3 bg-muted rounded-lg border border-border
+                        cursor-move hover:bg-accent/50 transition-colors duration-200
+                        ${draggedIndex === index ? 'opacity-50' : ''}
+                      `}
+                    >
+                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const IconComp = getLucideIconComponent(category.icon);
+                          return <IconComp className="h-4 w-4 text-muted-foreground" />;
+                        })()}
+                        <Badge variant="outline" className="font-medium">
+                          {category.label}
+                        </Badge>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        <span className="text-sm text-muted-foreground hidden sm:inline">
+                          ID: {category.id}
+                        </span>
+                      </span>
+                      <div className="flex items-center gap-2 ml-auto">
+                        <span className="text-sm text-muted-foreground hidden sm:inline">
+                          Used in {models.reduce((acc, m) => acc + (m.category === category.label ? 1 : 0), 0)} model{models.reduce((acc, m) => acc + (m.category === category.label ? 1 : 0), 0) !== 1 ? 's' : ''}
+                        </span>
+                        {!(category.id === 'uncategorized' || category.label === 'Uncategorized') && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e: React.MouseEvent) => {
+                              e.stopPropagation();
+                              startRenameCategory(category);
+                            }}
+                            className="gap-2"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                            Edit
+                          </Button>
+                        )}
                       </div>
                     </div>
-                  )}
+                  ))}
+                </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
-                    <Button onClick={handleSaveCategories} className="gap-2">
-                      <Save className="h-4 w-4" />
-                      Save Category Order
-                    </Button>
+                {/* Unmapped categories found in munchie.json files */}
+                {unmappedCategories.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium">Unmapped Categories</h4>
+                    <p className="text-xs text-muted-foreground">Categories discovered in model metadata that are not defined in your configuration. You can add them as configured categories.</p>
+                    <div className="space-y-2 mt-2">
+                      {unmappedCategories.map((uc) => (
+                        <div key={uc.label} className="flex items-center gap-3 p-3 bg-muted/60 rounded-lg border border-border">
+                          <div className="flex items-center gap-2">
+                            <Box className="h-4 w-4 text-muted-foreground" />
+                            <Badge variant="outline" className="font-medium">{uc.label}</Badge>
+                          </div>
+                          <div className="ml-auto flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground hidden sm:inline">Used in {uc.count} model{uc.count !== 1 ? 's' : ''}</span>
+                            <Button size="sm" variant="ghost" onClick={() => {
+                              // Add this unmapped label as a new configured category using a generated id
+                              const newId = uc.label.trim().toLowerCase().replace(/\s+/g, '_');
+                              const normalizedIcon = normalizeIconName('Folder');
+                              const newCat: Category = { id: newId, label: uc.label.trim(), icon: normalizedIcon } as Category;
+                              const exists = localCategories.find(c => c.label.toLowerCase() === newCat.label.toLowerCase() || c.id === newCat.id);
+                              if (exists) {
+                                setStatusMessage(`Category "${uc.label}" already exists`);
+                                setTimeout(() => setStatusMessage(''), 2500);
+                                return;
+                              }
+                              const updated = [...localCategories, newCat];
+                              setLocalCategories(updated);
+                              const updatedConfig: AppConfig = { ...localConfig, categories: updated };
+                              // Persist config
+                              handleSaveConfig(updatedConfig).then(() => {
+                                onCategoriesUpdate(updated);
+                                onConfigUpdate?.(updatedConfig);
+                                setStatusMessage(`Added category "${uc.label}"`);
+                                setTimeout(() => setStatusMessage(''), 2500);
+                              }).catch(err => {
+                                console.error('Failed to add category from unmapped list', err);
+                                setStatusMessage('Failed to add category');
+                                setTimeout(() => setStatusMessage(''), 2500);
+                              });
+                            }} className="gap-2">
+                              <Plus className="h-4 w-4" />
+                              Add
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                    <Button variant="secondary" onClick={() => setIsAddCategoryDialogOpen(true)} className="gap-2">
-                      <Plus className="h-4 w-4" />
-                      Add Category
-                    </Button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                  <Button onClick={handleSaveCategories} className="gap-2">
+                    <Save className="h-4 w-4" />
+                    Save Category Order
+                  </Button>
+
+                  <Button variant="secondary" onClick={() => setIsAddCategoryDialogOpen(true)} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add Category
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tag Management Tab */}
+          <TabsContent value="tags" className="space-y-6 mt-0">
+            {/* Tag Statistics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-2xl font-semibold">{stats.totalTags}</p>
+                      <p className="text-sm text-muted-foreground">Total Tags</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
-            </TabsContent>
 
-            {/* Tag Management Tab */}
-            <TabsContent value="tags" className="space-y-6">
-              {/* Tag Statistics */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-2">
-                      <Tag className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="text-2xl font-semibold">{stats.totalTags}</p>
-                        <p className="text-sm text-muted-foreground">Total Tags</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="text-2xl font-semibold">{stats.totalUsages}</p>
-                        <p className="text-sm text-muted-foreground">Total Usages</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="h-5 w-5 text-primary" />
-                      <div>
-                        <p className="text-2xl font-semibold">{stats.avgUsage}</p>
-                        <p className="text-sm text-muted-foreground">Avg per Tag</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Tag Management */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Global Tag Management</CardTitle>
-                  <CardDescription>
-                    Manage tags across all your models. Rename or delete tags globally.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-
-                  {/* Search */}
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search tags..."
-                        value={tagSearchTerm}
-                        onChange={(e) => setTagSearchTerm(e.target.value)}
-                        ref={tagInputRef}
-                        className="pl-10 pr-10"
-                      />
-                      {tagSearchTerm && (
-                        <button
-                          type="button"
-                          onClick={() => { setTagSearchTerm(''); try { tagInputRef.current?.focus(); } catch (e) {} }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
-                          aria-label="Clear search"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-2xl font-semibold">{stats.totalUsages}</p>
+                      <p className="text-sm text-muted-foreground">Total Usages</p>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
 
-                  {/* Tags List */}
-                  <ScrollArea className="max-h-96 w-full">
-                    <div className="space-y-2 p-2 max-h-80">
-                      {filteredTags.map((tag) => (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-2xl font-semibold">{stats.avgUsage}</p>
+                      <p className="text-sm text-muted-foreground">Avg per Tag</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tag Management */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Global Tag Management</CardTitle>
+                <CardDescription>
+                  Manage tags across all your models. Rename or delete tags globally.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+
+                {/* Search */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search tags..."
+                      value={tagSearchTerm}
+                      onChange={(e) => setTagSearchTerm(e.target.value)}
+                      ref={tagInputRef}
+                      className="pl-10 pr-10"
+                    />
+                    {tagSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => { setTagSearchTerm(''); try { tagInputRef.current?.focus(); } catch (e) { } }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                        aria-label="Clear search"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tags List */}
+                <ScrollArea className="max-h-96 w-full">
+                  <div className="space-y-2 p-2 max-h-80">
+                    {filteredTags.map((tag) => (
                       <div key={tag.name} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                         <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
                           <Badge variant="secondary" className="font-medium">
@@ -2461,1053 +2629,1024 @@ const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">(
                         </div>
                       </div>
                     ))}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            {/* Backup & Restore Tab */}
-            <TabsContent value="backup" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Archive className="h-5 w-5 text-primary" />
-                    Backup & Restore
-                  </CardTitle>
-                  <CardDescription>
-                    Create rolling backups of your model metadata and restore from previous backups.
-                    Backups include all *-munchie.json files with model metadata, tags, and settings, plus your collections.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    {/* Backup Section */}
-                    <div className="space-y-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div className="space-y-1">
+          {/* Backup & Restore Tab */}
+          <TabsContent value="backup" className="space-y-6 mt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Archive className="h-5 w-5 text-primary" />
+                  Backup & Restore
+                </CardTitle>
+                <CardDescription>
+                  Create rolling backups of your model metadata and restore from previous backups.
+                  Backups include all *-munchie.json files with model metadata, tags, and settings, plus your collections.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Backup Section */}
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-1">
                       <h3 className="font-medium">Create Backup</h3>
                       <p className="text-sm text-muted-foreground">
                         Backup all model metadata files to a compressed archive
                       </p>
-                      </div>
-                      <Button 
+                    </div>
+                    <Button
                       onClick={handleCreateBackup}
                       disabled={isCreatingBackup}
                       className="gap-2 md:ml-4"
-                      >
+                    >
                       {isCreatingBackup ? (
                         <RefreshCw className="h-4 w-4 animate-spin" />
                       ) : (
                         <Archive className="h-4 w-4" />
                       )}
                       {isCreatingBackup ? 'Creating...' : 'Create Backup'}
-                      </Button>
-                    </div>
-
-                    {/* Backup Statistics */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-primary" />
-                            <div>
-                              <p className="text-lg font-semibold">{models.length}</p>
-                              <p className="text-xs text-muted-foreground">JSON Files</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      {/* <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-primary" />
-                            <div>
-                              <p className="text-lg font-semibold">{backupHistory.length}</p>
-                              <p className="text-xs text-muted-foreground">Backups Created</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card> */}
-                      
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-2">
-                            <HardDrive className="h-4 w-4 text-primary" />
-                            <div>
-                              <p className="text-lg font-semibold">
-                                {backupHistory.length > 0 
-                                  ? `${(backupHistory[0]?.size / 1024).toFixed(1)}KB`
-                                  : '0KB'
-                                }
-                              </p>
-                              <p className="text-xs text-muted-foreground">Last Backup Size</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
+                    </Button>
                   </div>
 
-                  <Separator />
+                  {/* Backup Statistics */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-primary" />
+                          <div>
+                            <p className="text-lg font-semibold">{models.length}</p>
+                            <p className="text-xs text-muted-foreground">JSON Files</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
 
-                  {/* Restore Section */}
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <h3 className="font-medium">Restore from Backup</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Restore model metadata from a previous backup file. Choose your restore strategy carefully.
-                      </p>
-                    </div>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2">
+                          <HardDrive className="h-4 w-4 text-primary" />
+                          <div>
+                            <p className="text-lg font-semibold">
+                              {backupHistory.length > 0
+                                ? `${(backupHistory[0]?.size / 1024).toFixed(1)}KB`
+                                : '0KB'
+                              }
+                            </p>
+                            <p className="text-xs text-muted-foreground">Last Backup Size</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </div>
 
-                    {/* Restore Strategy Selection */}
-                    <div className="space-y-3">
-                      <Label>Restore Strategy</Label>
-                      <Select
+                <Separator />
+
+                {/* Restore Section */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <h3 className="font-medium">Restore from Backup</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Restore model metadata from a previous backup file. Choose your restore strategy carefully.
+                    </p>
+                  </div>
+
+                  {/* Restore Strategy Selection */}
+                  <div className="space-y-3">
+                    <Label>Restore Strategy</Label>
+                    <Select
                       value={restoreStrategy}
                       onValueChange={(value: 'hash-match' | 'path-match' | 'force') => setRestoreStrategy(value)}
-                      >
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="hash-match">
-                        <div className="font-medium">Hash Match <span className="text-xs text-muted-foreground sm:hidden">(Recommended)</span></div>
-                        <div className="text-xs text-muted-foreground hidden sm:block">
-                          Match files by content hash, fallback to path if needed
-                        </div>
+                          <div className="font-medium">Hash Match <span className="text-xs text-muted-foreground sm:hidden">(Recommended)</span></div>
+                          <div className="text-xs text-muted-foreground hidden sm:block">
+                            Match files by content hash, fallback to path if needed
+                          </div>
                         </SelectItem>
                         <SelectItem value="path-match">
-                        <div className="font-medium">Path Match</div>
-                        <div className="text-xs text-muted-foreground hidden sm:block">
-                          Only restore files that exist at their original paths
-                        </div>
+                          <div className="font-medium">Path Match</div>
+                          <div className="text-xs text-muted-foreground hidden sm:block">
+                            Only restore files that currently exist at their original paths
+                          </div>
                         </SelectItem>
                         <SelectItem value="force">
-                        <div className="font-medium">Force Restore</div>
-                        <div className="text-xs text-muted-foreground hidden sm:block">
-                          Restore all files to original paths, create directories if needed
-                        </div>
+                          <div className="font-medium">Force Restore</div>
+                          <div className="text-xs text-muted-foreground hidden sm:block">
+                            Restore all files to original paths, create directories if needed
+                          </div>
                         </SelectItem>
                       </SelectContent>
-                      </Select>
+                    </Select>
 
-                      {/* Strategy explanations - mobile friendly */}
-                      <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg break-words overflow-x-hidden">
+                    {/* Strategy explanations - mobile friendly */}
+                    <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg break-words overflow-x-hidden">
                       {restoreStrategy === 'hash-match' && (
                         <div>
-                        <strong>Hash Match:</strong>
-                        <span className="block mt-1">
-                          Compares 3MF file hashes from backup with current files, then restores metadata to the matching munchie.json. Falls back to path matching if no hash match found.
-                        </span>
-                        <span className="block mt-1 text-primary font-semibold">Recommended for most users.</span>
+                          <strong>Hash Match:</strong>
+                          <span className="block mt-1">
+                            Compares 3MF file hashes from backup with current files, then restores metadata to the matching munchie.json. Falls back to path matching if no hash match found.
+                          </span>
+                          <span className="block mt-1 text-primary font-semibold">Recommended for most users.</span>
                         </div>
                       )}
                       {restoreStrategy === 'path-match' && (
                         <div>
-                        <strong>Path Match:</strong>
-                        <span className="block mt-1">
-                          Only restores files that currently exist at their original backup locations. Does not create new files.
-                        </span>
-                        <span className="block mt-1 text-primary font-semibold">Use to update existing metadata only.</span>
+                          <strong>Path Match:</strong>
+                          <span className="block mt-1">
+                            Only restores files that currently exist at their original backup locations. Does not create new files.
+                          </span>
+                          <span className="block mt-1 text-primary font-semibold">Use to update existing metadata only.</span>
                         </div>
                       )}
                       {restoreStrategy === 'force' && (
                         <div>
-                        <strong>Force Restore:</strong>
-                        <span className="block mt-1">
-                          Creates files at their original paths regardless of current state. Can overwrite existing files.
-                        </span>
-                        <span className="block mt-1 text-destructive font-semibold">Use with caution!</span>
+                          <strong>Force Restore:</strong>
+                          <span className="block mt-1">
+                            Creates files at their original paths regardless of current state. Can overwrite existing files.
+                          </span>
+                          <span className="block mt-1 text-destructive font-semibold">Use with caution!</span>
                         </div>
                       )}
-                      </div>
                     </div>
+                  </div>
 
-                    {/* Collections Restore Strategy */}
+                  {/* Collections Restore Strategy */}
+                  <div className="space-y-3">
+                    <Label>Collections Restore</Label>
+                    <Select
+                      value={collectionsRestoreStrategy}
+                      onValueChange={(value: 'merge' | 'replace') => setCollectionsRestoreStrategy(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="merge">
+                          <div className="font-medium">Merge <span className="text-xs text-muted-foreground sm:hidden">(Default)</span></div>
+                          <div className="text-xs text-muted-foreground hidden sm:block">
+                            Combine backup collections with existing ones by ID; backup wins on conflict
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="replace">
+                          <div className="font-medium">Replace</div>
+                          <div className="text-xs text-muted-foreground hidden sm:block">
+                            Overwrite existing collections with those from the backup
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
+                      {collectionsRestoreStrategy === 'merge' ? (
+                        <>
+                          <strong>Merge:</strong> Backup collections are merged with existing ones by ID. Existing collections not in the backup are kept.
+                        </>
+                      ) : (
+                        <>
+                          <strong>Replace:</strong> Existing collections are replaced entirely by the backup collections.
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleRestoreFromFile}
+                      disabled={isRestoring}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      {isRestoring ? (
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RotateCcw className="h-4 w-4" />
+                      )}
+                      {isRestoring ? 'Restoring...' : 'Restore from File'}
+                    </Button>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground">
+                    <strong>Supported formats:</strong> .gz (compressed backup), .json (plain backup)
+                    <br />
+                    <strong>Note:</strong> Restores model metadata files and collections. Actual 3MF/STL models are not included in backups.
+                  </div>
+                </div>
+
+                {/* Backup History */}
+                {backupHistory.length > 0 && (
+                  <>
+                    <Separator />
                     <div className="space-y-3">
-                      <Label>Collections Restore</Label>
-                      <Select
-                        value={collectionsRestoreStrategy}
-                        onValueChange={(value: 'merge' | 'replace') => setCollectionsRestoreStrategy(value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="merge">
-                            <div className="font-medium">Merge <span className="text-xs text-muted-foreground sm:hidden">(Default)</span></div>
-                            <div className="text-xs text-muted-foreground hidden sm:block">
-                              Combine backup collections with existing ones by ID; backup wins on conflict
+                      <h3 className="font-medium">Recent Backups</h3>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {backupHistory.map((backup, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Archive className="h-4 w-4 text-muted-foreground" />
+                              <div>
+                                <p className="font-medium text-sm">{backup.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {new Date(backup.timestamp).toLocaleString()} • {(backup.size / 1024).toFixed(1)}KB
+                                </p>
+                              </div>
                             </div>
-                          </SelectItem>
-                          <SelectItem value="replace">
-                            <div className="font-medium">Replace</div>
-                            <div className="text-xs text-muted-foreground hidden sm:block">
-                              Overwrite existing collections with those from the backup
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
-                        {collectionsRestoreStrategy === 'merge' ? (
-                          <>
-                            <strong>Merge:</strong> Backup collections are merged with existing ones by ID. Existing collections not in the backup are kept.
-                          </>
-                        ) : (
-                          <>
-                            <strong>Replace:</strong> Existing collections are replaced entirely by the backup collections.
-                          </>
-                        )}
+                          </div>
+                        ))}
                       </div>
                     </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
+          {/* File Integrity Tab */}
+          <TabsContent value="integrity" className="space-y-6 mt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle>File Integrity Check</CardTitle>
+                <CardDescription>
+                  Verify model files and manage metadata
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-col items-start gap-4">
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <h3 className="font-medium">File Verification</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Check for duplicates and verify model metadata
+                      </p>
+                      <div className="mt-2">
+                        <Label className="text-sm font-medium">Scanning Mode</Label>
+                        <RadioGroup
+                          value={selectedFileType}
+                          onValueChange={(value: "3mf" | "stl" | "all") => setSelectedFileType(value)}
+                          className="flex gap-4 mt-2"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="all" id="file-type-all" />
+                            <Label htmlFor="file-type-all">All Files</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="3mf" id="file-type-3mf" />
+                            <Label htmlFor="file-type-3mf">3MF Only</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="stl" id="file-type-stl" />
+                            <Label htmlFor="file-type-stl">STL Only</Label>
+                          </div>
+                        </RadioGroup>
+                      </div>
+                    </div>
                     <div className="flex gap-2">
-                      <Button 
-                        onClick={handleRestoreFromFile}
-                        disabled={isRestoring}
-                        variant="outline"
+                      <Button
+                        onClick={() => handleRunHashCheck()}
+                        disabled={isHashChecking}
                         className="gap-2"
                       >
-                        {isRestoring ? (
+                        {isHashChecking ? (
                           <RefreshCw className="h-4 w-4 animate-spin" />
                         ) : (
-                          <RotateCcw className="h-4 w-4" />
+                          <FileCheck className="h-4 w-4" />
                         )}
-                        {isRestoring ? 'Restoring...' : 'Restore from File'}
+                        {isHashChecking ? 'Checking...' : 'Run Check'}
+                      </Button>
+                      <Button
+                        onClick={() => handleGenerateModelJson()}
+                        disabled={isGeneratingJson}
+                        className="gap-2"
+                        variant="secondary"
+                      >
+                        {isGeneratingJson ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Files className="h-4 w-4" />
+                        )}
+                        {isGeneratingJson ? 'Generating...' : 'Generate'}
                       </Button>
                     </div>
-                    
-                    <div className="text-xs text-muted-foreground">
-                      <strong>Supported formats:</strong> .gz (compressed backup), .json (plain backup)
-                      <br />
-                      <strong>Note:</strong> Restores model metadata files and collections. Actual 3MF/STL models are not included in backups.
-                    </div>
+
                   </div>
 
-                  {/* Backup History */}
-                  {backupHistory.length > 0 && (
-                    <>
-                      <Separator />
-                      <div className="space-y-3">
-                        <h3 className="font-medium">Recent Backups</h3>
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                          {backupHistory.map((backup, index) => (
-                            <div
-                              key={index}
-                              className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                            >
-                              <div className="flex items-center gap-3">
-                                <Archive className="h-4 w-4 text-muted-foreground" />
-                                <div>
-                                  <p className="font-medium text-sm">{backup.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {new Date(backup.timestamp).toLocaleString()} • {(backup.size / 1024).toFixed(1)}KB
-                                  </p>
-                                </div>
-                              </div>
+                  {(hashCheckResult || generateResult) && (
+                    <div className="flex flex-wrap gap-4 mt-3 w-full">
+                      {hashCheckResult && (
+                        <>
+                          <div key="verified-count" className="flex items-center gap-2">
+                            <FileCheck className="h-4 w-4 text-green-600" />
+                            <span className="text-sm">{hashCheckResult.verified} verified</span>
+                          </div>
+                          {hashCheckResult.corrupted > 0 && (
+                            <div key="corrupted-count" className="flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                              <span className="text-sm">{hashCheckResult.corrupted} issues</span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* File Integrity Tab */}
-            <TabsContent value="integrity" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>File Integrity Check</CardTitle>
-                  <CardDescription>
-                    Verify model files and manage metadata
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex flex-col items-start gap-4">
-                    <div className="flex-1 space-y-4">
-                      <div>
-                        <h3 className="font-medium">File Verification</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Check for duplicates and verify model metadata
-                        </p>
-                        <div className="mt-2">
-                          <Label className="text-sm font-medium">Scanning Mode</Label>
-                          <RadioGroup 
-                            value={selectedFileType} 
-                            onValueChange={(value: "3mf" | "stl" | "all") => setSelectedFileType(value)}
-                            className="flex gap-4 mt-2"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <RadioGroupItem value="all" id="file-type-all" />
-                              <Label htmlFor="file-type-all">All Files</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <RadioGroupItem value="3mf" id="file-type-3mf" />
-                              <Label htmlFor="file-type-3mf">3MF Only</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <RadioGroupItem value="stl" id="file-type-stl" />
-                              <Label htmlFor="file-type-stl">STL Only</Label>
-                            </div>
-                          </RadioGroup>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          onClick={() => handleRunHashCheck()}
-                          disabled={isHashChecking}
-                          className="gap-2"
-                        >
-                          {isHashChecking ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <FileCheck className="h-4 w-4" />
                           )}
-                          {isHashChecking ? 'Checking...' : 'Run Check'}
-                        </Button>
-                        <Button
-                          onClick={() => handleGenerateModelJson()}
-                          disabled={isGeneratingJson}
-                          className="gap-2"
-                          variant="secondary"
-                        >
-                          {isGeneratingJson ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Files className="h-4 w-4" />
+                          {hashCheckResult.duplicateGroups.length > 0 && (
+                            <div key="duplicates-count" className="flex items-center gap-2">
+                              <Files className="h-4 w-4 text-blue-600" />
+                              <span className="text-sm">{hashCheckResult.duplicateGroups.length} duplicates</span>
+                            </div>
                           )}
-                          {isGeneratingJson ? 'Generating...' : 'Generate'}
-                        </Button>
-                      </div>
-                      
-                    </div>
+                          {(hashCheckResult.skipped || 0) > 0 && (
+                            <div key="skipped-count" className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-gray-600" />
+                              <span className="text-sm">{hashCheckResult.skipped} skipped</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {generateResult && (() => {
+                        // Compute once
+                        const processedNum = typeof generateResult.processed === 'number'
+                          ? generateResult.processed
+                          : (generateResult.generated || 0) + (generateResult.verified || 0);
+                        const skippedNum = generateResult.skipped || 0;
+                        const totalSeen = processedNum + skippedNum;
 
-                    {(hashCheckResult || generateResult) && (
-                      <div className="flex flex-wrap gap-4 mt-3 w-full">
-                        {hashCheckResult && (
+                        // Prefer explicit `generated`; otherwise treat `processed` as generated for display
+                        const hasExplicitGenerated = typeof generateResult.generated === 'number';
+                        const showAsGenerated = hasExplicitGenerated || (typeof generateResult.generated === 'undefined' && processedNum > 0);
+
+                        // Show separate 'generated' only when it differs from processed
+                        const showGeneratedSeparate = hasExplicitGenerated && (generateResult.generated !== processedNum);
+
+                        return (
                           <>
-                            <div key="verified-count" className="flex items-center gap-2">
-                              <FileCheck className="h-4 w-4 text-green-600" />
-                              <span className="text-sm">{hashCheckResult.verified} verified</span>
-                            </div>
-                            {hashCheckResult.corrupted > 0 && (
-                              <div key="corrupted-count" className="flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4 text-red-600" />
-                                <span className="text-sm">{hashCheckResult.corrupted} issues</span>
+                            {totalSeen > 0 && (
+                              <div key="gen-total-status" className="flex items-center gap-2">
+                                <BarChart3 className="h-4 w-4 text-primary" />
+                                <span className="text-sm">{totalSeen} total</span>
                               </div>
                             )}
-                            {hashCheckResult.duplicateGroups.length > 0 && (
-                              <div key="duplicates-count" className="flex items-center gap-2">
-                                <Files className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm">{hashCheckResult.duplicateGroups.length} duplicates</span>
+
+                            {processedNum > 0 && (
+                              <div key="gen-processed-status" className="flex items-center gap-2">
+                                <FileCheck className={`h-4 w-4 ${showAsGenerated ? 'text-green-600' : 'text-blue-600'}`} />
+                                <span className="text-sm">{processedNum} {showAsGenerated ? 'generated' : 'processed'}</span>
                               </div>
                             )}
-                            {(hashCheckResult.skipped || 0) > 0 && (
-                              <div key="skipped-count" className="flex items-center gap-2">
+
+                            {(skippedNum > 0) && (
+                              <div key="gen-skipped-count" className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-gray-600" />
-                                <span className="text-sm">{hashCheckResult.skipped} skipped</span>
+                                <span className="text-sm">{skippedNum} skipped</span>
+                              </div>
+                            )}
+
+                            {showGeneratedSeparate && (
+                              <div key="gen-generated-count" className="flex items-center gap-2">
+                                <HardDrive className="h-4 w-4 text-green-600" />
+                                <span className="text-sm text-green-600">{generateResult.generated || 0} generated</span>
+                              </div>
+                            )}
+
+                            {((generateResult.verified || 0) > 0) && (
+                              <div key="gen-verified-count" className="flex items-center gap-2">
+                                <FileCheck className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm">{generateResult.verified || 0} verified</span>
                               </div>
                             )}
                           </>
-                        )}
-                        {generateResult && (() => {
-                          // Compute once
-                          const processedNum = typeof generateResult.processed === 'number'
-                            ? generateResult.processed
-                            : (generateResult.generated || 0) + (generateResult.verified || 0);
-                          const skippedNum = generateResult.skipped || 0;
-                          const totalSeen = processedNum + skippedNum;
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
 
-                          // Prefer explicit `generated`; otherwise treat `processed` as generated for display
-                          const hasExplicitGenerated = typeof generateResult.generated === 'number';
-                          const showAsGenerated = hasExplicitGenerated || (typeof generateResult.generated === 'undefined' && processedNum > 0);
+                {isHashChecking && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Progress</span>
+                      <span>{Math.round(hashCheckProgress)}%</span>
+                    </div>
+                    <Progress value={hashCheckProgress} className="w-full" />
+                  </div>
+                )}
 
-                          // Show separate 'generated' only when it differs from processed
-                          const showGeneratedSeparate = hasExplicitGenerated && (generateResult.generated !== processedNum);
+                {hashCheckResult && hashCheckResult.corruptedFiles && hashCheckResult.corruptedFiles.length > 0 && (
+                  <div className="space-y-4">
+                    <Separator />
+                    <div>
+                      <h3 className="font-medium mb-2 text-red-600">Files Requiring Attention</h3>
+                      <div className="space-y-2">
+                        {hashCheckResult.corruptedFiles.map((file, idx) => {
+                          const modelData = corruptedModels[file.filePath];
+                          // Better fallback logic - try multiple ways to find the model
+                          const fallbackModel = models.find(m => {
+                            // Try exact match first
+                            if (m.modelUrl === file.filePath) return true;
+                            // Try with /models/ prefix
+                            if (m.modelUrl === `/models/${file.filePath}`) return true;
+                            // Try without /models/ prefix
+                            if (m.modelUrl === file.filePath.replace(/^[/\\]?models[/\\]/, '')) return true;
+                            // Try by comparing just the filename
+                            const fileBaseName = file.filePath.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '');
+                            const modelBaseName = m.modelUrl?.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '');
+                            return fileBaseName && modelBaseName && fileBaseName === modelBaseName;
+                          });
+
+                          const model = modelData || fallbackModel;
 
                           return (
-                            <>
-                              {totalSeen > 0 && (
-                                <div key="gen-total-status" className="flex items-center gap-2">
-                                  <BarChart3 className="h-4 w-4 text-primary" />
-                                  <span className="text-sm">{totalSeen} total</span>
-                                </div>
-                              )}
-
-                              {processedNum > 0 && (
-                                <div key="gen-processed-status" className="flex items-center gap-2">
-                                  <FileCheck className={`h-4 w-4 ${showAsGenerated ? 'text-green-600' : 'text-blue-600'}`} />
-                                  <span className="text-sm">{processedNum} {showAsGenerated ? 'generated' : 'processed'}</span>
-                                </div>
-                              )}
-
-                              {(skippedNum > 0) && (
-                                <div key="gen-skipped-count" className="flex items-center gap-2">
-                                  <Clock className="h-4 w-4 text-gray-600" />
-                                  <span className="text-sm">{skippedNum} skipped</span>
-                                </div>
-                              )}
-
-                              {showGeneratedSeparate && (
-                                <div key="gen-generated-count" className="flex items-center gap-2">
-                                  <HardDrive className="h-4 w-4 text-green-600" />
-                                  <span className="text-sm text-green-600">{generateResult.generated || 0} generated</span>
-                                </div>
-                              )}
-
-                              {((generateResult.verified || 0) > 0) && (
-                                <div key="gen-verified-count" className="flex items-center gap-2">
-                                  <FileCheck className="h-4 w-4 text-blue-600" />
-                                  <span className="text-sm">{generateResult.verified || 0} verified</span>
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-
-                  {isHashChecking && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Progress</span>
-                        <span>{Math.round(hashCheckProgress)}%</span>
-                      </div>
-                      <Progress value={hashCheckProgress} className="w-full" />
-                    </div>
-                  )}
-
-                  {hashCheckResult && hashCheckResult.corruptedFiles && hashCheckResult.corruptedFiles.length > 0 && (
-                    <div className="space-y-4">
-                      <Separator />
-                      <div>
-                        <h3 className="font-medium mb-2 text-red-600">Files Requiring Attention</h3>
-                        <div className="space-y-2">
-                          {hashCheckResult.corruptedFiles.map((file, idx) => {
-                            const modelData = corruptedModels[file.filePath];
-                            // Better fallback logic - try multiple ways to find the model
-                            const fallbackModel = models.find(m => {
-                              // Try exact match first
-                              if (m.modelUrl === file.filePath) return true;
-                              // Try with /models/ prefix
-                              if (m.modelUrl === `/models/${file.filePath}`) return true;
-                              // Try without /models/ prefix
-                              if (m.modelUrl === file.filePath.replace(/^[/\\]?models[/\\]/, '')) return true;
-                              // Try by comparing just the filename
-                              const fileBaseName = file.filePath.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '');
-                              const modelBaseName = m.modelUrl?.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '');
-                              return fileBaseName && modelBaseName && fileBaseName === modelBaseName;
-                            });
-                            
-                            const model = modelData || fallbackModel;
-                            
-                            return (
-                              <div key={file.filePath || `corrupt-${idx}`} 
-                                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-red-900 dark:text-red-100 truncate">
-                                    {model ? getDisplayPath(model) : file.filePath.split('/').pop()?.replace(/\.(3mf|stl)$/i, '') || 'Unknown'}
-                                  </p>
-                                  <p className="text-sm text-red-600 dark:text-red-400">
-                                    {file.error || (file.actualHash && file.expectedHash && file.actualHash !== file.expectedHash
-                                      ? 'Hash mismatch: model file may have been updated and saved. Regenerate munchie.json to update metadata.'
-                                      : 'Missing metadata or hash mismatch')}
-                                  </p>
-                                </div>
-                                {file.actualHash && file.expectedHash && file.expectedHash !== 'UNKNOWN' && file.actualHash !== file.expectedHash && (
-                                  <div className="mt-3 sm:mt-0 ml-0 sm:ml-4 shrink-0">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => handleRegenerate(model || { id: `regen-${(file.filePath || 'unknown').replace(/[^a-zA-Z0-9]/g, '-')}`, filePath: file.filePath } as any)}
-                                    >
-                                      Regenerate
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {hashCheckResult && hashCheckResult.duplicateGroups && hashCheckResult.duplicateGroups.length > 0 && (
-                    <div className="space-y-4">
-                      <Separator />
-                      <div>
-                        <h3 className="font-medium mb-2">Duplicate Files</h3>
-                        <div className="space-y-2">
-                          {hashCheckResult.duplicateGroups.map((group, idx) => (
-                            <div 
-                              key={`dup-${idx}`}
-                              className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800"
+                            <div key={file.filePath || `corrupt-${idx}`}
+                              className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800"
                             >
-                              <div key={`header-${group.hash}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
-                                <span className="text-sm text-blue-600 dark:text-blue-400">
-                                  {group.models.length} copies - {group.totalSize} total
-                                </span>
-                                <Dialog open={openDuplicateGroupHash === group.hash} onOpenChange={(open: boolean) => setOpenDuplicateGroupHash(open ? group.hash : null)}>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="gap-2"
-                                      onClick={() => setOpenDuplicateGroupHash(group.hash)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                      Remove Duplicates
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="w-full max-w-[72rem]">
-                                    <DialogHeader>
-                                      <DialogTitle>Remove Duplicate Files</DialogTitle>
-                                      <DialogDescription>
-                                        Choose which file to keep. All other copies will be deleted. <br/><strong className="text-destructive">This action cannot be undone.</strong>
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    {/* Wrap list in an overflow-x-auto container so very long paths don't push the buttons out of view */}
-                                    <div className="space-y-2 min-w-0">
-                                      <ScrollArea className="w-full" showHorizontalScrollbar={true}>
-                                        <div className="w-max">
-                                          {group.models.map((model) => (
-                                            <div key={`dup-dialog-${group.hash}-${model.id}-${model.name}`} className="flex items-center justify-between p-2 bg-muted rounded-md gap-2 mb-2">
-                                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                {(() => {
-                                                  const src = resolveModelThumbnail(model);
-                                                  if (src) {
-                                                    return (
-                                                      <ImageWithFallback
-                                                        src={src}
-                                                        alt={model.name}
-                                                        className="w-8 h-8 object-cover rounded border flex-shrink-0"
-                                                      />
-                                                    );
-                                                  }
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-red-900 dark:text-red-100 truncate">
+                                  {model ? getDisplayPath(model) : file.filePath.split('/').pop()?.replace(/\.(3mf|stl)$/i, '') || 'Unknown'}
+                                </p>
+                                <p className="text-sm text-red-600 dark:text-red-400">
+                                  {file.error || (file.actualHash && file.expectedHash && file.actualHash !== file.expectedHash
+                                    ? 'Hash mismatch: model file may have been updated and saved. Regenerate munchie.json to update metadata.'
+                                    : 'Missing metadata or hash mismatch')}
+                                </p>
+                              </div>
+                              {file.actualHash && file.expectedHash && file.expectedHash !== 'UNKNOWN' && file.actualHash !== file.expectedHash && (
+                                <div className="mt-3 sm:mt-0 ml-0 sm:ml-4 shrink-0">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleRegenerate(model || { id: `regen-${(file.filePath || 'unknown').replace(/[^a-zA-Z0-9]/g, '-')}`, filePath: file.filePath } as any)}
+                                  >
+                                    Regenerate
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {hashCheckResult && hashCheckResult.duplicateGroups && hashCheckResult.duplicateGroups.length > 0 && (
+                  <div className="space-y-4">
+                    <Separator />
+                    <div>
+                      <h3 className="font-medium mb-2">Duplicate Files</h3>
+                      <div className="space-y-2">
+                        {hashCheckResult.duplicateGroups.map((group, idx) => (
+                          <div
+                            key={`dup-${idx}`}
+                            className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800"
+                          >
+                            <div key={`header-${group.hash}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
+                              <span className="text-sm text-blue-600 dark:text-blue-400">
+                                {group.models.length} copies - {group.totalSize} total
+                              </span>
+                              <Dialog open={openDuplicateGroupHash === group.hash} onOpenChange={(open: boolean) => setOpenDuplicateGroupHash(open ? group.hash : null)}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2"
+                                    onClick={() => setOpenDuplicateGroupHash(group.hash)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    Remove Duplicates
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="w-full max-w-[72rem]">
+                                  <DialogHeader>
+                                    <DialogTitle>Remove Duplicate Files</DialogTitle>
+                                    <DialogDescription>
+                                      Choose which file to keep. All other copies will be deleted. <br /><strong className="text-destructive">This action cannot be undone.</strong>
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  {/* Wrap list in an overflow-x-auto container so very long paths don't push the buttons out of view */}
+                                  <div className="space-y-2 min-w-0">
+                                    <ScrollArea className="w-full" showHorizontalScrollbar={true}>
+                                      <div className="w-max">
+                                        {group.models.map((model) => (
+                                          <div key={`dup-dialog-${group.hash}-${model.id}-${model.name}`} className="flex items-center justify-between p-2 bg-muted rounded-md gap-2 mb-2">
+                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                              {(() => {
+                                                const src = resolveModelThumbnail(model);
+                                                if (src) {
                                                   return (
-                                                    <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border flex-shrink-0">
-                                                      <Box className="h-4 w-4 text-muted-foreground" />
-                                                    </div>
+                                                    <ImageWithFallback
+                                                      src={src}
+                                                      alt={model.name}
+                                                      className="w-8 h-8 object-cover rounded border flex-shrink-0"
+                                                    />
                                                   );
-                                                })()}
-                                                <div className="ml-2 text-sm pr-4 min-w-0 w-full">
-                                                  <div className="overflow-x-auto whitespace-nowrap">
-                                                    <span className="select-all">{getDisplayPath(model)}</span>
+                                                }
+                                                return (
+                                                  <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border flex-shrink-0">
+                                                    <Box className="h-4 w-4 text-muted-foreground" />
                                                   </div>
+                                                );
+                                              })()}
+                                              <div className="ml-2 text-sm pr-4 min-w-0 w-full">
+                                                <div className="overflow-x-auto whitespace-nowrap">
+                                                  <span className="select-all">{getDisplayPath(model)}</span>
                                                 </div>
                                               </div>
-                                              <div className="flex-shrink-0 ml-4">
-                                                <Button
-                                                  variant="destructive"
-                                                  size="sm"
-                                                  onClick={async () => {
-                                                    const success = await handleRemoveDuplicates(group, model.id);
-                                                    if (success) {
-                                                      // Close the dialog for this group
-                                                      setOpenDuplicateGroupHash(null);
-                                                    }
-                                                  }}
-                                                >
-                                                  Keep This
-                                                </Button>
-                                              </div>
                                             </div>
-                                          ))}
-                                        </div>
-                                      </ScrollArea>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              </div>
-                              <div key={`models-${group.hash}`} className="space-y-2">
-                                {group.models.map((model) => (
-                                  <div key={`dup-list-${group.hash}-${model.id}-${model.name}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                      <ModelThumbnail model={model} name={model.name} />
-                                      <span className="text-sm truncate">{getDisplayPath(model)}</span>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => onModelClick?.(model)}
-                                    >
-                                      View
-                                    </Button>
+                                            <div className="flex-shrink-0 ml-4">
+                                              <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={async () => {
+                                                  const success = await handleRemoveDuplicates(group, model.id);
+                                                  if (success) {
+                                                    // Close the dialog for this group
+                                                    setOpenDuplicateGroupHash(null);
+                                                  }
+                                                }}
+                                              >
+                                                Keep This
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </ScrollArea>
                                   </div>
-                                ))}
-                              </div>
+                                </DialogContent>
+                              </Dialog>
                             </div>
-                          ))}
-                        </div>
+                            <div key={`models-${group.hash}`} className="space-y-2">
+                              {group.models.map((model) => (
+                                <div key={`dup-list-${group.hash}-${model.id}-${model.name}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <ModelThumbnail model={model} name={model.name} />
+                                    <span className="text-sm truncate">{getDisplayPath(model)}</span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => onModelClick?.(model)}
+                                  >
+                                    View
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Support Tab */}
-            <TabsContent value="support" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Heart className="h-5 w-5 text-primary" />
-                    Support 3D Model Muncher
-                  </CardTitle>
-                  <CardDescription>
-                    Help keep this project alive and growing! Your support enables continued development and new features.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Project Stats */}
-                  {/*
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card>
-                      <CardContent className="p-4 text-center">
-                        <div className="font-semibold text-xl text-primary">1.2k+</div>
-                        <div className="text-sm text-muted-foreground">Active Users</div>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="p-4 text-center">
-                        <div className="font-semibold text-xl text-primary">Free</div>
-                        <div className="text-sm text-muted-foreground">Always</div>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardContent className="p-4 text-center">
-                        <div className="font-semibold text-xl text-primary">Open</div>
-                        <div className="text-sm text-muted-foreground">Source</div>
-                      </CardContent>
-                    </Card>
                   </div>
-                  */}
-                  {/* Ways to Support */}
-                  <div className="space-y-4">
-                    <h3 className="font-medium">Ways to Support</h3>
-                    
-                    <div className="grid gap-4">
-                      <button
-                        type="button"
-                        onClick={onDonationClick}
-                        aria-label="Donate"
-                        className="w-full text-left flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border border-primary/20 cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:from-primary/10 hover:to-secondary/10 hover:border-2 hover:border-primary hover:bg-primary/6 dark:hover:border-primary dark: hover:bg-primary/900 hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-center w-12 h-12 bg-primary/10 rounded-lg">
-                          <Heart className="h-6 w-6 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-medium">Financial Support</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Buy me a coffee or sponsor development through various platforms
-                          </p>
-                        </div>
-                        <span className="hidden sm:inline-flex items-center gap-2">
-                          <Heart className="h-4 w-4" />
-                          Donate
-                        </span>
-                      </button>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                      <a
-                        href="https://github.com/robsturgill/3d-model-muncher"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label="Star on GitHub"
-                        className="w-full text-left flex items-center gap-4 p-4 bg-muted/30 rounded-lg border cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:bg-muted/50 dark:hover:bg-muted/70 hover:border-2 hover:border-primary hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-center w-12 h-12 bg-muted rounded-lg">
-                          <Star className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-medium">Star on GitHub</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Show your appreciation and help others discover the project
-                          </p>
-                        </div>
-                        <span className="hidden sm:inline-flex items-center gap-2">
-                          <Github className="h-4 w-4" />
-                          Star
-                        </span>
-                      </a>
+          {/* Configuration Tab */}
+          <TabsContent value="config" className="space-y-6 mt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuration Management</CardTitle>
+                <CardDescription>Import, export, and reset your configuration settings. Your settings are stored in your browser&apos;s local storage, not in the default-config.json file.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Button onClick={handleExportConfig} className="gap-2">
+                    <Download className="h-4 w-4" />
+                    Export Config
+                  </Button>
 
-                      <a
-                        href="https://github.com/robsturgill/3d-model-muncher"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label="Contribute on GitHub"
-                        className="w-full text-left flex items-center gap-4 p-4 bg-muted/30 rounded-lg border cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:bg-muted/50 dark:hover:bg-muted/70 hover:border-2 hover:border-primary hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-center w-12 h-12 bg-muted rounded-lg">
-                          <Github className="h-6 w-6 text-muted-foreground" />
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="font-medium">Contribute Code</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Help improve the project by contributing code, reporting bugs, or suggesting features
-                          </p>
-                        </div>
-                        <span className="hidden sm:inline-flex items-center gap-2">
-                          <Github className="h-4 w-4" />
-                          Contribute
-                        </span>
-                      </a>
-                    </div>
-                  </div>
+                  <Button onClick={handleImportConfig} variant="outline" className="gap-2">
+                    <Upload className="h-4 w-4" />
+                    Import Config
+                  </Button>
 
-                  {/* Community */}
-                  <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-                    <ImageWithFallback
-                      src="/images/munchie-side.png"
-                      alt="Community mascot"
-                      className="w-72 sm:w-[200px] h-auto flex-shrink-0 mx-auto sm:mx-0"
-                    />                    
-                    <div className="flex-1 w-full flex flex-col justify-center space-y-3 text-left">
-                      <h3 className="font-medium">Join the Community</h3>
-                      <ul className="text-sm text-muted-foreground space-y-2 text-left list-disc list-inside">
-                        <li>Share your 3D printing projects and experiences</li>
-                        <li>Get help from fellow makers and developers</li>
-                        <li>Suggest new features and improvements</li>
-                        <li>Stay updated on the latest releases</li>
-                      </ul>
-                    </div>
-                  </div>
+                  <Button onClick={handleResetConfig} variant="destructive" className="gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Reset to Defaults
+                  </Button>
+                </div>
 
-                  <div className="text-center p-6 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border border-primary/20">
-                    <p className="text-sm text-muted-foreground">
-                      <strong className="text-primary">Thank you</strong> for using 3D Model Muncher! 
-                      Your support helps keep this project free and open-source for the entire 3D printing community.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                <Separator />
 
-            {/* Configuration Tab */}
-            <TabsContent value="config" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Configuration Management</CardTitle>
-                  <CardDescription>Import, export, and reset your configuration settings. Your settings are stored in your browser&apos;s local storage, not in the default-config.json file.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Button onClick={handleExportConfig} className="gap-2">
+                <div className="space-y-4">
+                  <h3 className="font-medium">Manual Save</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Save your current configuration manually. This is useful when auto-save is disabled.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+                    <Button onClick={() => handleSaveConfig()} className="gap-2">
+                      <Save className="h-4 w-4" />
+                      Save Configuration
+                    </Button>
+
+                    <Button variant="outline" onClick={handleLoadServerConfig} className="gap-2">
                       <Download className="h-4 w-4" />
-                      Export Config
-                    </Button>
-                    
-                    <Button onClick={handleImportConfig} variant="outline" className="gap-2">
-                      <Upload className="h-4 w-4" />
-                      Import Config
-                    </Button>
-                    
-                    <Button onClick={handleResetConfig} variant="destructive" className="gap-2">
-                      <RefreshCw className="h-4 w-4" />
-                      Reset to Defaults
+                      Load Configuration
                     </Button>
                   </div>
-
-                  <Separator />
-
-                  <div className="space-y-4">
-                    <h3 className="font-medium">Manual Save</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Save your current configuration manually. This is useful when auto-save is disabled.
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
-                      <Button onClick={() => handleSaveConfig()} className="gap-2">
-                        <Save className="h-4 w-4" />
-                        Save Configuration
-                      </Button>
-
-                      <Button variant="outline" onClick={handleLoadServerConfig} className="gap-2">
-                        <Download className="h-4 w-4" />
-                        Load Configuration
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            {/* Experimental Tab (lazy loaded from separate file) */}
-            <TabsContent value="experimental" className="space-y-6">
-              <Suspense fallback={<div>Loading experimental features...</div>}>
-                <ExperimentalTab categories={localCategories} />
-              </Suspense>
-            </TabsContent>
-          </Tabs>
-
-          {/* Hidden file input for import */}
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileImport}
-            accept=".json"
-            style={{ display: 'none' }}
-          />
-
-          {/* Hidden file input for backup restore */}
-          <input
-            type="file"
-            ref={backupFileInputRef}
-            onChange={handleBackupFileRestore}
-            accept=".gz,.json"
-            style={{ display: 'none' }}
-          />
-
-          {/* Tag Rename Dialog */}
-          <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Rename Tag</DialogTitle>
-                <DialogDescription>
-                  This will rename the tag across all models that use it.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="rename-tag">New tag name</Label>
-                  <Input
-                    id="rename-tag"
-                    value={renameTagValue}
-                    onChange={(e) => setRenameTagValue(e.target.value)}
-                    placeholder="Enter new tag name"
-                  />
                 </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsRenameDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={() => selectedTag && handleRenameTag(selectedTag.name, renameTagValue)}
-                  disabled={!renameTagValue.trim() || renameTagValue === selectedTag?.name}
-                >
-                  Rename Tag
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {/* Category Rename Dialog */}
-          <Dialog open={isCategoryRenameDialogOpen} onOpenChange={setIsCategoryRenameDialogOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Rename Category</DialogTitle>
-                <DialogDescription>
-                  This will rename the category across all models that use it.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="rename-category">New category name</Label>
-                  <Input
-                    id="rename-category"
-                    value={renameCategoryValue}
-                    onChange={(e) => setRenameCategoryValue(e.target.value)}
-                    placeholder="Enter new category name"
-                  />
-                </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="rename-category-icon">Icon (Lucide name)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="rename-category-icon"
-                        value={renameCategoryIcon}
-                        onChange={(e) => setRenameCategoryIcon(e.target.value)}
-                        placeholder="e.g. tag, box, heart, alert-circle"
-                      />
-                      <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border">
-                        {(() => {
-                          const IconPreview = getLucideIconComponent(renameCategoryIcon);
-                          return <IconPreview className="h-4 w-4 text-muted-foreground" />;
-                        })()}
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      See available icons at <a href="https://lucide.dev/icons" target="_blank" rel="noopener noreferrer" className="text-primary underline">lucide.dev/icons</a>
-                    </p>
-                    {!iconExists(renameCategoryIcon) && (
-                      <p className="text-xs text-red-600 mt-1">Icon not found — it will fall back to the Folder icon</p>
-                    )}
-                  </div>
-              </div>
-              <DialogFooter className="flex justify-between items-center">
-                <div className="flex-1 flex justify-start">
-                  <Button
-                    variant="destructive"
-                    onClick={() => selectedCategory && openDeleteConfirm(selectedCategory.id)}
-                    disabled={!selectedCategory}
-                  >
-                    Delete
-                  </Button>
-                </div>
-                <div className="flex-1 flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsCategoryRenameDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      if (selectedCategory && renameCategoryValue.trim()) {
-                        const newId = renameCategoryValue.trim().toLowerCase().replace(/\s+/g, '_');
-                        handleRenameCategory(selectedCategory.id, newId, renameCategoryValue.trim());
-                      }
-                    }}
-                    disabled={
-                      !renameCategoryValue.trim() || (
-                        renameCategoryValue === selectedCategory?.label &&
-                        normalizeIconName(renameCategoryIcon) === (selectedCategory?.icon || 'Folder')
-                      )
-                    }
-                  >
-                    Rename Category
-                  </Button>
-                </div>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {/* Support Tab */}
+          <TabsContent value="support" className="space-y-6 mt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Heart className="h-5 w-5 text-primary" />
+                  Support 3D Model Muncher
+                </CardTitle>
+                <CardDescription>
+                  Help keep this project alive and growing! Your support enables continued development and new features.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Ways to Support */}
+                <div className="space-y-4">
+                  <h3 className="font-medium">Ways to Support</h3>
 
-          {/* Delete Confirmation Dialog */}
-          <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Confirm Delete Category</DialogTitle>
-                <DialogDescription>
-                  {pendingDeleteCount} model{pendingDeleteCount !== 1 ? 's' : ''} will be moved to "Uncategorized".
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">This action cannot be undone. Are you sure you want to delete this category?</p>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
-                <Button
-                  variant="destructive"
-                  onClick={async () => {
-                    if (selectedCategory) {
-                      setIsDeleteConfirmOpen(false);
-                      await handleDeleteCategory(selectedCategory.id);
-                    }
-                  }}
-                >
-                  Confirm Delete
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Add Category Dialog */}
-          <Dialog open={isAddCategoryDialogOpen} onOpenChange={setIsAddCategoryDialogOpen}>
-              <DialogContent>
-                <form onSubmit={(e) => { e.preventDefault(); handleConfirmAddCategory(); }}>
-                  <DialogHeader>
-                    <DialogTitle>Add Category</DialogTitle>
-                    <DialogDescription>
-                      Create a new category. This will be saved to your configuration.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2 mt-4 mb-2">
-                      <Label htmlFor="new-category">Category name</Label>
-                      <Input
-                        id="new-category"
-                        value={newCategoryLabel}
-                        onChange={(e) => setNewCategoryLabel(e.target.value)}
-                        placeholder="Enter category name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="new-category-icon">Icon (Lucide name)</Label>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="new-category-icon"
-                          value={newCategoryIcon}
-                          onChange={(e) => setNewCategoryIcon(e.target.value)}
-                          placeholder="e.g. tag, box, heart, alert-circle"
-                        />
-                        <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border">
-                          {(() => {
-                            const IconPreview = getLucideIconComponent(newCategoryIcon);
-                            return <IconPreview className="h-4 w-4 text-muted-foreground" />;
-                          })()}
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        See available icons at <a href="https://lucide.dev/icons" target="_blank" rel="noopener noreferrer" className="text-primary underline">lucide.dev/icons</a>
-                      </p>
-                      {!iconExists(newCategoryIcon) && (
-                        <p className="text-xs text-red-600 mt-1">Icon not found — it will fall back to the Folder icon</p>
-                      )}
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" type="button" onClick={() => setIsAddCategoryDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={!newCategoryLabel.trim()}>
-                      Add Category
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-          </Dialog>
-
-          {/* Tag Models View Dialog */}
-          <Dialog open={!!viewTagModels} onOpenChange={() => setViewTagModels(null)}>
-            <DialogContent className="max-w-4xl">
-              <DialogHeader>
-                <DialogTitle>Models with tag: "{viewTagModels?.name}"</DialogTitle>
-                <DialogDescription>
-                  {viewTagModels?.count} model{viewTagModels?.count !== 1 ? 's' : ''} found
-                </DialogDescription>
-              </DialogHeader>
-              <ScrollArea className="max-h-96 w-full">
-                <div className="p-2">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {viewTagModels?.models.map((model) => (
-                    <div
-                      key={model.id}
-                      className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50 cursor-pointer"
-                      onClick={() => {
-                        onModelClick?.(model);
-                        setViewTagModels(null);
-                      }}
+                  <div className="grid gap-4">
+                    <button
+                      type="button"
+                      onClick={onDonationClick}
+                      aria-label="Donate"
+                      className="w-full text-left flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border border-primary/20 cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:from-primary/10 hover:to-secondary/10 hover:border-2 hover:border-primary hover:bg-primary/6 dark:hover:border-primary dark: hover:bg-primary/900 hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"
                     >
-                      <ImageWithFallback
-                        src={resolveModelThumbnail(model)}
-                        alt={model.name}
-                        className="w-12 h-12 object-cover rounded border"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{model.name}</p>
-                        <div className="flex flex-col text-sm text-muted-foreground">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              {model.category}
-                            </Badge>
-                          </div>
-                          <div>
-                            <span className={model.isPrinted ? 'text-green-600' : 'text-yellow-600'}>
-                              {model.isPrinted ? 'Printed' : 'Not Printed'}
-                            </span>
-                          </div>
+                      <div className="flex items-center justify-center w-12 h-12 bg-primary/10 rounded-lg">
+                        <Heart className="h-6 w-6 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium">Financial Support</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Buy me a coffee or sponsor development through various platforms
+                        </p>
+                      </div>
+                      <span className="hidden sm:inline-flex items-center gap-2">
+                        <Heart className="h-4 w-4" />
+                        Donate
+                      </span>
+                    </button>
+
+                    <a
+                      href="https://github.com/robsturgill/3d-model-muncher"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Star on GitHub"
+                      className="w-full text-left flex items-center gap-4 p-4 bg-muted/30 rounded-lg border cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:bg-muted/50 dark:hover:bg-muted/70 hover:border-2 hover:border-primary hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-center w-12 h-12 bg-muted rounded-lg">
+                        <Star className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium">Star on GitHub</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Show your appreciation and help others discover the project
+                        </p>
+                      </div>
+                      <span className="hidden sm:inline-flex items-center gap-2">
+                        <Github className="h-4 w-4" />
+                        Star
+                      </span>
+                    </a>
+
+                    <a
+                      href="https://github.com/robsturgill/3d-model-muncher"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Contribute on GitHub"
+                      className="w-full text-left flex items-center gap-4 p-4 bg-muted/30 rounded-lg border cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:bg-muted/50 dark:hover:bg-muted/70 hover:border-2 hover:border-primary hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-center w-12 h-12 bg-muted rounded-lg">
+                        <Github className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium">Contribute Code</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Help improve the project by contributing code, reporting bugs, or suggesting features
+                        </p>
+                      </div>
+                      <span className="hidden sm:inline-flex items-center gap-2">
+                        <Github className="h-4 w-4" />
+                        Contribute
+                      </span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Community */}
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+                  <ImageWithFallback
+                    src="/images/munchie-side.png"
+                    alt="Community mascot"
+                    className="w-72 sm:w-[200px] h-auto flex-shrink-0 mx-auto sm:mx-0"
+                  />
+                  <div className="flex-1 w-full flex flex-col justify-center space-y-3 text-left">
+                    <h3 className="font-medium">Join the Community</h3>
+                    <ul className="text-sm text-muted-foreground space-y-2 text-left list-disc list-inside">
+                      <li>Share your 3D printing projects and experiences</li>
+                      <li>Get help from fellow makers and developers</li>
+                      <li>Suggest new features and improvements</li>
+                      <li>Stay updated on the latest releases</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="text-center p-6 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border border-primary/20">
+                  <p className="text-sm text-muted-foreground">
+                    <strong className="text-primary">Thank you</strong> for using 3D Model Muncher!
+                    Your support helps keep this project free and open-source for the entire 3D printing community.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Experimental Tab (lazy loaded from separate file) */}
+          <TabsContent value="experimental" className="space-y-6 mt-0">
+            <Suspense fallback={<div>Loading experimental features...</div>}>
+              <ExperimentalTab categories={localCategories} />
+            </Suspense>
+          </TabsContent>
+        </div>
+      </Tabs>
+
+      {/* Hidden file inputs & Dialogs (unchanged) */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileImport}
+        accept=".json"
+        style={{ display: 'none' }}
+      />
+      <input
+        type="file"
+        ref={backupFileInputRef}
+        onChange={handleBackupFileRestore}
+        accept=".gz,.json"
+        style={{ display: 'none' }}
+      />
+
+      <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Tag</DialogTitle>
+            <DialogDescription>
+              This will rename the tag across all models that use it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rename-tag">New tag name</Label>
+              <Input
+                id="rename-tag"
+                value={renameTagValue}
+                onChange={(e) => setRenameTagValue(e.target.value)}
+                placeholder="Enter new tag name"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => selectedTag && handleRenameTag(selectedTag.name, renameTagValue)}
+              disabled={!renameTagValue.trim() || renameTagValue === selectedTag?.name}
+            >
+              Rename Tag
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCategoryRenameDialogOpen} onOpenChange={setIsCategoryRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Category</DialogTitle>
+            <DialogDescription>
+              This will rename the category across all models that use it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rename-category">New category name</Label>
+              <Input
+                id="rename-category"
+                value={renameCategoryValue}
+                onChange={(e) => setRenameCategoryValue(e.target.value)}
+                placeholder="Enter new category name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="rename-category-icon">Icon (Lucide name)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="rename-category-icon"
+                  value={renameCategoryIcon}
+                  onChange={(e) => setRenameCategoryIcon(e.target.value)}
+                  placeholder="e.g. tag, box, heart, alert-circle"
+                />
+                <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border">
+                  {(() => {
+                    const IconPreview = getLucideIconComponent(renameCategoryIcon);
+                    return <IconPreview className="h-4 w-4 text-muted-foreground" />;
+                  })()}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                See available icons at <a href="https://lucide.dev/icons" target="_blank" rel="noopener noreferrer" className="text-primary underline">lucide.dev/icons</a>
+              </p>
+              {!iconExists(renameCategoryIcon) && (
+                <p className="text-xs text-red-600 mt-1">Icon not found — it will fall back to the Folder icon</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="flex justify-between items-center">
+            <div className="flex-1 flex justify-start">
+              <Button
+                variant="destructive"
+                onClick={() => selectedCategory && openDeleteConfirm(selectedCategory.id)}
+                disabled={!selectedCategory}
+              >
+                Delete
+              </Button>
+            </div>
+            <div className="flex-1 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsCategoryRenameDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedCategory && renameCategoryValue.trim()) {
+                    const newId = renameCategoryValue.trim().toLowerCase().replace(/\s+/g, '_');
+                    handleRenameCategory(selectedCategory.id, newId, renameCategoryValue.trim());
+                  }
+                }}
+                disabled={
+                  !renameCategoryValue.trim() || (
+                    renameCategoryValue === selectedCategory?.label &&
+                    normalizeIconName(renameCategoryIcon) === (selectedCategory?.icon || 'Folder')
+                  )
+                }
+              >
+                Rename Category
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Delete Category</DialogTitle>
+            <DialogDescription>
+              {pendingDeleteCount} model{pendingDeleteCount !== 1 ? 's' : ''} will be moved to "Uncategorized".
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">This action cannot be undone. Are you sure you want to delete this category?</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (selectedCategory) {
+                  setIsDeleteConfirmOpen(false);
+                  await handleDeleteCategory(selectedCategory.id);
+                }
+              }}
+            >
+              Confirm Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isAddCategoryDialogOpen} onOpenChange={setIsAddCategoryDialogOpen}>
+        <DialogContent>
+          <form onSubmit={(e) => { e.preventDefault(); handleConfirmAddCategory(); }}>
+            <DialogHeader>
+              <DialogTitle>Add Category</DialogTitle>
+              <DialogDescription>
+                Create a new category. This will be saved to your configuration.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2 mt-4 mb-2">
+                <Label htmlFor="new-category">Category name</Label>
+                <Input
+                  id="new-category"
+                  value={newCategoryLabel}
+                  onChange={(e) => setNewCategoryLabel(e.target.value)}
+                  placeholder="Enter category name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-category-icon">Icon (Lucide name)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="new-category-icon"
+                    value={newCategoryIcon}
+                    onChange={(e) => setNewCategoryIcon(e.target.value)}
+                    placeholder="e.g. tag, box, heart, alert-circle"
+                  />
+                  <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border">
+                    {(() => {
+                      const IconPreview = getLucideIconComponent(newCategoryIcon);
+                      return <IconPreview className="h-4 w-4 text-muted-foreground" />;
+                    })()}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  See available icons at <a href="https://lucide.dev/icons" target="_blank" rel="noopener noreferrer" className="text-primary underline">lucide.dev/icons</a>
+                </p>
+                {!iconExists(newCategoryIcon) && (
+                  <p className="text-xs text-red-600 mt-1">Icon not found — it will fall back to the Folder icon</p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setIsAddCategoryDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!newCategoryLabel.trim()}>
+                Add Category
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!viewTagModels} onOpenChange={() => setViewTagModels(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Models with tag: "{viewTagModels?.name}"</DialogTitle>
+            <DialogDescription>
+              {viewTagModels?.count} model{viewTagModels?.count !== 1 ? 's' : ''} found
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-96 w-full">
+            <div className="p-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {viewTagModels?.models.map((model) => (
+                  <div
+                    key={model.id}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50 cursor-pointer"
+                    onClick={() => {
+                      onModelClick?.(model);
+                      setViewTagModels(null);
+                    }}
+                  >
+                    <ImageWithFallback
+                      src={resolveModelThumbnail(model)}
+                      alt={model.name}
+                      className="w-12 h-12 object-cover rounded border"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{model.name}</p>
+                      <div className="flex flex-col text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {model.category}
+                          </Badge>
+                        </div>
+                        <div>
+                          <span className={model.isPrinted ? 'text-green-600' : 'text-yellow-600'}>
+                            {model.isPrinted ? 'Printed' : 'Not Printed'}
+                          </span>
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-              </ScrollArea>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </ScrollArea>
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      <AutoImportDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+      />
+      <CollectionEditorDialog
+        collection={editorCollection}
+        categories={categories}
+        onSave={handleSaveCollection}
+        onDelete={handleDeleteCollection}
+        open={isEditorOpen}
+        onOpenChange={setIsEditorOpen}
+      />
     </div>
   );
 }

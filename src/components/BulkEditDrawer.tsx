@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Model } from "../types/model";
 import { Category } from "../types/category";
+import { Collection } from "../types/collection";
 import {
   Sheet,
   SheetContent,
@@ -44,12 +45,14 @@ import {
   RefreshCw,
   Layers,
   CircleCheckBig,
-  FileCog
+  FileCog,
+  Library
 } from "lucide-react";
 import { ImagePlus } from "lucide-react";
 import { RendererPool } from "../utils/rendererPool";
 import { AlertCircle } from "lucide-react";
 import TagsInput from "./TagsInput";
+import { toast } from 'sonner';
 
 interface BulkEditDrawerProps {
   models: Model[];
@@ -68,6 +71,9 @@ interface BulkEditDrawerProps {
   // Optional configured models directory (from app config). Used to
   // normalize related file paths when saving (strip leading directory).
   modelDirectory?: string;
+  collectionsList: Collection[]; // List of all collections
+  pendingBulkCollectionId: string | null;
+  onBulkEditComplete: () => void;
 }
 
 interface BulkEditState {
@@ -97,6 +103,8 @@ interface BulkEditState {
   relatedHideOthers?: boolean;
   relatedIncluded?: string[];
   relatedClearAll?: boolean;
+  collectionId?: string | null;
+  collectionAction?: 'add' | 'remove' | 'none';
 }
 
 interface FieldSelection {
@@ -115,6 +123,7 @@ interface FieldSelection {
   generateImages: boolean;
   regenerateMunchie: boolean;
   relatedFiles: boolean;
+  collection: boolean;
 }
 
 export function BulkEditDrawer({
@@ -128,6 +137,9 @@ export function BulkEditDrawer({
   onClearSelections,
   categories,
   modelDirectory,
+  collectionsList,
+  pendingBulkCollectionId,
+  onBulkEditComplete,
 }: BulkEditDrawerProps) {
   // keep categories referenced to avoid TypeScript unused prop error (it's passed from parent)
   void categories;
@@ -151,6 +163,7 @@ export function BulkEditDrawer({
       generateImages: false,
       regenerateMunchie: false,
       relatedFiles: false,
+      collection: false,
     });
   // Tags add UI now handled via shared TagsInput
   const [isSaving, setIsSaving] = useState(false);
@@ -252,6 +265,22 @@ export function BulkEditDrawer({
 
   const commonValues = getCommonValues();
   const allTags = getAllTags();
+  
+  // --- NEW HANDLER: Find collection name for UI alerts ---
+  const getPendingCollectionName = (id: string | null): string => {
+    if (!id) return 'the new collection';
+    return collectionsList.find(c => c.id === id)?.name || 'the new collection';
+  };
+
+  // --- NEW HANDLER: Set target collection ID ---
+  const handleCollectionChange = (value: string) => {
+    setEditState(prev => ({ ...prev, collectionId: value }));
+  };
+
+  // --- NEW HANDLER: Set bulk action (add/remove) ---
+  const handleCollectionActionChange = (value: 'add' | 'remove') => {
+    setEditState(prev => ({ ...prev, collectionAction: value }));
+  };
 
   // Reset state when models change or drawer opens
   useEffect(() => {
@@ -264,6 +293,8 @@ export function BulkEditDrawer({
         relatedPrimary: models.length > 0 ? uniqueKeyForModel(models[0]) : undefined,
         relatedHideOthers: false,
         relatedClearAll: false,
+        collectionId: pendingBulkCollectionId,
+        collectionAction: pendingBulkCollectionId ? 'add' : 'none',
       });
       setFieldSelection({
         category: false,
@@ -281,6 +312,7 @@ export function BulkEditDrawer({
         generateImages: false,
         regenerateMunchie: false,
         relatedFiles: false,
+        collection: !!pendingBulkCollectionId,
       });
   // no-op: TagsInput controls add list
   setRelatedIncludedIds(models.map((m) => uniqueKeyForModel(m)));
@@ -628,6 +660,38 @@ export function BulkEditDrawer({
         // This will be handled in the parent component
         (updates as any).bulkTagChanges = editState.tags;
       }
+      
+      // --- NEW: Handle Collection Changes ---
+      const hasCollectionChanges = fieldSelection.collection && editState.collectionId && editState.collectionAction && editState.collectionAction !== 'none';
+      if (hasCollectionChanges) {
+          try {
+              const modelIdsToUpdate = models.map(m => m.id);
+              const collectionUpdate = {
+                  collectionId: editState.collectionId,
+                  action: editState.collectionAction, // 'add' or 'remove'
+                  modelIds: modelIdsToUpdate,
+              };
+
+              const response = await fetch('/api/collections/bulk-update', { 
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(collectionUpdate),
+              });
+              
+              const result = await response.json();
+              if (!result.success) {
+                  throw new Error(result.error || 'Failed to update collection models');
+              }
+              toast.success(`Collection membership updated: ${editState.collectionAction === 'add' ? 'Added' : 'Removed'} ${modelIdsToUpdate.length} models.`);
+
+              // IMPORTANT: Signal the App to refresh its list of collections
+              window.dispatchEvent(new Event('collection-updated'));
+
+          } catch (error) {
+              console.error('Failed to update collection membership:', error);
+              toast.error(`Collection update failed: ${String(error)}`);
+          }
+      }
 
       // Handle regenerate munchie files first if selected
       if (fieldSelection.regenerateMunchie) {
@@ -882,6 +946,12 @@ export function BulkEditDrawer({
         onClearSelections();
       }
 
+      // --- CRITICAL ADDITION: Clear pending collection state on success ---
+      if (pendingBulkCollectionId && onBulkEditComplete) {
+          onBulkEditComplete();
+      }
+      // ---
+
       // Close the drawer after successful save
       onClose();
     } catch (error) {
@@ -975,6 +1045,80 @@ export function BulkEditDrawer({
             </div>
 
             <Separator />
+            
+            {/* --- NEW: Collection Assignment Field --- */}
+            <div className="space-y-4">
+                <div className="flex items-center space-x-3">
+                    <Checkbox
+                        id="collection-field"
+                        checked={fieldSelection.collection}
+                        disabled={disableOtherFieldControls}
+                        onCheckedChange={() => handleFieldToggle("collection")}
+                    />
+                    <Label
+                        htmlFor="collection-field"
+                        className="font-medium flex items-center gap-2"
+                    >
+                        <Library className="h-4 w-4" />
+                        Collection Assignment
+                    </Label>
+                </div>
+
+                {fieldSelection.collection && (
+                    <div className="ml-6 space-y-3">
+                        
+                        {/* Prompt when opening from a fresh "Create Collection" flow */}
+                        {pendingBulkCollectionId && (
+                            <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
+                                <AlertTitle>Action Pending</AlertTitle>
+                                <AlertDescription>
+                                    Bulk action is queued for **{getPendingCollectionName(pendingBulkCollectionId)}**.
+                                    Your currently selected models will be {editState.collectionAction === 'remove' ? 'removed from' : 'added to'} this collection upon saving.
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Collection</Label>
+                            <Select
+                                value={editState.collectionId || ''}
+                                onValueChange={handleCollectionChange}
+                                disabled={isSaving || isGeneratingImages}
+                            >
+                                <SelectTrigger><SelectValue placeholder="Select target collection" /></SelectTrigger>
+                                <SelectContent>
+                                    {collectionsList.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            {c.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Action</Label>
+                            <Select
+                                value={editState.collectionAction || 'none'}
+                                onValueChange={handleCollectionActionChange}
+                                disabled={isSaving || isGeneratingImages || !editState.collectionId}
+                            >
+                                <SelectTrigger><SelectValue placeholder="Select action" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="add">Add selected models to collection</SelectItem>
+                                    <SelectItem value="remove">Remove selected models from collection</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground">
+                            This action modifies the membership of the selected collection, not the model metadata files.
+                        </p>
+                    </div>
+                )}
+            </div>
+            <Separator />
+            
             {/* Category Field */}
             <div className="space-y-4">
               <div className="flex items-center space-x-3">

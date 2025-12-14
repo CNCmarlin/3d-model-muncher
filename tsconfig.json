@@ -15,7 +15,14 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["vite/client", "node", "three", "@react-three/fiber"],  },
-  "include": ["src"],
+    // --- NEW SETTINGS ---
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    // --------------------
+    "types": ["vite/client", "node", "three"],  },
+  "include": ["src", "server-utils/collectionQueue.js"],
   "exclude": ["node_modules", "dist-backend", "build"]
 }
