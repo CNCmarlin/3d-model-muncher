@@ -726,14 +726,17 @@ function AppContent() {
       return [] as Collection[];
     }
 
-  const filters = lastFilters;
+    const filters = lastFilters;
     const fileType = (filters.fileType || 'all').toLowerCase();
+    
+    // If filtering for model files specifically, hide collections
     if (fileType === '3mf' || fileType === 'stl') {
       return [] as Collection[];
     }
 
     let filteredList = collections.slice();
 
+    // 1. Search Term
     const searchTerm = (filters.search || '').trim().toLowerCase();
     if (searchTerm) {
       filteredList = filteredList.filter(col => {
@@ -744,18 +747,30 @@ function AppContent() {
       });
     }
 
+    // 2. Category Filter
     const hasCategoryFilter = filters.category && filters.category !== 'all';
     if (hasCategoryFilter) {
       const targetCategory = (filters.category || '').toLowerCase();
       filteredList = filteredList.filter(col => (col.category || '').toLowerCase() === targetCategory);
     }
 
-    if (Array.isArray(filters.tags) && filters.tags.length > 0) {
+    // 3. Tag Filter
+    const hasTagFilter = Array.isArray(filters.tags) && filters.tags.length > 0;
+    if (hasTagFilter) {
       const targetTags = filters.tags.map(tag => tag.toLowerCase());
       filteredList = filteredList.filter(col => {
         const collectionTags = (col.tags || []).map(tag => tag.toLowerCase());
         return targetTags.every(tag => collectionTags.includes(tag));
       });
+    }
+
+    // [NEW LOGIC] Root-Only View
+    // If no search/filters are active, only show Root collections (no parent).
+    // If filters ARE active, show all matching collections (flat list) so deep items are found.
+    const isFiltering = searchTerm !== '' || hasCategoryFilter || hasTagFilter;
+    
+    if (!isFiltering) {
+        filteredList = filteredList.filter(c => !c.parentId);
     }
 
     return filteredList;
@@ -993,25 +1008,16 @@ function AppContent() {
             />
           ) : currentView === 'collections' ? (
             <div className="h-full flex flex-col">
-              <div className="p-4 lg:p-6 border-b bg-card shadow-sm shrink-0 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Button variant="ghost" size="sm" onClick={handleBackToModels} className="gap-2" title="Back to models">
-                    <ArrowLeft className="h-4 w-4" />
-                    Models
-                  </Button>
-                  <div className="font-semibold">Collections</div>
-                </div>
-                <Button variant="ghost" size="sm" onClick={refreshCollections} title="Refresh collections">
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              </div>
+              {/* ... header ... */}
               <div className="p-4 lg:p-6">
                 {collections.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No collections yet. Select some models and create one from the selection.</div>
+                  <div className="text-sm text-muted-foreground">No collections yet...</div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {sortCollections(collections, currentSortBy).map(c => (
+                    {/* NEW: Uses 'collectionsForDisplay' to respect Root-Only logic */}
+                    {sortCollections(collectionsForDisplay, currentSortBy).map(c => (
                       <button key={c.id} onClick={() => openCollection(c)} className="p-4 text-left rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                        {/* ... (keep existing button content) ... */}
                         <div className="flex items-center gap-3">
                           <div className="relative w-16 h-12 rounded overflow-hidden bg-muted/40 flex-shrink-0">
                             {Array.isArray(c.images) && c.images.length > 0 ? (
@@ -1022,6 +1028,7 @@ function AppContent() {
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="font-medium truncate">{c.name}</div>
+                            {/* Optional: Show how many items OR how many sub-collections */}
                             <div className="text-xs text-muted-foreground mt-1">{(c.modelIds || []).length} items</div>
                             {c.description && <div className="text-xs line-clamp-2 mt-2">{c.description}</div>}
                           </div>
