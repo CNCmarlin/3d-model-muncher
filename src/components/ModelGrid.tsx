@@ -17,6 +17,8 @@ import { Badge } from "./ui/badge";
 import CollectionEditDrawer from "./CollectionEditDrawer";
 import { SortKey, getModelTimestamp, getCollectionTimestamp } from "../utils/sortUtils";
 import { SelectionModeControls } from "./SelectionModeControls";
+import { ThingiverseImportDialog } from './ThingiverseImportDialog';
+import { CloudDownload } from 'lucide-react'; // Import Icon
 
 interface ModelGridProps {
   models: Model[];
@@ -95,6 +97,8 @@ export function ModelGrid({
   });
 
   const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
+
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   const handleViewModeChange = (newMode: ViewMode) => {
     setViewMode(newMode);
@@ -222,6 +226,19 @@ export function ModelGrid({
               onSelectAll={onSelectAll}
               onDeselectAll={onDeselectAll}
             />
+            {/* [NEW] Import Button - Visible when NOT in selection mode */}
+            {!isSelectionMode && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImportOpen(true)}
+                className="gap-2"
+                title="Import from Thingiverse"
+              >
+                <CloudDownload className="h-4 w-4" />
+                <span className="hidden sm:inline">Import</span>
+              </Button>
+            )}
             {viewMode === 'grid' && !isSelectionMode && (
               <div className="flex items-center gap-3 min-w-0 hidden md:flex">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -238,6 +255,8 @@ export function ModelGrid({
           </div>
         </div>
       </div>
+
+
       
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-4 lg:p-6 pb-8 lg:pb-12">
@@ -598,6 +617,15 @@ export function ModelGrid({
           )}
         </div>
       </ScrollArea>
+      {/* [NEW] Thingiverse Import Dialog */}
+      <ThingiverseImportDialog
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImportComplete={() => {
+          // Trigger a refresh of the model list
+          onCollectionChanged?.();
+        }}
+      />
       {/* Create Collection Drawer (uses CollectionEditDrawer) */}
       <CollectionEditDrawer
         open={isCreateCollectionOpen}

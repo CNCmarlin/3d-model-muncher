@@ -1775,6 +1775,62 @@ app.post('/api/generate-thumbnails', async (req, res) => {
   }
 });
 
+// --- API: Import from Thingiverse ---
+app.post('/api/import/thingiverse', async (req, res) => {
+  try {
+    const { thingId, targetFolder = 'imported', collectionId, category } = req.body;
+    
+    if (!thingId) return res.status(400).json({ success: false, error: 'No Thing ID provided' });
+    const token = process.env.THINGIVERSE_TOKEN;
+    if (!token) return res.status(500).json({ success: false, error: 'Server missing THINGIVERSE_TOKEN' });
+
+    // Import Utility - Dynamic require allows server to start even if backend isn't built yet
+    let ThingiverseImporter;
+    try {
+        const module = require('./dist-backend/utils/thingiverseImporter');
+        ThingiverseImporter = module.ThingiverseImporter;
+    } catch (e) {
+        return res.status(500).json({ success: false, error: 'Backend not rebuilt. Run "npm run build:backend"' });
+    }
+
+    // 1. Perform Import
+    const importer = new ThingiverseImporter(token);
+    const modelData = await importer.importThing(thingId, getAbsoluteModelsPath(), targetFolder);
+
+    // 2. Apply User Category (if selected)
+    if (category && category !== 'Uncategorized') {
+        modelData.category = category;
+        const modelsRoot = getAbsoluteModelsPath();
+        // Construct full path to the json file we just wrote
+        const jsonPath = modelData.filePath.endsWith('.json') 
+            ? modelData.filePath 
+            : modelData.filePath.replace(/\.(3mf|stl)$/i, modelData.filePath.toLowerCase().endsWith('.stl') ? '-stl-munchie.json' : '-munchie.json');
+            
+        const fullJsonPath = path.join(modelsRoot, jsonPath);
+        fs.writeFileSync(fullJsonPath, JSON.stringify(modelData, null, 2));
+    }
+
+    // 3. Add to Collection (if selected)
+    if (collectionId) {
+        const cols = loadCollections();
+        const colIndex = cols.findIndex(c => c.id === collectionId);
+        if (colIndex !== -1) {
+            const col = cols[colIndex];
+            if (!col.modelIds.includes(modelData.id)) {
+                col.modelIds.push(modelData.id);
+                if (!col.coverModelId) col.coverModelId = modelData.id;
+                saveCollections(cols);
+            }
+        }
+    }
+
+    res.json({ success: true, model: modelData });
+  } catch (e) {
+    console.error('Thingiverse Import Error:', e);
+    res.status(500).json({ success: false, error: e.message || String(e) });
+  }
+});
+
 // API endpoint to upload .3mf / .stl files and generate their munchie.json files
 app.post('/api/upload-models', upload.array('files'), async (req, res) => {
   try {
