@@ -59,8 +59,8 @@
             "vaul": "^1.1.2"
       },
       "devDependencies": {
-            "@react-three/drei": "^9.86.7",
-            "@react-three/fiber": "^8.13.7",
+            "@react-three/drei": "^9.122.0",
+            "@react-three/fiber": "^8.18.0",
             "@semantic-release/changelog": "^6.0.3",
             "@semantic-release/git": "^10.0.1",
             "@testing-library/jest-dom": "^6.4.5",
