@@ -8,6 +8,9 @@ const multer = require('multer');
 try { require('dotenv').config(); } catch (e) { /* dotenv not installed or not needed in production */ }
 const { scanDirectory } = require('./dist-backend/utils/threeMFToJson');
 const { ConfigManager } = require('./dist-backend/utils/configManager');
+const { CollectionQueue } = require('./server-utils/collectionQueue');
+const { scanDirectory: scanCollections } = require('./server-utils/collectionScanner');
+
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -192,15 +195,22 @@ function saveCollections(collections) {
   }
 }
 
+// Add this immediately after the saveCollections function
+const collectionQueue = new CollectionQueue(loadCollections, saveCollections);
+
 // Reconcile model hidden flags: any model that is not a member of any collection
 // should not remain hidden. We scan all collections to compute the complete set
 // of member IDs, then iterate munchie files and clear `hidden` when an ID is
 // not present in any collection. This is intended to keep the main library
 // visible unless a model is part of a set/collection.
+// Reconcile model hidden flags: ensure models in collections are hidden,
+// and models NOT in collections are visible.
 function reconcileHiddenFlags() {
   try {
     const cols = loadCollections();
     const inAnyCollection = new Set();
+    
+    // 1. Build Index of all 'Collected' models
     for (const c of cols) {
       const ids = Array.isArray(c?.modelIds) ? c.modelIds : [];
       for (const id of ids) {
@@ -209,27 +219,49 @@ function reconcileHiddenFlags() {
     }
 
     const modelsRoot = getAbsoluteModelsPath();
+    
+    // 2. Scan and Enforce Rules
     (function scan(dir) {
       let entries = [];
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { /* ignore */ }
+      
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) { scan(full); continue; }
+        if (entry.isDirectory()) { 
+          scan(full); 
+          continue; 
+        }
+        
         if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
           try {
             const raw = fs.readFileSync(full, 'utf8');
             const data = raw ? JSON.parse(raw) : null;
             if (!data || typeof data !== 'object') continue;
+            
             const id = data.id;
             if (!id || typeof id !== 'string') continue;
-            // If currently hidden but not in any collection, unhide
-            if (data.hidden === true && !inAnyCollection.has(id)) {
+
+            let changed = false;
+            const shouldBeHidden = inAnyCollection.has(id);
+
+            // Rule A: If in a collection but visible -> HIDE IT
+            if (shouldBeHidden && data.hidden !== true) {
+              data.hidden = true;
+              changed = true;
+            }
+            // Rule B: If not in a collection but hidden -> SHOW IT
+            else if (!shouldBeHidden && data.hidden === true) {
               data.hidden = false;
+              changed = true;
+            }
+
+            if (changed) {
               try { data.lastModified = new Date().toISOString(); } catch {}
               const safeTarget = protectModelFileWrite(full);
               const tmp = safeTarget + '.tmp';
               fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
               fs.renameSync(tmp, safeTarget);
+              // Optional: Post-process to ensure data integrity
               try { postProcessMunchieFile(safeTarget); } catch {}
             }
           } catch { /* ignore per-file errors */ }
@@ -268,185 +300,166 @@ app.get('/api/collections', (req, res) => {
   }
 });
 
-// Create or update a collection
-app.post('/api/collections', (req, res) => {
+// Create or update a collection (Refactored to use Queue)
+app.post('/api/collections', async (req, res) => {
   try {
-    const { id, name, description = '', modelIds = [], childCollectionIds = [], parentId = null, coverModelId, category = '', tags = [], images = [] } = req.body || {};    if (!name || typeof name !== 'string' || name.trim() === '') {
+    const { id, name, description = '', modelIds = [], childCollectionIds = [], parentId = null, coverModelId, category = '', tags = [], images = [] } = req.body || {};
+
+    if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ success: false, error: 'Name is required' });
     }
-    if (!Array.isArray(modelIds)) {
-      return res.status(400).json({ success: false, error: 'modelIds must be an array' });
-    }
-
-    const now = new Date().toISOString();
-    const normalizedIds = Array.from(new Set(modelIds.filter(x => typeof x === 'string' && x.trim() !== '')));
-
-    const cols = loadCollections();
-    let result;
-    if (id) {
-      const idx = cols.findIndex(c => c.id === id);
-      if (idx === -1) {
-        return res.status(404).json({ success: false, error: 'Collection not found' });
-      }
-      const prev = cols[idx] || { modelIds: [] };
-      // Ensure childCollectionIds is an array of strings
+    
+    // We wrap the logic in a Task function for the Queue
+    const updateTask = (currentCols) => {
+      const now = new Date().toISOString();
+      const normalizedIds = Array.from(new Set(modelIds.filter(x => typeof x === 'string' && x.trim() !== '')));
       const normalizedChildren = Array.isArray(childCollectionIds) ? childCollectionIds.filter(x => typeof x === 'string') : [];
-
-      const updated = { 
-      ...prev, 
-      name, 
-      description, 
-      modelIds: normalizedIds, 
-      childCollectionIds: normalizedChildren,
-      parentId: parentId,
-      coverModelId, 
-      lastModified: now 
-      };
-      if (typeof category === 'string') updated.category = category;
-      if (Array.isArray(tags)) updated.tags = Array.from(new Set(tags.filter(t => typeof t === 'string')));
-      if (Array.isArray(images)) updated.images = images.filter(s => typeof s === 'string');
-      cols[idx] = updated;
-      if (!saveCollections(cols)) return res.status(500).json({ success: false, error: 'Failed to save collection' });
-      // Hide any newly added models (those present in updated.modelIds but not in prev.modelIds)
-      try {
-        const before = new Set(Array.isArray(prev.modelIds) ? prev.modelIds : []);
-        const added = (Array.isArray(updated.modelIds) ? updated.modelIds : []).filter(mid => !before.has(mid));
-        if (added.length > 0) {
-          const modelsRoot = getAbsoluteModelsPath();
-          const idToJsonPath = new Map();
-          (function scan(dir) {
-            let entries = [];
-            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch {}
-            for (const entry of entries) {
-              const full = path.join(dir, entry.name);
-              if (entry.isDirectory()) { scan(full); continue; }
-              if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
-                try {
-                  const raw = fs.readFileSync(full, 'utf8');
-                  const parsed = raw ? JSON.parse(raw) : null;
-                  if (parsed && typeof parsed.id === 'string') {
-                    idToJsonPath.set(parsed.id, full);
-                  }
-                } catch { /* ignore */ }
-              }
-            }
-          })(modelsRoot);
-          for (const mid of added) {
-            const jsonPath = idToJsonPath.get(mid);
-            if (!jsonPath) continue;
-            try {
-              const raw = fs.existsSync(jsonPath) ? fs.readFileSync(jsonPath, 'utf8') : '';
-              const data = raw ? JSON.parse(raw) : {};
-              if (!data || typeof data !== 'object') continue;
-              if (data.hidden === true) continue;
-              data.hidden = true;
-              try { data.lastModified = new Date().toISOString(); } catch {}
-              const safeTarget = protectModelFileWrite(jsonPath);
-              const tmp = safeTarget + '.tmp';
-              fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-              fs.renameSync(tmp, safeTarget);
-              try { postProcessMunchieFile(safeTarget); } catch {}
-            } catch (e) {
-              console.warn('Failed to mark model hidden when updating collection:', mid, e && e.message ? e.message : e);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Error while marking models hidden during collection update:', e && e.message ? e.message : e);
+      
+      let updatedCols = [...currentCols]; // Work on a copy
+      
+      if (id) {
+        // UPDATE Existing
+        const idx = updatedCols.findIndex(c => c.id === id);
+        if (idx === -1) throw new Error('Collection not found');
+        
+        const prev = updatedCols[idx];
+        const updated = {
+          ...prev,
+          name, description, modelIds: normalizedIds, childCollectionIds: normalizedChildren,
+          parentId, coverModelId, lastModified: now
+        };
+        if (category) updated.category = category;
+        if (tags) updated.tags = tags;
+        if (images) updated.images = images;
+        
+        updatedCols[idx] = updated;
+      } else {
+        // CREATE New
+        const newCol = {
+          id: makeId(),
+          name, description, modelIds: normalizedIds, childCollectionIds: normalizedChildren,
+          parentId, coverModelId, category, tags, images,
+          created: now, lastModified: now
+        };
+        updatedCols.push(newCol);
       }
-      // After update, ensure models no longer in any collection are unhidden
-      try { reconcileHiddenFlags(); } catch {}
-      result = updated;
-    } else {
-      // Ensure childCollectionIds is an array of strings
-      const normalizedChildren = Array.isArray(childCollectionIds) ? childCollectionIds.filter(x => typeof x === 'string') : [];
+      
+      return updatedCols;
+    };
 
-      const newCol = { 
-      id: makeId(), 
-      name, 
-      description, 
-      modelIds: normalizedIds, 
-      childCollectionIds: normalizedChildren,
-      parentId: parentId,
-      coverModelId, 
-      category, 
-      tags: Array.isArray(tags) ? Array.from(new Set(tags.filter(t => typeof t === 'string'))) : [], 
-      images: Array.isArray(images) ? images.filter(s => typeof s === 'string') : [], 
-      created: now, 
-      lastModified: now 
-      };      cols.push(newCol);
-      if (!saveCollections(cols)) return res.status(500).json({ success: false, error: 'Failed to save collection' });
-      // Newly created collection: mark included models as hidden in their munchie files
-      try {
-        const modelsRoot = getAbsoluteModelsPath();
-        // Build an index of munchie files by model id for faster lookup
-        const idToJsonPath = new Map();
-        (function scan(dir) {
-          let entries = [];
-          try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch {}
-          for (const entry of entries) {
-            const full = path.join(dir, entry.name);
-            if (entry.isDirectory()) { scan(full); continue; }
-            if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
-              try {
-                const raw = fs.readFileSync(full, 'utf8');
-                const parsed = raw ? JSON.parse(raw) : null;
-                if (parsed && typeof parsed.id === 'string') {
-                  idToJsonPath.set(parsed.id, full);
-                }
-              } catch { /* ignore parse errors */ }
-            }
-          }
-        })(modelsRoot);
+    // Execute via Queue
+    await collectionQueue.add(updateTask);
+    
+    // Fetch result to return to client
+    const freshCols = loadCollections();
+    const savedItem = id ? freshCols.find(c => c.id === id) : freshCols[freshCols.length - 1];
+    
+    // Note: Reconcile logic (unhiding models) is kept separate/async to avoid blocking response too long,
+    // or you can add it here if strict consistency is needed.
+    setTimeout(() => { try { reconcileHiddenFlags(); } catch {} }, 10);
 
-        for (const mid of normalizedIds) {
-          const jsonPath = idToJsonPath.get(mid);
-          if (!jsonPath) continue;
-          try {
-            const raw = fs.existsSync(jsonPath) ? fs.readFileSync(jsonPath, 'utf8') : '';
-            const data = raw ? JSON.parse(raw) : {};
-            if (!data || typeof data !== 'object') continue;
-            if (data.hidden === true) continue; // already hidden
-            data.hidden = true;
-            // Keep created if present; update lastModified
-            try { data.lastModified = new Date().toISOString(); } catch {}
-            const safeTarget = protectModelFileWrite(jsonPath);
-            const tmp = safeTarget + '.tmp';
-            fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-            fs.renameSync(tmp, safeTarget);
-            try { postProcessMunchieFile(safeTarget); } catch {}
-          } catch (e) {
-            console.warn('Failed to mark model hidden for collection creation:', mid, e && e.message ? e.message : e);
-          }
-        }
-      } catch (e) {
-        console.warn('Error while marking models hidden during collection creation:', e && e.message ? e.message : e);
-      }
-      // After creation, also reconcile to unhide anything not in any collection
-      try { reconcileHiddenFlags(); } catch {}
-      result = newCol;
-    }
-    res.json({ success: true, collection: result });
+    res.json({ success: true, collection: savedItem });
+
   } catch (e) {
     console.error('/api/collections error:', e);
-    res.status(500).json({ success: false, error: 'Server error' });
+    const status = e.message === 'Collection not found' ? 404 : 500;
+    res.status(status).json({ success: false, error: e.message || 'Server error' });
   }
 });
 
 // Delete a collection
-app.delete('/api/collections/:id', (req, res) => {
+app.delete('/api/collections/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const cols = loadCollections();
-    const idx = cols.findIndex(c => c.id === id);
-    if (idx === -1) return res.status(404).json({ success: false, error: 'Not found' });
-    const removed = cols.splice(idx, 1)[0];
-    if (!saveCollections(cols)) return res.status(500).json({ success: false, error: 'Failed to save collections' });
-    // After deletion, some models may no longer belong to any collection; unhide them
+    
+    const deleteTask = (currentCols) => {
+      const idx = currentCols.findIndex(c => c.id === id);
+      if (idx === -1) throw new Error('Not found');
+      
+      const updatedCols = [...currentCols];
+      updatedCols.splice(idx, 1);
+      return updatedCols;
+    };
+
+    await collectionQueue.add(deleteTask);
     try { reconcileHiddenFlags(); } catch {}
-    res.json({ success: true, deleted: removed });
+    res.json({ success: true, deletedId: id });
+    
   } catch (e) {
-    res.status(500).json({ success: false, error: 'Server error' });
+    const status = e.message === 'Not found' ? 404 : 500;
+    res.status(status).json({ success: false, error: e.message });
+  }
+});
+
+// API: Auto-Import Collections from Directory
+app.post('/api/collections/auto-import', async (req, res) => {
+  try {
+    const { targetFolder, strategy = 'smart' } = req.body; 
+    const modelsDir = getAbsoluteModelsPath();
+    
+    // 1. Determine directory to scan
+    let scanRoot = modelsDir;
+    if (targetFolder) {
+      if (targetFolder.includes('..')) return res.status(400).json({success: false, error: 'Invalid path'});
+      scanRoot = path.join(modelsDir, targetFolder);
+    }
+
+    if (!fs.existsSync(scanRoot)) {
+      return res.status(404).json({ success: false, error: 'Directory not found' });
+    }
+
+    console.log(`[Auto-Import] Scanning ${scanRoot} with strategy: ${strategy}`);
+
+    // 2. Run the Scanner
+    const discoveredCollections = scanCollections(scanRoot, modelsDir, { strategy });
+    
+    if (discoveredCollections.length === 0) {
+      return res.json({ success: true, message: 'No new collections found.', count: 0 });
+    }
+
+    // 3. Queue the Merge Logic
+    const mergeTask = (currentCols) => {
+      const updatedCols = [...currentCols];
+      let added = 0;
+      let updated = 0;
+
+      for (const importCol of discoveredCollections) {
+        const existingIdx = updatedCols.findIndex(c => c.id === importCol.id);
+        
+        if (existingIdx !== -1) {
+          // UPDATE existing: Merge modelIds, preserve user edits to name/desc
+          const existing = updatedCols[existingIdx];
+          const mergedIds = [...new Set([...existing.modelIds, ...importCol.modelIds])];
+          
+          updatedCols[existingIdx] = {
+            ...existing,
+            modelIds: mergedIds,
+            // Only update parentId if it wasn't set or matches old import logic
+            parentId: existing.parentId || importCol.parentId, 
+            lastModified: new Date().toISOString()
+          };
+          updated++;
+        } else {
+          // CREATE new
+          updatedCols.push(importCol);
+          added++;
+        }
+      }
+      console.log(`[Auto-Import] Merge complete. Added: ${added}, Updated: ${updated}`);
+      return updatedCols;
+    };
+
+    await collectionQueue.add(mergeTask);
+
+    res.json({ 
+      success: true, 
+      count: discoveredCollections.length,
+      message: `Import complete. Processed ${discoveredCollections.length} collections.` 
+    });
+
+  } catch (e) {
+    console.error('[Auto-Import] Error:', e);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
