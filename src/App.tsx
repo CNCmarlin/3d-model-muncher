@@ -821,6 +821,14 @@ function AppContent() {
           categories={categories}
           collections={collections}
           onOpenCollection={openCollection}
+          // [NEW] Provide the navigation handler
+          onBackToRoot={() => {
+            setActiveCollection(null);
+            setCurrentView('models');
+            // Optionally clear selection mode if you want a clean slate
+            setIsSelectionMode(false);
+            setSelectedModelIds([]);
+          }}
           models={(currentView === 'collection-view' && activeCollection)
             ? collectionBaseModels
             : models}

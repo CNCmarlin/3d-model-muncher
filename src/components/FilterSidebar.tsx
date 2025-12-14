@@ -1,9 +1,11 @@
+// src/components/FilterSidebar.tsx
 import { useState, useRef, useEffect } from "react";
-import { Search, Filter, Layers, X, Settings, FileText, Eye, CircleCheckBig, FileBox, Tag } from "lucide-react";
+import { Search, Filter, Layers, X, Settings, FileText, Eye, CircleCheckBig, FileBox, Tag, ChevronRight, ChevronDown, LayoutGrid } from "lucide-react";
 import * as LucideIcons from 'lucide-react';
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { LICENSES } from '../constants/licenses';
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -11,7 +13,6 @@ import { Switch } from "./ui/switch";
 import { Category } from "../types/category";
 import { Model } from "../types/model";
 import { ScrollArea } from "./ui/scroll-area";
-import { ChevronRight, ChevronDown, Folder, FolderOpen } from "lucide-react";
 import { Collection } from "../types/collection";
 
 interface FilterSidebarProps {
@@ -26,16 +27,15 @@ interface FilterSidebarProps {
     showMissingImages: boolean;
     sortBy?: string;
   }) => void;
-  // Called specifically when a category button is clicked (user intent),
-  // so parent can perform navigation (e.g., switch from Settings to Models view).
   onCategoryChosen?: (categoryLabel: string) => void;
   isOpen: boolean;
   onClose: () => void;
   onSettingsClick: () => void;
   categories: Category[];
   models: Model[];
-  collections: Collection[];                  // <--- Added
-  onOpenCollection: (col: Collection) => void; // <--- Added
+  collections: Collection[];
+  onOpenCollection: (col: Collection) => void;
+  onBackToRoot?: () => void;
   initialFilters?: {
     search: string;
     category: string;
@@ -49,7 +49,6 @@ interface FilterSidebarProps {
   };
 }
 
-// Helper to normalize user-provided icon names (e.g. "alert-circle" -> "AlertCircle")
 const normalizeIconName = (input?: string) => {
   if (!input) return '';
   const cleaned = input.trim().replace(/\.(svg|js|tsx?)$/i, '').replace(/[^a-z0-9-_ ]/gi, '');
@@ -58,52 +57,15 @@ const normalizeIconName = (input?: string) => {
   return parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join('');
 };
 
-// --- Helper: Build Folder Tree ---
-interface FolderNode {
-  name: string;
-  fullPath: string;
-  children: Record<string, FolderNode>;
-  fileCount: number;
+// --- Collection Tree Helpers ---
+interface CollectionNode {
+  id: string;
+  label: string;
+  fullPath: string; 
+  children: CollectionNode[];
 }
 
-// --- Safe Helper: Build Folder Tree ---
-const buildFolderTree = (models: Model[]): FolderNode => {
-  // SAFETY CHECK: If models is missing, return an empty tree
-  if (!models || !Array.isArray(models)) {
-    return { name: 'Root', fullPath: '', children: {}, fileCount: 0 };
-  }
-
-  const root: FolderNode = { name: 'Root', fullPath: '', children: {}, fileCount: 0 };
-  
-  models.forEach(model => {
-    let pathStr = model.modelUrl || model.filePath || '';
-    pathStr = pathStr.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
-    
-    if (!pathStr) return;
-
-    const parts = pathStr.split('/');
-    parts.pop(); 
-    
-    if (parts.length === 0) return; 
-
-    let current = root;
-    let currentPath = '';
-
-    parts.forEach((part) => {
-      currentPath = currentPath ? `${currentPath}/${part}` : part;
-      if (!current.children[part]) {
-        current.children[part] = { name: part, fullPath: currentPath, children: {}, fileCount: 0 };
-      }
-      current = current.children[part];
-      current.fileCount++;
-    });
-  });
-  return root;
-};
-
-// --- Safe Helper: Build Collection Tree ---
 const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
-  // SAFETY CHECK: If collections is missing, return empty array
   if (!collections || !Array.isArray(collections)) {
     return [];
   }
@@ -111,9 +73,8 @@ const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
   const nodeMap = new Map<string, CollectionNode>();
   const rootNodes: CollectionNode[] = [];
 
-  // 1. Initialize
   collections.forEach(col => {
-    if (!col || !col.id) return; // Skip invalid data
+    if (!col || !col.id) return;
     nodeMap.set(col.id, { 
       id: col.id, 
       label: col.name || 'Unnamed', 
@@ -122,7 +83,6 @@ const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
     });
   });
 
-  // 2. Link
   collections.forEach(col => {
     if (!col || !col.id) return;
     const node = nodeMap.get(col.id);
@@ -130,7 +90,6 @@ const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
 
     if (col.parentId && nodeMap.has(col.parentId)) {
       const parent = nodeMap.get(col.parentId);
-      // Prevent circular crash: ensure parent is not self
       if (parent && parent.id !== node.id) {
         parent.children.push(node);
         node.fullPath = `${parent.fullPath} / ${node.label}`;
@@ -142,7 +101,6 @@ const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
     }
   });
 
-  // 3. Sort
   const sortNodes = (nodes: CollectionNode[]) => {
     nodes.sort((a, b) => a.label.localeCompare(b.label));
     nodes.forEach(n => sortNodes(n.children));
@@ -152,65 +110,11 @@ const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
   return rootNodes;
 };
 
-// --- Helper: Recursive Folder Item Component ---
-const FolderTreeItem = ({ node, level, onSelect }: { node: FolderNode, level: number, onSelect: (path: string) => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const hasChildren = Object.keys(node.children).length > 0;
-
-  return (
-    <div className="w-full select-none">
-      <div 
-        className={`flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer ${level > 0 ? 'ml-3 border-l border-border/50' : ''}`}
-        onClick={(e) => {
-            e.stopPropagation();
-            // Toggle open/close if it has children
-            if(hasChildren) setIsOpen(!isOpen);
-            // Select the folder path
-            onSelect(node.fullPath);
-        }}
-      >
-        {/* Indentation / Arrow */}
-        {hasChildren ? (
-          isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />
-        ) : <span className="w-3" />}
-        
-        {/* Icon */}
-        {isOpen || (!hasChildren && level > 0) ? <FolderOpen className="h-4 w-4 text-primary" /> : <Folder className="h-4 w-4 text-muted-foreground" />}
-        
-        {/* Label */}
-        <span className="text-sm truncate flex-1">{node.name}</span>
-        
-        {/* Count Badge */}
-        <span className="text-xs text-muted-foreground bg-muted px-1.5 rounded-full">{node.fileCount}</span>
-      </div>
-      
-      {/* Recursive Children */}
-      {isOpen && hasChildren && (
-        <div className="mt-1">
-          {Object.values(node.children).sort((a,b) => a.name.localeCompare(b.name)).map((child) => (
-            <FolderTreeItem key={child.fullPath} node={child} level={level + 1} onSelect={onSelect} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- Helper: Build Collection Tree ---
-// Converts flat collection list into a hierarchy based on parentId
-
-interface CollectionNode {
-  id: string;
-  label: string;
-  fullPath: string; // breadcrumb style: "Parent / Child"
-  children: CollectionNode[];
-}
-
-// --- Helper: Recursive Collection Item Component ---
+// Recursive Collection Item
 const CollectionTreeItem = ({ node, level, onSelect }: { 
   node: CollectionNode, 
   level: number, 
-  onSelect: () => void 
+  onSelect: (id: string) => void 
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const hasChildren = node.children.length > 0;
@@ -221,13 +125,21 @@ const CollectionTreeItem = ({ node, level, onSelect }: {
         className={`flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer ${level > 0 ? 'ml-3 border-l border-border/50' : ''}`}
         onClick={(e) => {
             e.stopPropagation();
-            if(hasChildren) setIsOpen(!isOpen);
-            onSelect(); 
+            onSelect(node.id); 
         }}
       >
+        {/* Toggle Expansion Only */}
         {hasChildren ? (
-          isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />
-        ) : <span className="w-3" />}
+          <span 
+            className="p-0.5 hover:bg-muted rounded cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsOpen(!isOpen);
+            }}
+          >
+            {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
+          </span>
+        ) : <span className="w-4" />} 
         
         <Layers className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm truncate flex-1">{node.label}</span>
@@ -257,34 +169,28 @@ export function FilterSidebar({
   onSettingsClick,
   categories,
   models,
-  collections = [],       // <--- Added
-  onOpenCollection,  // <--- Added
+  collections = [],
+  onOpenCollection,
+  onBackToRoot,
   initialFilters
 }: FilterSidebarProps) {
   const TAG_DISPLAY_LIMIT = 25;
-  // Initialize filter UI from `initialFilters` (do not persist to localStorage here)
-  // Helper to map persisted/default category (which may be id or label) to the category label used by the UI
+  
   const normalizeCategoryToLabel = (raw?: string | null) => {
     if (!raw) return 'all';
     if (raw === 'all') return 'all';
-    // Try to find by id or label
     const byId = categories.find(c => c.id === raw);
     if (byId) return byId.label;
     const byLabel = categories.find(c => c.label === raw);
     if (byLabel) return byLabel.label;
-    // Fallback to raw string
     return raw;
   };
 
   const [searchTerm, setSearchTerm] = useState(initialFilters?.search ?? "");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Keyboard bindings:
-  // - Escape: clear current search when input is focused
-  // - Ctrl/Cmd+K: focus the search input when the sidebar is open
   useEffect(() => {
     const onGlobalKey = (e: KeyboardEvent) => {
-      // Ctrl/Cmd+K to focus search
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         if (isOpen && searchInputRef.current) {
@@ -296,6 +202,7 @@ export function FilterSidebar({
     window.addEventListener('keydown', onGlobalKey);
     return () => window.removeEventListener('keydown', onGlobalKey);
   }, [isOpen]);
+
   const [selectedCategory, setSelectedCategory] = useState(normalizeCategoryToLabel(initialFilters?.category ?? "all"));
   const [selectedPrintStatus, setSelectedPrintStatus] = useState(initialFilters?.printStatus ?? "all");
   const [selectedLicense, setSelectedLicense] = useState(initialFilters?.license ?? "all");
@@ -306,68 +213,26 @@ export function FilterSidebar({
   const [selectedSort, setSelectedSort] = useState<string>(initialFilters?.sortBy ?? 'none');
   const [showAllTags, setShowAllTags] = useState(false);
 
-  // Dynamically get all unique tags from the models
   const getAllTags = (): string[] => {
     const tagSet = new Set<string>();
-    
-    if (!models) {
-      return [];
-    }
-
+    if (!models) return [];
     models.forEach(model => {
-      if (!model || !Array.isArray(model.tags)) {
-        return;
-      }
-
+      if (!model || !Array.isArray(model.tags)) return;
       model.tags.forEach(tag => {
-        if (tag && typeof tag === 'string') {
-          tagSet.add(tag);
-        }
+        if (tag && typeof tag === 'string') tagSet.add(tag);
       });
     });
-
-    // Sort tags alphabetically and return as array
     return Array.from(tagSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   };
 
   const availableTags = getAllTags();
-  const remainingTagCount = Math.max(availableTags.length - TAG_DISPLAY_LIMIT, 0);
   const displayedTags = showAllTags ? availableTags : availableTags.slice(0, TAG_DISPLAY_LIMIT);
-
-  // Available licenses (centralized)
+  const remainingTagCount = Math.max(availableTags.length - TAG_DISPLAY_LIMIT, 0);
   const availableLicenses = LICENSES;
 
-  // [NEW] Handler for "Smart Navigation"
-  // When a user clicks a folder, we clear categorical filters so they can see the folder's content.
-  const handleFolderSelect = (path: string) => {
-    // 1. Update local UI state to "Clean" defaults
-    setSearchTerm(path); // The folder path becomes the search
-    setSelectedCategory("all");
-    setSelectedPrintStatus("all");
-    setSelectedLicense("all");
-    setSelectedFileType("all");
-    setSelectedTags([]);
-    // We typically KEEP 'showHidden' and 'showMissingImages' as they are view preferences, not content filters.
-    // But resetting them is also a valid choice. Let's keep them stable for now.
-
-    // 2. Trigger the filter change with the new "Clean" state
-    onFilterChange({
-      search: path,
-      category: "all",
-      printStatus: "all",
-      license: "all",
-      fileType: "all",
-      tags: [],
-      showHidden: showHidden, // Maintain view preference
-      showMissingImages: showMissingImages, // Maintain view preference
-      sortBy: selectedSort,
-    });
-  };
-
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    onFilterChange({
-      search: value,
+  const updateFilters = (overrides: any) => {
+    const newState = {
+      search: searchTerm,
       category: selectedCategory,
       printStatus: selectedPrintStatus,
       license: selectedLicense,
@@ -376,138 +241,60 @@ export function FilterSidebar({
       showHidden: showHidden,
       showMissingImages: showMissingImages,
       sortBy: selectedSort,
-    });
+      ...overrides
+    };
+    onFilterChange(newState);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    updateFilters({ search: value });
   };
 
   const handleCategoryChange = (value: string) => {
-    // value may be category id or label; normalize to label for UI and filtering
     const cat = categories.find(c => c.id === value) || categories.find(c => c.label === value);
     const labelToUse = cat ? cat.label : value;
     setSelectedCategory(labelToUse);
-    onFilterChange({
-      search: searchTerm,
-      category: labelToUse,
-      printStatus: selectedPrintStatus,
-      license: selectedLicense,
-      fileType: selectedFileType,
-      tags: selectedTags,
-      showHidden: showHidden,
-      showMissingImages: showMissingImages,
-      sortBy: selectedSort,
-    });
-    // Notify parent explicitly that a category was chosen by user click
+    updateFilters({ category: labelToUse });
     onCategoryChosen?.(labelToUse);
   };
 
   const handlePrintStatusChange = (value: string) => {
     setSelectedPrintStatus(value);
-    onFilterChange({
-      search: searchTerm,
-      category: selectedCategory,
-      printStatus: value,
-      license: selectedLicense,
-      fileType: selectedFileType,
-      tags: selectedTags,
-      showHidden: showHidden,
-      showMissingImages: showMissingImages,
-      sortBy: selectedSort,
-    });
+    updateFilters({ printStatus: value });
   };
 
   const handleLicenseChange = (value: string) => {
     setSelectedLicense(value);
-    onFilterChange({
-      search: searchTerm,
-      category: selectedCategory,
-      printStatus: selectedPrintStatus,
-      license: value,
-      fileType: selectedFileType,
-      tags: selectedTags,
-      showHidden: showHidden,
-      showMissingImages: showMissingImages,
-      sortBy: selectedSort,
-    });
+    updateFilters({ license: value });
   };
 
   const handleFileTypeChange = (value: string) => {
     setSelectedFileType(value);
-    onFilterChange({
-      search: searchTerm,
-      category: selectedCategory,
-      printStatus: selectedPrintStatus,
-      license: selectedLicense,
-      fileType: value,
-      tags: selectedTags,
-      showHidden: showHidden,
-      showMissingImages: showMissingImages,
-      sortBy: selectedSort,
-    });
+    updateFilters({ fileType: value });
   };
 
   const handleSortChange = (value: string) => {
     setSelectedSort(value);
-    onFilterChange({
-      search: searchTerm,
-      category: selectedCategory,
-      printStatus: selectedPrintStatus,
-      license: selectedLicense,
-      fileType: selectedFileType,
-      tags: selectedTags,
-      showHidden: showHidden,
-      showMissingImages: showMissingImages,
-      sortBy: value,
-    });
+    updateFilters({ sortBy: value });
   };
-
 
   const handleTagToggle = (tag: string) => {
     const newSelectedTags = selectedTags.includes(tag)
       ? selectedTags.filter(t => t !== tag)
       : [...selectedTags, tag];
     setSelectedTags(newSelectedTags);
-    
-    // Immediately apply the tag filter
-    onFilterChange({
-      search: searchTerm,
-      category: selectedCategory,
-      printStatus: selectedPrintStatus,
-      license: selectedLicense,
-      fileType: selectedFileType,
-      tags: newSelectedTags,
-      showHidden: showHidden,
-      showMissingImages: showMissingImages,
-      sortBy: selectedSort,
-    });
+    updateFilters({ tags: newSelectedTags });
   };
 
   const handleShowHiddenChange = (checked: boolean) => {
     setShowHidden(checked);
-    onFilterChange({
-      search: searchTerm,
-      category: selectedCategory,
-      printStatus: selectedPrintStatus,
-      license: selectedLicense,
-      fileType: selectedFileType,
-      tags: selectedTags,
-      showHidden: checked,
-      showMissingImages: showMissingImages,
-      sortBy: selectedSort,
-    });
+    updateFilters({ showHidden: checked });
   };
 
   const handleShowMissingImagesChange = (checked: boolean) => {
     setShowMissingImages(checked);
-    onFilterChange({
-      search: searchTerm,
-      category: selectedCategory,
-      printStatus: selectedPrintStatus,
-      license: selectedLicense,
-      fileType: selectedFileType,
-      tags: selectedTags,
-      showHidden: showHidden,
-      showMissingImages: checked,
-      sortBy: selectedSort,
-    });
+    updateFilters({ showMissingImages: checked });
   };
 
   const clearFilters = () => {
@@ -521,7 +308,8 @@ export function FilterSidebar({
     setShowMissingImages(false);
     setSelectedSort('none');
     setShowAllTags(false);
-    onFilterChange({
+    
+    updateFilters({
       search: "",
       category: "all",
       printStatus: "all",
@@ -534,8 +322,12 @@ export function FilterSidebar({
     });
   };
 
-  const folderTree = buildFolderTree(models);
-  const collectionTree = buildCollectionTree(collections); // <--- Added
+  const handleGoHome = () => {
+    clearFilters(); 
+    if (onBackToRoot) onBackToRoot(); // Navigate to root
+  };
+
+  const collectionTree = buildCollectionTree(collections);
 
   return (
     <div className="h-full bg-sidebar flex flex-col">
@@ -545,36 +337,20 @@ export function FilterSidebar({
           <>
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl border border-white/30 shadow-lg">
-                <img
-                  src="/images/favicon-32x32.png"
-                  alt="3D Model Muncher"
-                />
+                <img src="/images/favicon-32x32.png" alt="3D Model Muncher" />
               </div>
               <div>
-                <h2
-                  className="font-semibold text-white text-lg tracking-tight cursor-pointer hover:underline"
-                  onClick={() => window.location.pathname = "/"}
-                >
+                <h2 className="font-semibold text-white text-lg tracking-tight cursor-pointer hover:underline" onClick={() => window.location.pathname = "/"}>
                   3D Model Muncher
                 </h2>
                 <p className="text-xs text-white/80 font-medium">Organize & Print</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onSettingsClick}
-                className="p-2 text-white hover:bg-white/20 hover:backdrop-blur-sm border-0"
-              >
+              <Button variant="ghost" size="sm" onClick={onSettingsClick} className="p-2 text-white hover:bg-white/20 hover:backdrop-blur-sm border-0">
                 <Settings className="h-4 w-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                className="p-2 text-white hover:bg-white/20 hover:backdrop-blur-sm border-0 lg:hidden"
-              >
+              <Button variant="ghost" size="sm" onClick={onClose} className="p-2 text-white hover:bg-white/20 hover:backdrop-blur-sm border-0 lg:hidden">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -582,17 +358,9 @@ export function FilterSidebar({
         ) : (
           <div className="flex flex-col items-center gap-3 w-full">
             <div className="flex items-center justify-center w-8 h-8 bg-white/20 backdrop-blur-sm rounded-lg border border-white/30">
-              <img
-                src="/images/favicon-16x16.png"
-                alt="3D Model Muncher"
-              />
+              <img src="/images/favicon-16x16.png" alt="3D Model Muncher" />
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onSettingsClick}
-              className="p-2 text-white hover:bg-white/20 hover:backdrop-blur-sm border-0"
-            >
+            <Button variant="ghost" size="sm" onClick={onSettingsClick} className="p-2 text-white hover:bg-white/20 hover:backdrop-blur-sm border-0">
               <Settings className="h-4 w-4" />
             </Button>
           </div>
@@ -615,14 +383,11 @@ export function FilterSidebar({
                   onChange={(e) => handleSearchChange(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Escape') {
-                      // clear search when Escape pressed
                       handleSearchChange('');
-                      // keep focus on the input
                       if (searchInputRef.current) searchInputRef.current.focus();
                     }
                   }}
                   className="pl-10 pr-9 bg-background border-border text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-primary"
-                  aria-label="Search models"
                 />
                 {searchTerm && searchTerm.length > 0 && (
                   <Button
@@ -630,12 +395,9 @@ export function FilterSidebar({
                     size="sm"
                     onClick={() => {
                       handleSearchChange("");
-                      // refocus input after clearing
                       if (searchInputRef.current) searchInputRef.current.focus();
                     }}
                     className="absolute right-2 top-2 p-1 h-6 w-6 text-muted-foreground hover:text-foreground"
-                    aria-label="Clear search"
-                    title="Clear search"
                   >
                     <X className="h-3 w-3" />
                   </Button>
@@ -643,38 +405,19 @@ export function FilterSidebar({
               </div>
             </div>
 
-            {/* Folders & Collections Accordion */}
-            <Accordion type="multiple" className="w-full">
-              {/* Folders Item */}
-              <AccordionItem value="folders" className="border-b-0">
-                <AccordionTrigger className="py-2 hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <Folder className="h-4 w-4 text-foreground" />
-                    <span className="text-sm font-medium text-foreground">Folders</span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="pl-1">
-                    <div 
-                        className="flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer mb-1"
-                        onClick={() => handleFolderSelect("")} // <--- UPDATED: Use new handler 
-                        >
-                        <FolderOpen className="h-4 w-4 text-primary" />
-                        <span className="text-sm font-medium">All Models</span>
-                    </div>
-                    {Object.values(folderTree.children).map(node => (
-                      <FolderTreeItem 
-                        key={node.fullPath} 
-                        node={node} 
-                        level={0} 
-                        onSelect={(path) => handleFolderSelect(path)} // <--- UPDATED: Use new handler
-                      />
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
+            {/* "All Models" (Home Button) */}
+            <div className="space-y-2">
+              <div 
+                className="flex items-center gap-2 py-2 px-2 rounded-md hover:bg-accent cursor-pointer transition-colors text-foreground"
+                onClick={handleGoHome} 
+              >
+                  <LayoutGrid className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">All Models</span>
+              </div>
+            </div>
 
-              {/* Collections Item */}
+            {/* Collections Accordion */}
+            <Accordion type="multiple" defaultValue={['collections']} className="w-full">
               <AccordionItem value="collections" className="border-b-0">
                 <AccordionTrigger className="py-2 hover:no-underline">
                   <div className="flex items-center gap-2">
@@ -692,8 +435,9 @@ export function FilterSidebar({
                           key={node.id} 
                           node={node} 
                           level={0} 
-                          onSelect={() => {
-                            const original = collections.find(c => c.id === node.id);
+                          onSelect={(id) => {
+                            clearFilters(); // Clear search/tags when entering a collection
+                            const original = collections?.find(c => c.id === id);
                             if (original) onOpenCollection(original);
                           }}
                         />
@@ -704,13 +448,15 @@ export function FilterSidebar({
               </AccordionItem>
             </Accordion>
 
-            {/* Categories */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Layers className="h-4 w-4 text-foreground" />
-                <label className="text-sm font-medium text-foreground">Categories</label>
-              </div>
-              <div className="space-y-1">
+            {/* Categories (Collapsible) */}
+            <Collapsible className="space-y-2">
+              <CollapsibleTrigger className="flex items-center w-full gap-2 group cursor-pointer text-foreground hover:text-primary transition-colors py-2">
+                <Filter className="h-4 w-4" />
+                <span className="text-sm font-medium flex-1 text-left">Categories</span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
+              </CollapsibleTrigger>
+              
+              <CollapsibleContent className="space-y-1 pt-1">
                 <Button
                   variant={selectedCategory === "all" ? "default" : "ghost"}
                   onClick={() => handleCategoryChange("all")}
@@ -743,8 +489,8 @@ export function FilterSidebar({
                     </Button>
                   );
                 })}
-              </div>
-            </div>
+              </CollapsibleContent>
+            </Collapsible>
 
             {/* Print Status */}
             <div className="space-y-1">

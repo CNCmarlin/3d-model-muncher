@@ -3642,6 +3642,7 @@ export function SettingsPage({
       <CollectionEditorDialog
         collection={editorCollection}
         categories={categories}
+        models={models}
         onSave={handleSaveCollection}
         onDelete={handleDeleteCollection}
         open={isEditorOpen}
