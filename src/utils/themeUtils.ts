@@ -1,6 +1,5 @@
 // src/utils/themeUtils.ts
 
-// Helper: Convert Hex to HSL values (h, s, l)
 function hexToValues(hex: string) {
     const cleanHex = (hex || '').replace(/^#/, '');
     let r = 0, g = 0, b = 0;
@@ -27,87 +26,119 @@ function hexToValues(hex: string) {
     return { h, s: +(s * 100).toFixed(1), l: +(l * 100).toFixed(1) };
   }
   
+  // [NEW] Helper to inject dynamic CSS for gradients
+  function updateGradientStyles(primary: string, secondary: string, accent: string, darkBg: string) {
+    const styleId = 'theme-gradient-overrides';
+    let styleTag = document.getElementById(styleId) as HTMLStyleElement;
+    
+    if (!styleTag) {
+      styleTag = document.createElement('style');
+      styleTag.id = styleId;
+      document.head.appendChild(styleTag);
+    }
+  
+    // We overwrite the classes defined in globals.css
+    // Note: We use !important to ensure these override the CSS file utilities
+    const css = `
+      .bg-gradient-primary {
+        background: linear-gradient(135deg, ${primary} 0%, ${secondary} 100%) !important;
+      }
+      .bg-gradient-secondary {
+        background: linear-gradient(135deg, ${secondary} 0%, ${accent} 100%) !important;
+      }
+      .bg-gradient-accent {
+        background: linear-gradient(135deg, ${accent} 0%, var(--brand-light-bg) 100%) !important;
+      }
+      .bg-gradient-dark {
+        background: linear-gradient(135deg, ${darkBg} 0%, var(--brand-dark) 100%) !important;
+      }
+    `;
+    styleTag.innerHTML = css;
+  }
+  
   export function applyThemeColor(hexColor: string | null) {
     const root = document.documentElement;
   
-    // 1. RESET: Clear ALL overrides if null
+    // 1. RESET: Clear vars and remove the style tag
     if (!hexColor) {
       const varsToRemove = [
-        // Core Brand
         '--brand-primary', '--brand-secondary', 
         '--brand-dark', '--brand-dark-bg',
         '--brand-muted-dark', '--brand-surface-dark',
         '--brand-light-bg', '--brand-accent-light',
         '--brand-border-light', '--brand-border-dark',
-        // Semantic mappings
+        '--brand-text-light', '--brand-text-muted',
+        '--muted-foreground', '--switch-background',
+        '--brand-purple-light', '--brand-purple-lightest', '--brand-purple-pale',
         '--primary', '--ring', 
         '--sidebar-primary', '--sidebar-ring'
       ];
       varsToRemove.forEach(v => root.style.removeProperty(v));
+      
+      // Remove the injected styles
+      const styleTag = document.getElementById('theme-gradient-overrides');
+      if (styleTag) styleTag.remove();
+      
       return;
     }
     
     const { h, s, l } = hexToValues(hexColor);
   
-    // --- 2. DYNAMIC PALETTE GENERATION ---
-    
-    // PRIMARY: The user's exact color
+    // --- 2. CALCULATE COLORS ---
     const primaryVal = `hsl(${h}, ${s}%, ${l}%)`;
-  
-    // SECONDARY: Lighter, slightly shifted hue
-    const secondaryL = l > 50 ? Math.max(l - 15, 10) : Math.min(l + 15, 90);
+    
+    // Secondary (Darker/Richer for gradients)
+    // We make this distinct so the gradient is visible
+    const secondaryL = l > 50 ? Math.max(l - 20, 20) : Math.min(l + 20, 80);
     const secondaryVal = `hsl(${h + 5}, ${s}%, ${secondaryL}%)`;
   
-    // --- BACKGROUND TINTS ---
-    // We tint the greys with the user's hue, but cap saturation so it doesn't look neon.
-    const bgSat = Math.max(Math.min(s * 0.3, 20), 5); // Low saturation (5-20%) for backgrounds
+    const bgSat = Math.max(Math.min(s * 0.3, 20), 5); 
+    const textSat = Math.max(Math.min(s * 0.2, 15), 0);
   
-    // DARK MODE VARIABLES
-    // --brand-dark: Main dark card background (previously #1a1625 deep purple)
     const brandDark = `hsl(${h}, ${bgSat}%, 12%)`; 
-    // --brand-dark-bg: Darkest body background (previously #0f0a1a)
     const brandDarkBg = `hsl(${h}, ${bgSat}%, 7%)`;
-    // --brand-surface-dark: Slightly lighter dark (for inputs/muted areas)
     const brandSurfaceDark = `hsl(${h}, ${bgSat}%, 16%)`;
-    // --brand-muted-dark: Dark text/icon color on light backgrounds (previously #2d1b4e)
     const brandMutedDark = `hsl(${h}, ${Math.min(s * 0.6, 40)}%, 20%)`;
   
-    // LIGHT MODE VARIABLES
-    // --brand-light-bg: Sidebar/Secondary background (previously #f3f1f7)
-    const brandLightBg = `hsl(${h}, ${Math.min(s * 0.3, 15)}%, 96%)`;
-    // --brand-accent-light: Highlight/Hover background (previously #ede8f5)
-    const brandAccentLight = `hsl(${h}, ${Math.min(s * 0.4, 30)}%, 94%)`;
+    const brandTextLight = `hsl(${h}, ${textSat}%, 97%)`; 
+    const brandTextMuted = `hsl(${h}, ${textSat}%, 80%)`; 
   
-    // BORDERS
-    // --brand-border-light: Light mode borders (previously #d6cfe6)
+    const brandLightBg = `hsl(${h}, ${Math.min(s * 0.3, 15)}%, 96%)`;
+    const brandAccentLight = `hsl(${h}, ${Math.min(s * 0.4, 30)}%, 94%)`;
+    const mutedForeground = `hsl(${h}, ${Math.min(s * 0.3, 20)}%, 45%)`;
+    const switchBackground = `hsl(${h}, ${Math.min(s * 0.3, 20)}%, 88%)`;
+  
     const brandBorderLight = `hsl(${h}, ${Math.min(s * 0.2, 15)}%, 85%)`;
-    // --brand-border-dark: Dark mode borders (previously #3a2b4a)
     const brandBorderDark = `hsl(${h}, ${Math.min(s * 0.3, 20)}%, 25%)`;
   
+    const purpleLight = `hsl(${h}, ${Math.max(s - 10, 40)}%, 65%)`;    
+    const purpleLightest = `hsl(${h}, ${Math.max(s - 20, 30)}%, 75%)`; 
+    const purplePale = `hsl(${h}, ${Math.max(s - 30, 20)}%, 90%)`;     
   
     // --- 3. APPLY VARIABLES ---
-    
-    // Core Colors
     root.style.setProperty('--brand-primary', primaryVal);
     root.style.setProperty('--brand-secondary', secondaryVal);
-    
-    // Dark Theme Structure
     root.style.setProperty('--brand-dark', brandDark);
     root.style.setProperty('--brand-dark-bg', brandDarkBg);
     root.style.setProperty('--brand-surface-dark', brandSurfaceDark);
     root.style.setProperty('--brand-muted-dark', brandMutedDark);
-  
-    // Light Theme Structure
+    root.style.setProperty('--brand-text-light', brandTextLight);
+    root.style.setProperty('--brand-text-muted', brandTextMuted);
+    root.style.setProperty('--muted-foreground', mutedForeground);
     root.style.setProperty('--brand-light-bg', brandLightBg);
     root.style.setProperty('--brand-accent-light', brandAccentLight);
-  
-    // Borders
     root.style.setProperty('--brand-border-light', brandBorderLight);
     root.style.setProperty('--brand-border-dark', brandBorderDark);
-  
-    // Semantic Overrides (Direct mappings)
+    root.style.setProperty('--switch-background', switchBackground);
+    root.style.setProperty('--brand-purple-light', purpleLight);
+    root.style.setProperty('--brand-purple-lightest', purpleLightest);
+    root.style.setProperty('--brand-purple-pale', purplePale);
     root.style.setProperty('--primary', primaryVal);
     root.style.setProperty('--ring', primaryVal);
     root.style.setProperty('--sidebar-primary', primaryVal);
     root.style.setProperty('--sidebar-ring', primaryVal);
+  
+    // --- 4. INJECT CSS OVERRIDES FOR GRADIENTS ---
+    // This overwrites the hardcoded hexes in globals.css classes
+    updateGradientStyles(primaryVal, secondaryVal, purpleLight, brandDarkBg);
   }
