@@ -21,6 +21,8 @@ export class ConfigManager {
       defaultGridDensity: 4,
       defaultModelView: "images",
       defaultModelColor: "#aaaaaa",
+      // [FIX 1] Add primaryColor to defaults
+      primaryColor: null, 
       showPrintedBadge: true,
       modelCardPrimary: 'printTime',
       modelCardSecondary: 'filamentUsed',
@@ -77,6 +79,12 @@ export class ConfigManager {
         defaultModelColor: typeof config?.settings?.defaultModelColor === 'string' && config.settings.defaultModelColor.trim() !== ''
           ? config.settings.defaultModelColor
           : this.defaultConfig.settings.defaultModelColor,
+        
+        // [FIX 2] Add primaryColor validation so it is persisted
+        primaryColor: (typeof config?.settings?.primaryColor === 'string' || config?.settings?.primaryColor === null)
+          ? config.settings.primaryColor
+          : this.defaultConfig.settings.primaryColor,
+
         modelCardPrimary: ((): 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price' => {
           const val = config?.settings?.modelCardPrimary;
           const allowed = ['none', 'printTime', 'filamentUsed', 'fileSize', 'category', 'designer', 'layerHeight', 'nozzle', 'price'];
@@ -158,10 +166,10 @@ export class ConfigManager {
         // @ts-ignore
         const path = require('path');
         
-        // [FIX] 1. Look in the data folder first (Primary Production Path)
+        // 1. Look in the data folder first (Primary Production Path)
         let configPath = path.join(process.cwd(), 'data', 'config.json');
         
-        // [FIX] 2. If not found, check root (Dev/Legacy Path)
+        // 2. If not found, check root (Dev/Legacy Path)
         if (!fs.existsSync(configPath)) {
              // Fallback to root directory
              configPath = path.join(process.cwd(), CONFIG_FILENAME);

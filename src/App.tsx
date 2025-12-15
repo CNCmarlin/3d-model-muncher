@@ -17,7 +17,7 @@ import { ConfigManager } from "./utils/configManager";
 import * as pkg from '../package.json';
 import { applyFiltersToModels, FilterState } from "./utils/filterUtils";
 import { sortModels, sortCollections, SortKey } from "./utils/sortUtils";
-import { Menu, RefreshCw, Heart, FileCheck, Files, Box, Upload, List, ArrowLeft } from "lucide-react";
+import { Menu, RefreshCw, Heart, FileCheck, Files, Box, Upload, List} from "lucide-react";
 import ModelUploadDialog from "./components/ModelUploadDialog";
 import { Button } from "./components/ui/button";
 import {
@@ -42,7 +42,7 @@ import {
 import { Separator } from "./components/ui/separator";
 import CollectionGrid from "./components/CollectionGrid";
 import type { Collection } from "./types/collection";
-
+import { applyThemeColor } from "./utils/themeUtils"; // <--- Ensure this is imported
 
 // Initial type for view
 type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view';
@@ -117,30 +117,58 @@ function AppContent() {
     }
   }, [pendingBulkCollectionId, isSelectionMode]);
 
+  // [NEW] CRITICAL FIX: Theme Persistence
+  // This useEffect ensures the theme color is re-applied whenever the config changes.
+  // It handles the case where ThemeProvider wipes styles on mount, or when config loads late.
+  useEffect(() => {
+    if (appConfig) {
+      const color = appConfig.settings?.primaryColor || null;
+      applyThemeColor(color);
+    }
+  }, [appConfig]);
+
   useEffect(() => {
     async function loadInitialData() {
       try {
         let config: AppConfig | null = null;
+        
+        // 1. Try to load from LocalStorage first (Fastest)
         try {
           const stored = localStorage.getItem('3d-model-muncher-config');
           if (stored) {
             config = ConfigManager.loadConfig();
-          } else {
+          }
+        } catch (e) { console.warn(e); }
+
+        // 2. Try to load from Server (Authoritative)
+        // Note: Logic allows local storage to win if it exists, to support offline dev or overrides
+        if (!config) {
             try {
               const resp = await fetch('/api/load-config');
               if (resp.ok) {
                 const data = await resp.json();
                 if (data && data.success && data.config) {
                   config = data.config;
+                  // Sync server config to local storage
                   try { ConfigManager.saveConfig(data.config); } catch (e) { console.warn(e); }
                 }
               }
             } catch (e) { console.warn(e); }
-          }
-        } catch (e) { console.warn(e); }
+        }
 
+        // 3. Fallback to Defaults
         if (!config) {
           config = ConfigManager.getDefaultConfig();
+        }
+
+        // 4. Apply Theme Immediately (Prevent Flash)
+        // We do this before setting state so it paints as fast as possible
+        const savedColor = config.settings?.primaryColor || null;
+        if (savedColor) {
+            applyThemeColor(savedColor);
+        } else {
+            // Ensure we reset if no color is saved
+            applyThemeColor(null);
         }
 
         setAppConfig(config);
@@ -294,8 +322,8 @@ function AppContent() {
 
     setSelectedModelIds(prev =>
       prev.includes(modelId)
-        ? prev.filter(id => id !== modelId)
-        : [...prev, modelId]
+      ? prev.filter(id => id !== modelId)
+      : [...prev, modelId]
     );
     if (currentIndex !== -1) setSelectionAnchorIndex(currentIndex);
   };

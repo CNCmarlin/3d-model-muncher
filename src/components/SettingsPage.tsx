@@ -35,6 +35,7 @@ import { ImageWithFallback } from './ImageWithFallback';
 import { getLabel } from '../constants/labels';
 import { resolveModelThumbnail } from '../utils/thumbnailUtils';
 import { Collection } from "../types/collection";
+import { applyThemeColor } from "../utils/themeUtils";
 
 // Thumbnail resolver: prefer model object, fall back to explicit prop
 const ModelThumbnail = ({ thumbnail, name, model }: { thumbnail?: string | null; name: string; model?: any }) => {
@@ -315,6 +316,20 @@ export function SettingsPage({
   const [unsavedDefaultModelColor, setUnsavedDefaultModelColor] = useState<string>(() => {
     return (localConfig as any)?.settings?.defaultModelColor ?? '#aaaaaa';
   });
+
+  // Add this new state variable
+  const [unsavedPrimaryColor, setUnsavedPrimaryColor] = useState<string | null>(null);
+  
+  // Update the useEffect to sync it when config loads
+  useEffect(() => {
+    if (config) {
+      // Fallback to default gray if undefined
+      setUnsavedDefaultModelColor(config.settings.defaultModelColor ?? '#aaaaaa');
+      
+      // Fallback to null if undefined
+      setUnsavedPrimaryColor(config.settings.primaryColor ?? null);
+    }
+  }, [config]);
   // Track the active status toast id so we can update loading -> success/error
   const statusToastId = useRef<string | number | null>(null);
 
@@ -1532,6 +1547,8 @@ export function SettingsPage({
     backupFileInputRef.current?.click();
   };
 
+  
+
   const handleBackupFileRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1623,9 +1640,9 @@ export function SettingsPage({
 
     // 2. If new, trigger the bulk edit workflow
     if (isNew && onCollectionCreatedForBulkEdit) {
-        // Use the ID returned by the server, or fallback to the client-generated ID
-        const newCollectionId = result.collectionId || collectionData.id;
-        onCollectionCreatedForBulkEdit(newCollectionId);
+      // Use the ID returned by the server, or fallback to the client-generated ID
+      const newCollectionId = result.collectionId || collectionData.id;
+      onCollectionCreatedForBulkEdit(newCollectionId);
     }
   };
 
@@ -1645,7 +1662,61 @@ export function SettingsPage({
     setEditorCollection(null);
     // Open the dialog
     setIsEditorOpen(true);
-};
+  };
+
+  const handleDeleteAllCollections = async () => {    // 1. Confirmation
+    const confirmMessage = "Are you sure you want to DELETE ALL collections?\n\nThis will remove all folder groupings. The model files themselves will NOT be deleted.\n\nThis action cannot be undone.";
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setSaveStatus('saving');
+    setStatusMessage('Preparing to delete...');
+
+    try {
+      // 2. Fetch the latest list of collections from the server to ensure we have everything
+      const listResp = await fetch('/api/collections');
+      if (!listResp.ok) throw new Error("Failed to fetch collections list");
+
+      const data = await listResp.json();
+      const targets = data.collections || [];
+
+      if (targets.length === 0) {
+        toast.info("No collections found to delete.");
+        setSaveStatus('idle');
+        setStatusMessage('');
+        return;
+      }
+
+      setStatusMessage(`Deleting ${targets.length} collections...`);
+
+      // 3. Delete them one by one
+      const deletePromises = targets.map((col: any) =>
+        fetch(`/api/collections/${col.id}`, { method: 'DELETE' })
+      );
+
+      await Promise.all(deletePromises);
+
+      // 4. Success handling
+      setSaveStatus('saved');
+      setStatusMessage('All collections deleted successfully.');
+      toast.success(`Deleted ${targets.length} collections`);
+
+      // Trigger a global event so the sidebar and app refresh immediately
+      window.dispatchEvent(new Event('collection-updated'));
+
+    } catch (error) {
+      console.error("Failed to delete all collections:", error);
+      setSaveStatus('error');
+      setStatusMessage('Failed to delete collections.');
+      toast.error("Error deleting collections");
+    } finally {
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setStatusMessage('');
+      }, 3000);
+    }
+  };
 
   const fetchCollections = async () => {
     try {
@@ -1724,7 +1795,7 @@ export function SettingsPage({
         orientation="vertical"
         // [CHANGE] Added 'flex-col' for mobile (stacks menu atop content) 
         // and 'md:flex-row' for desktop (places sidebar NEXT to content)
-        className="flex flex-col md:flex-row flex-1 overflow-hidden" 
+        className="flex flex-col md:flex-row flex-1 overflow-hidden"
       >
 
         {/* SIDEBAR NAVIGATION */}
@@ -1840,6 +1911,7 @@ export function SettingsPage({
                       </SelectContent>
                     </Select>
                   </div>
+                  
 
                   <div className="space-y-2">
                     <Label htmlFor="default-model-view">Default Model View</Label>
@@ -2031,10 +2103,13 @@ export function SettingsPage({
                 </div>
                 <Separator />
 
-                {/* Image generation */}
+                {/* Visual Settings Section */}
                 <div className="space-y-4">
-                  <h3 className="font-medium">3D Model Viewer</h3>
-                  <div className="flex flex-col gap-3">
+                  <h3 className="font-medium">Appearance & Viewer</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                    {/* 1. Default Model Color (Your existing code) */}
                     <div className="flex flex-col">
                       <Label className="text-xs mb-2">Default Model Color</Label>
                       <div className="flex items-center gap-3">
@@ -2063,20 +2138,19 @@ export function SettingsPage({
                             <button
                               type="button"
                               onClick={() => colorInputRef.current?.click()}
-                              className="w-10 h-10 rounded-full border border-border shadow-sm flex items-center justify-center"
+                              className="w-10 h-10 rounded-full border border-border shadow-sm flex items-center justify-center transition-transform hover:scale-105"
                               title="Pick default model color"
                               aria-hidden="true"
                               style={{ background: unsavedDefaultModelColor || '#aaaaaa' }}
                             />
                           </div>
-                          <div className="text-sm font-mono text-xs">{(unsavedDefaultModelColor || '#aaaaaa').toUpperCase()}</div>
+                          <div className="text-xs font-mono">{(unsavedDefaultModelColor || '#aaaaaa').toUpperCase()}</div>
                         </div>
 
                         <div className="flex items-center space-x-2">
                           <Button
                             size="sm"
                             onClick={() => {
-                              // Save the picked color into the config
                               handleConfigFieldChange('settings.defaultModelColor', unsavedDefaultModelColor || '#aaaaaa');
                               toast.success('Default model color saved');
                             }}
@@ -2084,12 +2158,10 @@ export function SettingsPage({
                           >
                             Save
                           </Button>
-
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => {
-                              // Revert the unsaved color to the default, but do not persist
                               const defaultColor = ConfigManager.getDefaultConfig().settings.defaultModelColor || '#aaaaaa';
                               setUnsavedDefaultModelColor(defaultColor);
                             }}
@@ -2099,12 +2171,67 @@ export function SettingsPage({
                           </Button>
                         </div>
                       </div>
-
                       <p className="text-xs text-muted-foreground mt-2">
-                        Pick the default color used by the 3D model viewer when a model does not provide a color.
+                        Color used by the 3D viewer when a model file has no color.
                       </p>
                     </div>
-                  </div>
+                    {/* 2. Application Theme Color (Fixed) */}
+                    <div className="flex flex-col">
+                      <Label className="text-xs mb-2">Application Theme</Label>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <div className="w-10 h-10 rounded-full border border-border shadow-sm flex items-center justify-center overflow-hidden transition-transform hover:scale-105 relative">
+                              <input 
+                                type="color" 
+                                className="absolute -top-2 -left-2 w-16 h-16 p-0 cursor-pointer border-0"
+                                value={unsavedPrimaryColor ?? "#7c3aed"} 
+                                onChange={(e) => {
+                                   const newColor = e.target.value;
+                                   setUnsavedPrimaryColor(newColor);
+                                   // Only apply VISUALLY (preview), do not save yet
+                                   applyThemeColor(newColor); 
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="text-xs font-mono">{(unsavedPrimaryColor || "#7c3aed").toUpperCase()}</div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              // NOW we save to config
+                              handleConfigFieldChange('settings.primaryColor', unsavedPrimaryColor || '#7c3aed');
+                              toast.success('Theme color saved');
+                            }}
+                            title="Save theme"
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              // [FIX] Reset to "null" to clear overrides and use globals.css defaults
+                              setUnsavedPrimaryColor(null);
+                              applyThemeColor(null); 
+                              
+                              // Optional: If you want to persist the "reset" state immediately:
+                              handleConfigFieldChange('settings.primaryColor', null);
+                            }}
+                            title="Reset to default purple"
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                         Primary accent color for the sidebar, buttons, and active states.
+                      </p>
+                    </div>
+                    </div>
                   {/* [NEW] Thumbnail Generation Section */}
                   <div className="pt-4 border-t mt-4">
                     <h4 className="text-sm font-medium mb-2">Thumbnail Generation</h4>
@@ -2330,27 +2457,28 @@ export function SettingsPage({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex space-x-2 mb-4">
-                  {/* 1. Create New Collection Button */}
-                  <Button
-                    onClick={handleCreateCollection}
-                  >
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <Button onClick={handleCreateCollection}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Create New Collection
+                    Create New
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+                    <FolderOpen className="mr-2 h-4 w-4" />
+                    Auto-Import
                   </Button>
 
-                  {/* 2. Auto-Import Button */}
+                  {/* Spacer pushes Delete to the right */}
+                  <div className="flex-1" />
+
                   <Button
-                    variant="outline"
-                    onClick={() => setShowImportDialog(true)}
+                    variant="destructive"
+                    onClick={handleDeleteAllCollections}
                   >
-                    <FolderOpen className="mr-2 h-4 w-4" />
-                    Auto-Import Collections
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete All
                   </Button>
                 </div>
-
                 <Separator className="my-4" />
-
                 {/* Collections List */}
                 {collectionsList.length === 0 ? (
                   <p className="text-muted-foreground italic">No collections defined yet. Use the buttons above to get started.</p>
@@ -3278,8 +3406,7 @@ export function SettingsPage({
                       type="button"
                       onClick={onDonationClick}
                       aria-label="Donate"
-                      className="w-full text-left flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border border-primary/20 cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:from-primary/10 hover:to-secondary/10 hover:border-2 hover:border-primary hover:bg-primary/6 dark:hover:border-primary dark: hover:bg-primary/900 hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"
-                    >
+                      className="w-full text-left flex items-center gap-4 p-4 bg-gradient-to-r from-primary/5 to-secondary/5 rounded-lg border border-primary/20 cursor-pointer transform transition duration-150 ease-in-out hover:scale-105 hover:from-primary/10 hover:to-secondary/10 hover:border-2 hover:border-primary hover:bg-primary/6 dark:hover:border-primary dark:hover:bg-primary/900 hover:ring-2 hover:ring-primary/40 dark:hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary/50 transition-colors"                    >
                       <div className="flex items-center justify-center w-12 h-12 bg-primary/10 rounded-lg">
                         <Heart className="h-6 w-6 text-primary" />
                       </div>
