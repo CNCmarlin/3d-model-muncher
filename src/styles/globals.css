@@ -6,7 +6,7 @@
   /* Core brand colors */
   --brand-primary: #4b0082;
   --brand-secondary: #7c3aed;
-  --brand-white: #ffffff;
+  --brand-white: hsl(262, 20%, 96%);
   --brand-dark: #1a1625;
   --brand-dark-bg: #0f0a1a;
   --brand-muted-dark: #2d1b4e;
@@ -24,7 +24,7 @@
 
 :root {
   --font-size: 14px;
-  --background: #fafafa;
+  --background: #e0e0e0;
   --foreground: var(--brand-dark);
   --card: var(--brand-white);
   --card-foreground: var(--brand-dark);
@@ -32,7 +32,7 @@
   --popover-foreground: var(--brand-dark);
   --primary: var(--brand-primary);
   --primary-foreground: var(--brand-white);
-  --secondary: #f1f0f4;
+  --secondary: #e1dfe7;
   --secondary-foreground: var(--brand-muted-dark);
   --muted: #f8f7fb;
   --muted-foreground: #6b5b73;
