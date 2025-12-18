@@ -1,9 +1,10 @@
-{pkgs}: {
+{ pkgs }: {
   channel = "stable-24.05";
   packages = [
     pkgs.nodejs_20
     # --- Puppeteer & Chrome Dependencies ---
     pkgs.chromium
+    pkgs.docker
     pkgs.glib
     pkgs.nss
     pkgs.nspr
@@ -25,6 +26,9 @@
     pkgs.expat
     pkgs.libuuid
   ];
+
+  services.docker.enable = true;
+
   idx.extensions = [
     "svelte.svelte-vscode"
     "vue.volar"
