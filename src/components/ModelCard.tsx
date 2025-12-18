@@ -6,7 +6,7 @@ import { Checkbox } from "./ui/checkbox";
 import { ImageWithFallback } from "./ImageWithFallback";
 import { resolveModelThumbnail } from "../utils/thumbnailUtils";
 import { HardDrive, Box } from "lucide-react";
-import { Grid3DViewer } from "./Grid3DViewer"; // <--- Import the new component
+import { Grid3DViewer } from "./Grid3DViewer";
 
 interface ModelCardProps {
   model: Model;
