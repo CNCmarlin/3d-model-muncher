@@ -1,75 +1,69 @@
-# [CHANGE] Use node:20-slim (Debian) instead of alpine for better Puppeteer/WebGL support
-FROM node:20-slim AS builder
+# Multi-stage build for optimized production image
+FROM node:22-alpine AS builder
 
+# Set working directory
 WORKDIR /app
+
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
 RUN npm install
+
+# Copy source code
 COPY . .
+
+# Build the frontend
 RUN npm run build
+
+# This ensures thumbnailGenerator.ts and other new files are compiled.
 RUN npm run build:backend
 
-# [CHANGE] Use node:20-slim for production as well
-FROM node:20-slim AS production
+# Build the backend utilities
+RUN npx tsc --outDir dist-backend --module commonjs --target es2019 src/utils/threeMFToJson.ts src/utils/configManager.ts
 
-# [CHANGE] Install dependencies required for Puppeteer on Debian
-# We no longer use 'apk', we use 'apt-get'.
-RUN apt-get update && apt-get install -y \
-    chromium \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libc6 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgbm1 \
-    libgcc1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libstdc++6 \
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
-    libxtst6 \
-    lsb-release \
-    wget \
-    xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
+# Production stage
+FROM node:22-alpine AS production
 
-# [CHANGE] Update Environment variables for Debian Chromium location
+# Alpine needs these specific packages to run a headless browser.
+RUN apk add --no-cache \
+      chromium \
+      nss \
+      freetype \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont
+
+#Tell Puppeteer to use the installed Chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
+# Set working directory
 WORKDIR /app
 
+# Copy package files and install only production dependencies
 COPY package*.json ./
 RUN npm ci --only=production && npm cache clean --force
 
+# Copy built files from builder stage
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/dist-backend ./dist-backend
 COPY --from=builder /app/server.js ./server.js
+
+# Ensure server-utils (runtime adapters/helpers) are included in the production image
 COPY --from=builder /app/server-utils ./server-utils
-COPY --from=builder /app/src/config ./src/config
+
+# Copy public folder (Needed for capture.html)
 COPY --from=builder /app/public ./public
 
-RUN mkdir -p models data
+# Copy configuration files if they exist
+COPY --from=builder /app/src/config ./src/config
 
+# Create models directory
+RUN mkdir -p models
+
+# Expose port 3001
 EXPOSE 3001
 
+# Start the server
 CMD ["node", "server.js"]
