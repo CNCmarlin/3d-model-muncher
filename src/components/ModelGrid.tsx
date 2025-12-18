@@ -23,7 +23,7 @@ import { CloudDownload } from 'lucide-react'; // Import Icon
 interface ModelGridProps {
   models: Model[];
   collections?: Collection[];
-  allCollections?: Collection[]; // <--- [NEW] Full list for parenting
+  allCollections?: Collection[];
   onModelClick: (model: Model) => void;
   onOpenCollection?: (collectionId: string) => void;
   onCollectionChanged?: () => void;
@@ -65,7 +65,7 @@ function saveUiPrefs(prefs: any) {
 export function ModelGrid({ 
   models,
   collections = [],
-  allCollections = [], // <--- [NEW] Extract this prop
+  allCollections = [], 
   onModelClick, 
   onOpenCollection,
   onCollectionChanged,
