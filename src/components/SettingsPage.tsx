@@ -11,6 +11,7 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { LICENSES } from '../constants/licenses';
 import { Switch } from "./ui/switch";
+import { Checkbox } from "./ui/checkbox";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -376,8 +377,21 @@ export function SettingsPage({
 
     setStatusMessage(`Generating JSON for ${fileTypeText} files...`);
     try {
-      // Request streaming progress from backend
-      setIsGeneratingJson(true);
+      let totalProcessed = 0;
+      let totalSkipped = 0;
+      let totalGenerated = 0;
+      let totalVerified = 0;
+      
+      // Process each selected file type sequentially
+      for (const effectiveFileType of fileTypesToProcess) {
+        const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
+        setStatusMessage(`Generating JSON for all ${fileTypeText} files...`);
+        
+        const resp = await fetch('/api/scan-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: effectiveFileType })
+        });
 
       const resp = await fetch('/api/scan-models', {
         method: 'POST',
@@ -388,23 +402,25 @@ export function SettingsPage({
         })
       });
 
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => '');
-        throw new Error(`Scan failed: ${resp.status} ${errBody}`);
-      }
+        // Read final JSON summary from the server
+        const data = await resp.json().catch(() => ({} as any));
+        if (!data || (data.success === false)) {
+          throw new Error(data?.error || `Scan failed for ${fileTypeText}`);
+        }
 
-      // Read final JSON summary from the server
-      const data = await resp.json().catch(() => ({} as any));
-      if (!data || (data.success === false)) {
-        throw new Error(data?.error || 'Scan failed');
+        // Accumulate counts from each file type
+        totalProcessed += typeof data.processed === 'number' ? data.processed : 0;
+        totalSkipped += typeof data.skipped === 'number' ? data.skipped : 0;
+        totalGenerated += typeof data.generated === 'number' ? data.generated : 0;
+        totalVerified += typeof data.verified === 'number' ? data.verified : 0;
       }
-
-      // Populate generateResult with any counts the server provided
+      
+      // Populate generateResult with accumulated counts
       setGenerateResult({
-        processed: typeof data.processed === 'number' ? data.processed : undefined,
-        skipped: typeof data.skipped === 'number' ? data.skipped : undefined,
-        generated: typeof data.generated === 'number' ? data.generated : undefined,
-        verified: typeof data.verified === 'number' ? data.verified : undefined,
+        processed: totalProcessed > 0 ? totalProcessed : undefined,
+        skipped: totalSkipped > 0 ? totalSkipped : undefined,
+        generated: totalGenerated > 0 ? totalGenerated : undefined,
+        verified: totalVerified > 0 ? totalVerified : undefined,
       });
 
       setSaveStatus('saved');
