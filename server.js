@@ -23,6 +23,9 @@ safeLog('GenAI env presence:', {
   OPENAI_API_KEY: !!process.env.OPENAI_API_KEY
 });
 
+// Add this near your other imports/variables at the top
+let activeThumbnailJob = null; // Stores the AbortController
+
 // Helper: sanitize objects before logging to avoid dumping large base64 images
 function sanitizeForLog(value, options = {}) {
   const maxStringLength = options.maxStringLength || 200; // truncate long strings
@@ -1844,189 +1847,161 @@ app.post('/api/import/thingiverse', async (req, res) => {
   }
 });
 
-// API endpoint to upload .3mf / .stl files and generate their munchie.json files
-app.post('/api/upload-models', upload.array('files'), async (req, res) => {
+// --- API: Cancel Thumbnail Generation ---
+app.post('/api/cancel-thumbnails', (req, res) => {
+  if (activeThumbnailJob) {
+    console.log('🛑 Received cancellation request. Stopping thumbnail generation...');
+    activeThumbnailJob.abort(); // Triggers the signal in the generator
+    activeThumbnailJob = null;
+    res.json({ success: true, message: 'Cancellation signal sent.' });
+  } else {
+    res.json({ success: false, message: 'No generation job is currently running.' });
+  }
+});
+
+// --- API: Generate Thumbnails (The Photo Shoot) ---
+app.post('/api/generate-thumbnails', async (req, res) => {
+  // 1. Setup AbortController for cancellation
+  if (activeThumbnailJob) {
+    // Optional: Auto-cancel previous job if a new one starts
+    activeThumbnailJob.abort(); 
+  }
+  activeThumbnailJob = new AbortController();
+  const signal = activeThumbnailJob.signal;
+
   try {
-    const files = req.files || [];
-    if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ success: false, error: 'No files uploaded' });
-
+    const { modelIds, force = false } = req.body;
     const modelsDir = getAbsoluteModelsPath();
-    const uploadsDir = path.join(modelsDir, 'uploads');
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    // Import the generator (ensure you ran npm run build:backend!)
+    const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
+    
+    // We need the server's own URL so Puppeteer can visit it
+    const baseUrl = `http://127.0.0.1:${PORT}`;
+    
+    const config = ConfigManager.loadConfig();
+    
+    // Robust check: try accessing it via .settings, or directly, or fallback
+    const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#6366f1'; 
+    
+    let processed = 0;
+    let errors = [];
+    let skipped = 0;
 
-    const { parse3MF, parseSTL, computeMD5 } = require('./dist-backend/utils/threeMFToJson');
+    let targets = [];
+    
+    function findTargets(dir) {
+      if (signal.aborted) return; // Stop recursion if cancelled
 
-  const saved = [];
-  const processed = [];
-  const errors = [];
-
-    // Parse optional destinations JSON (array aligned with files order)
-    let destinations = null;
-    try {
-      if (req.body && req.body.destinations) {
-        destinations = JSON.parse(req.body.destinations);
-        if (!Array.isArray(destinations)) destinations = null;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          findTargets(fullPath);
+        } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
+            try {
+              const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+              // Filter by IDs if provided
+              if (modelIds && modelIds.length > 0 && !modelIds.includes(data.id)) continue;
+              
+              // Determine Source File (.3mf or .stl)
+              let sourceFile;
+              if (entry.name.endsWith('-stl-munchie.json')) {
+                  sourceFile = fullPath.replace('-stl-munchie.json', '.stl');
+                  if (!fs.existsSync(sourceFile)) sourceFile = fullPath.replace('-stl-munchie.json', '.STL');
+              } else {
+                  sourceFile = fullPath.replace('-munchie.json', '.3mf');
+              }
+              
+              if (fs.existsSync(sourceFile)) {
+                  targets.push({ jsonPath: fullPath, sourcePath: sourceFile, data });
+              }
+            } catch(e) {}
+        }
       }
-    } catch (e) {
-      destinations = null;
     }
+    findTargets(modelsDir);
 
-    for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
-      const f = files[fileIndex];
+    console.log(`📸 Starting photo shoot for ${targets.length} models...`);
+
+    const MAX_CONSECUTIVE_ERRORS = 5;
+    let consecutiveErrors = 0;
+
+    for (const target of targets) {
+      // 2. CHECK FOR CANCELLATION INSIDE LOOP
+      if (signal.aborted) {
+        console.log('🛑 Job aborted by user.');
+        break;
+      }
+
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.warn(`🚨 Aborting thumbnail generation: ${MAX_CONSECUTIVE_ERRORS} consecutive errors detected.`);
+        break; 
+      }
       try {
-        // multer memoryStorage provides buffer
-        const buffer = f.buffer;
-        const original = (f.originalname || 'upload').replace(/\\/g, '/');
-        // sanitize filename
-        let base = path.basename(original).replace(/[^a-zA-Z0-9_.\- ]/g, '_');
-        
-        // Check for G-code archives FIRST before general .3mf check (order matters!)
-        const lowerBase = base.toLowerCase();
-        if (lowerBase.endsWith('.gcode.3mf') || lowerBase.endsWith('.3mf.gcode')) {
-          errors.push({ file: original, error: 'G-code archives (.gcode.3mf) should be uploaded via the G-code analysis dialog, not the model upload dialog' });
+        const thumbName = path.basename(target.sourcePath) + '-thumb.png';
+        const thumbPath = path.join(path.dirname(target.sourcePath), thumbName);
+        const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
+
+        // Skip if exists and not forced
+        if (fs.existsSync(thumbPath) && !force) {
+          skipped++;
           continue;
         }
+
+        const modelColor = target.data.userDefined?.color || target.data.color || globalDefaultColor;
+
+        // 3. PASS THE SIGNAL TO THE GENERATOR
+        // Added 'signal' as the last argument here
+        await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir, signal); 
         
-        // Now check for valid extensions
-        if (!/\.3mf$/i.test(base) && !/\.stl$/i.test(base)) {
-          errors.push({ file: original, error: 'Unsupported file extension' });
-          continue;
-        }
-        // Determine destination folder (if provided) relative to models dir
-        let destFolder = 'uploads';
-        if (destinations && Array.isArray(destinations) && typeof destinations[fileIndex] === 'string' && destinations[fileIndex].trim() !== '') {
-          // normalize and prevent traversal
-          let candidate = destinations[fileIndex].replace(/\\/g, '/').replace(/^\/*/, '');
-          if (candidate.includes('..')) candidate = 'uploads';
-          destFolder = candidate || 'uploads';
+        // Update JSON to point to new image
+        let json = target.data;
+        let changed = false;
+        
+        if (!json.images) json.images = [];
+        
+        // Add if not present
+        if (!json.images.includes(relativeThumbUrl)) {
+            json.images.unshift(relativeThumbUrl); // Make it first!
+            changed = true;
         }
 
-        const destDir = path.join(modelsDir, destFolder);
-        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-
-        let targetPath = path.join(destDir, base);
-        // avoid collisions by appending timestamp when necessary
-        if (fs.existsSync(targetPath)) {
-          const name = base.replace(/(\.[^.]+)$/, '');
-          const ext = path.extname(base);
-          const ts = Date.now();
-          base = `${name}-${ts}${ext}`;
-          targetPath = path.join(destDir, base);
+        if (changed) {
+            fs.writeFileSync(target.jsonPath, JSON.stringify(json, null, 2));
         }
-
-        // Write uploaded file atomically: write to tmp then rename. Protect
-        // against a race where another process creates the same filename
-        // between our exists-check and the rename. If the target exists at
-        // rename-time, pick a new unique name and rename there instead.
-        const tmpUploadPath = targetPath + '.tmp';
-        fs.writeFileSync(tmpUploadPath, buffer);
-
-        // If targetPath was created between our earlier exists check and now,
-        // avoid overwriting: choose a new name with a timestamp/random suffix.
-        if (fs.existsSync(targetPath)) {
-          const name = base.replace(/(\.[^.]+)$/, '');
-          const ext = path.extname(base);
-          const ts = Date.now();
-          const rnd = Math.floor(Math.random() * 10000);
-          base = `${name}-${ts}-${rnd}${ext}`;
-          targetPath = path.join(destDir, base);
+        
+        processed++;
+        consecutiveErrors = 0;
+      } catch (err) {
+        // Don't count manual cancellation as an error
+        if (err.message.includes('cancelled')) {
+           break;
         }
-        fs.renameSync(tmpUploadPath, targetPath);
-        saved.push(path.relative(modelsDir, targetPath).replace(/\\/g, '/'));
-
-        // Now generate munchie.json for the saved file (reuse regeneration logic)
-        try {
-          const modelFilePath = targetPath;
-          const rel = path.relative(modelsDir, modelFilePath).replace(/\\/g, '/');
-          let jsonRel;
-          if (rel.toLowerCase().endsWith('.3mf')) jsonRel = rel.replace(/\.3mf$/i, '-munchie.json');
-          else if (rel.toLowerCase().endsWith('.stl')) jsonRel = rel.replace(/\.stl$/i, '-stl-munchie.json');
-          else {
-            errors.push({ file: rel, error: 'Unsupported file type for processing' });
-            continue;
-          }
-
-          const jsonPath = path.join(modelsDir, jsonRel);
-          const derivedId = path.basename(rel).replace(/\.3mf$/i, '').replace(/\.stl$/i, '');
-
-          const fileBuf = fs.readFileSync(modelFilePath);
-          const hash = computeMD5(fileBuf);
-          let newMetadata;
-          if (modelFilePath.toLowerCase().endsWith('.3mf')) {
-            newMetadata = await parse3MF(modelFilePath, derivedId, hash);
-          } else {
-            newMetadata = await parseSTL(modelFilePath, derivedId, hash);
-          }
-
-          const mergedMetadata = { ...newMetadata, id: derivedId, hash };
-          // Ensure created/lastModified timestamps for newly uploaded file
-          try {
-            const now = new Date().toISOString();
-            if (!mergedMetadata.created) mergedMetadata.created = now;
-            mergedMetadata.lastModified = now;
-          } catch (e) { /* ignore */ }
-
-          // Rebuild imageOrder similar to regeneration logic
-          try {
-            const parsed = Array.isArray(mergedMetadata.parsedImages) ? mergedMetadata.parsedImages : (Array.isArray(mergedMetadata.images) ? mergedMetadata.images : []);
-            const userArr = Array.isArray(mergedMetadata.userDefined?.images) ? mergedMetadata.userDefined.images : [];
-            const rebuiltOrder = [];
-            for (let i = 0; i < parsed.length; i++) rebuiltOrder.push(`parsed:${i}`);
-            for (let i = 0; i < userArr.length; i++) rebuiltOrder.push(`user:${i}`);
-            if (!mergedMetadata.userDefined || typeof mergedMetadata.userDefined !== 'object') mergedMetadata.userDefined = {};
-            mergedMetadata.userDefined = { ...(mergedMetadata.userDefined || {}), imageOrder: rebuiltOrder };
-          } catch (e) {
-            console.warn('Failed to rebuild userDefined.imageOrder during upload processing:', e);
-          }
-
-          // Ensure directory exists for jsonPath
-          const jdir = path.dirname(jsonPath);
-          if (!fs.existsSync(jdir)) fs.mkdirSync(jdir, { recursive: true });
-          fs.writeFileSync(jsonPath, JSON.stringify(mergedMetadata, null, 2), 'utf8');
-          try {
-            // Dynamic import to allow server start even if build is pending
-            const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
-            
-            const thumbName = path.basename(modelFilePath) + '-thumb.png';
-            const thumbPath = path.join(path.dirname(modelFilePath), thumbName);
-            // Use server's internal address
-            const BASE_URL = process.env.HOST_URL || `http://localhost:${PORT}`; 
-            const baseUrl = BASE_URL;
-            
-            console.log(`📸 Auto-generating thumbnail for: ${derivedId}`);
-            
-            // Await generation so the thumbnail exists when the UI refreshes
-            await generateThumbnail(modelFilePath, thumbPath, baseUrl);
-            
-            // Update JSON to include the new thumbnail image
-            const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
-            const freshJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-            
-            if (!freshJson.images) freshJson.images = [];
-            // Add to the START of the images list so it becomes the default
-            freshJson.images.unshift(relativeThumbUrl);
-            
-            fs.writeFileSync(jsonPath, JSON.stringify(freshJson, null, 2), 'utf8');
-         } catch (genErr) {
-            // Don't fail the upload if just the image generation fails
-            console.error("Auto-thumbnail failed:", genErr);
-         }
-         // -------------------------------
-
-         await postProcessMunchieFile(jsonPath);
-         processed.push(jsonRel);
-        } catch (e) {
-          errors.push({ file: base, error: e && e.message ? e.message : String(e) });
-        }
-      } catch (e) {
-        errors.push({ file: f.originalname || 'unknown', error: e && e.message ? e.message : String(e) });
+        console.error("Thumbnail error:", err);
+        errors.push({ id: target.data.id, error: err.message });
+        consecutiveErrors++;
       }
     }
+    
+    // Clear the job when done
+    activeThumbnailJob = null;
 
-    res.json({ success: errors.length === 0, saved, processed, errors });
-  } catch (e) {
-    console.error('Upload processing error:', e);
-    res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+    res.json({ 
+      success: true, 
+      processed, 
+      skipped, 
+      errors,
+      aborted: signal.aborted || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
+    });
+
+  } catch (error) {
+    activeThumbnailJob = null;
+    console.error('General generation error:', error);
+    // If it was just cancelled, return success: false but with a specific message
+    if (error.message.includes('cancelled')) {
+        return res.json({ success: false, aborted: true, message: 'Cancelled by user' });
+    }
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
