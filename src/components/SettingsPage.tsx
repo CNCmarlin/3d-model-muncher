@@ -302,7 +302,7 @@ export function SettingsPage({
   // Track which duplicate group's dialog is open (store group.hash or null)
   const [openDuplicateGroupHash, setOpenDuplicateGroupHash] = useState<string | null>(null);
 
-  // File type selection state - "3mf" or "stl" only
+
   // File type selection state - "3mf", "stl", or "all"
   const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">("all");
 

@@ -1,0 +1,336 @@
+[33me21aa3c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeat/nested-collections-editor[m[33m)[m Fix package-lock mismatch for CI build
+[33m37e9810[m Fix package-lock mismatch for CI build
+[33mbd677d7[m Bug Fixes
+[33mc45d63c[m Cleaned up dev environment files, and cleaned up package.json depenencies.
+[33mcf30cea[m updated dependencies. cleanuped bak files in dev environment
+[33m36f68c7[m updated packages
+[33maf4ffff[m push
+[33m718b036[m Aligned Dockerfile and packages.json with main
+[33m4d65286[m Light Mode has a softer white background
+[33m47023ff[m Dynamic Palette Generation: Your app now takes a single color and mathematically generates a complete, accessible theme (dark mode, light mode, borders, and muted text) using HSL calculations.
+[33m024146c[m UX change, Nested collections on All Models "Home" screen
+[33m170832e[m Finalized Full CRUD for Collections: Create, Edit, Delete via Settings.
+[33meb55cc0[m Settings page now hides filtersidebar, and has verticle tabs instead of horizontal. Refined Sidebar to be easier to use with a global reset of filters when interacting with a new collection or folder (so items are not hidden from view)
+[33me8779fa[m Thigiverse import success! User needs to get an api token from thingiverse and put the api token in their docker-compose.yml (plan for ui api token in future push)
+[33m8e51532[m Update react
+[33me253154[m final docker update
+[33m2a2fe35[m d
+[33m875d677[m encoder fix for capture.html
+[33m94e7933[m test
+[33m50d1354[m testing serving /models/ before any authentication layer
+[33ma943262[m testing a fix for pathing
+[33m659751f[m Furth refinement of thumbnail generation using path.relative logic
+[33me3a06b0[m Furth refinement of the thumbnail generator, and 3mf support for hover redering fixes
+[33m87b02bb[m Added Circuit Breaker to ThumbnailGeneration
+[33ma42d522[m updated dockerfile
+[33mcb1254c[m fix: resolve thumbnail rendering, sync camera angles, and fix config loading
+[33m3629b0d[m added = [], (causing the crash)
+[33m3e645c1[m fix ui crash
+[33mff8b003[m nested collections implemented
+[33mbbc34d8[m[33m ([m[1;32mexperimental[m[33m)[m :qMerge branch 'experimental' of https://github.com/CNCmarlin/3d-model-muncher into experimental
+[33m0ec0a23[m chore: update build pipeline for experimental branch
+[33m7306fb9[m UI: Added parent selector to collection drawer
+[33m3a4330a[m[33m ([m[1;33mtag: [m[1;33mv1.0.0[m[33m)[m chore(release): 1.0.0 [skip ci]
+[33m137e7d1[m[33m ([m[1;32mmain[m[33m)[m Version .1
+[33m4c8974d[m chore(release): 0.15.0 [skip ci]
+[33md3058fa[m Merge pull request #56 from robsturgill/gcode-support
+[33m1c14df9[m fix: enhance G-code tests, handling with path validation and update README for clarity
+[33mdf06574[m docs: remove outdated g-code upload and parsing plan
+[33m156e689[m fix: implement G-code archive filtering in upload and scan processes
+[33mb463f9b[m fix: update normalizeTime function to round up minutes when hours are present
+[33m6bd80e8[m fix: handling related files view button when uploading gcode file types
+[33m48b054a[m fix: enhance G-code support with improved extraction and file preservation
+[33m4243aac[m fix: g-code enhancement for storing file with model not just processing
+[33mf8283a5[m feat: add G-code settings and  G-code parsing
+[33m9d3f6a0[m chore: planning file
+[33m6ac94dc[m chore(release): 0.14.4 [skip ci]
+[33mda071d2[m Merge pull request #55 from robsturgill/view-settings
+[33m1cf137e[m refactor: centralize model filtering logic and update tests for FilterSidebar sort initialization
+[33m7fa3a7d[m fix: add 'Show Missing Images' filter option in FilterSidebar and update related state management
+[33meaabd3d[m test: add unit tests for ConfigManager and FilterSidebar sort initialization
+[33m32e01c2[m fix: add sort by option in settings and update related state management in filters
+[33mb047b0a[m chore(release): 0.14.3 [skip ci]
+[33mebe902d[m fix: improve dropdown behavior for tag input field, only display after initial character input
+[33m77ba9eb[m fix: drawer handling to close when clicked outside but prevent accidental close when editing
+[33m8889383[m fix: toggle for showing more tags in the FilterSidebar, moved clear filter to footer
+[33ma4e2709[m fix: collections in the main grid now respect the active search, category, and tag filters
+[33m60eb2b5[m fix: normalize category selection saved value across edit modes
+[33ma80470b[m chore(release): 0.14.2 [skip ci]
+[33macb20d8[m fix: reordered bulk edit drawer options, moved image generation into section, updated icons
+[33me818b6a[m fix: improve collection display for list view, added missing actions button for collection
+[33m748a80d[m test: add unit tests for SelectionModeControls component functionality
+[33mb164884[m fix: add removal functionality for selected models in collection editing
+[33m0ab7e70[m fix: implement selection controls in collection view, refactored select mode to reusable component
+[33m8dae0cb[m fix: enhance collection editing with mode toggle, select new or from existing collection
+[33m0aa4330[m chore(release): 0.14.1 [skip ci]
+[33m774cada[m fix: implement add/remove model from collection functionality and update hidden model handling
+[33mb429fec[m chore(release): 0.14.0 [skip ci]
+[33m2ec5433[m Merge pull request #49 from robsturgill/collections
+[33ma6ac813[m fix: update test and server collection file handling
+[33m2c7c9be[m fix: issue with hidden model filter when exiting collection view
+[33m065da16[m docs: update dialog release notes for 0.14.0 features
+[33m3fcfada[m fix: update event handling that prevented tag autocomplete selection for collection edits
+[33m8fdd5ae[m fix: implement worker-specific config handling to avoid clobbering main config during tests
+[33m5f2f48b[m fix: persist STL print setting changes when regenerating munchie.json
+[33m8915df4[m test: correct existing test add support for worker-specific config files
+[33m04feec4[m feat: add STL-specific print settings fields, disabled or hidden for 3mf files
+[33m07e7ad9[m test: add comprehensive tests for model management, backup, and schema validation
+[33me85c39e[m fix: file type filter to control collection visibility in model views
+[33m1b3c352[m fix: sorting functionality for collections
+[33m5c815cd[m feat: enhance TagsInput component for dynamic suggestions (autocomplete)
+[33m16277dc[m feat: enhance ModelUploadDialog with category and tags support for uploaded models
+[33ma3a2345[m refactor: integrate TagsInput shared component to replace one-off implementations
+[33mdd68423[m fix: default category to 'Uncategorized' in CollectionEditDrawer
+[33m666fd95[m fix: enhance drawer to limit closing when editing
+[33m1605cf2[m feat: enhance backup and restore functionality to include collections
+[33mc5f9c18[m test: add unit tests for CollectionCard, CollectionEditDrawer, FilterSidebar, and ModelGrid co
+[33m31422b4[m feat: add collections feature with CRUD operations
+[33m905d5f7[m chore(release): 0.13.3 [skip ci]
+[33ma85639c[m test: unit tests for ModelGrid component to verify selection behavior
+[33mc0d87d5[m fix: enhance model selection with shift-click range support and update event handling
+[33m2358b1b[m fix: implement category selection navigation from settings to models view
+[33m1ce4ecc[m Create an issue for category view change on settings page.
+[33m16c5a15[m chore(release): 0.13.2 [skip ci]
+[33m49e24c4[m fix: show release notes dialog only for major.minor version changes and persist user preference
+[33m3b713a3[m fix: download functionality by preserving subdirectory structure and improving filename handling
+[33mb8ec936[m chore(release): 0.13.1 [skip ci]
+[33mc13d713[m fix: add preview generation for uploaded models, increase file upload size limit to 1GB
+[33m2d7d7c7[m fix: disable generate image button when other bulk edits are attempted, styling updates to drawer
+[33m0da234b[m fix: reset image generation state on drawer close to prevent lingering alerts
+[33mad89604[m fix: category list disappearing from bulk edit drawer
+[33m7c2c761[m fix: additional hardening, prevent accidental overwrites of model files by remapping to munchie JSON
+[33mbf6bb9f[m chore(release): 0.13.0 [skip ci]
+[33m57f141e[m docs: update release dialog content
+[33mb076b84[m fix: enhance image generation handling and UI feedback in BulkEditDrawer
+[33mb8fe4fd[m feat: bulk create thumbnails for models with no images, simpler logging, verbose switch in settings
+[33m599bdb9[m fix: update license display strings to use standardized abbreviations found across models
+[33m41e5e6d[m style: code formatting
+[33mc37657f[m fix: remove duplicate group in UI after selecting a file to keep, without having to rescan
+[33m61c5790[m fix: improve duplicate file removal dialog layout with overflow handling
+[33m49b676b[m fix: change default 3d model color in settings and update related components
+[33md3381b4[m chore(release): 0.12.2 [skip ci]
+[33mabf5552[m fix: enhance model directory handling in settings to load from other paths w/o server restart
+[33mde6c923[m fix: restoring description, handle clearing user-defined description in model save process
+[33md640c5d[m fix: improve file & path text overflow display, truncation, scrolling in model detail drawer
+[33m71e9cde[m fix: reduce gap in Card componen
+[33m11b72c3[m fix: update bulk edit save buttons to show loading spinner
+[33meae96d5[m fix: always render footer in ModelCard to maintain layout stability during selection mode
+[33m2086e78[m fix: prevent double-submit on save and update button state during saving
+[33m0da6810[m fix: use scrollarea to remove native scrollbars in settings tag listing and dialog
+[33m403b3d5[m fix: add clear to filter search, ctrl k to focus, escape to clear
+[33mcc85180[m chore(release): 0.12.1 [skip ci]
+[33mce1f8cb[m fix: updated release notes dialog
+[33m6728585[m chore(release): 0.12.0 [skip ci]
+[33mbde290a[m Merge pull request #24 from robsturgill/uploading
+[33m7c4d407[m Update server.js
+[33m6f85e3c[m Update server.js
+[33m3d7a58b[m Update src/components/ModelUploadDialog.tsx
+[33m7f7b320[m Update tests/uploadModels.test.ts
+[33m44f77c6[m style(modeluploaddialog): update input and button styles in dialog
+[33mf7989c1[m test: fix problems in upload test
+[33m9505776[m test: add unit tests for model sorting and file uploads
+[33m27bfd2f[m refactor: move model sorting logic into utility functions and update App component to use
+[33m6e93140[m fix: adjust spacing in FilterSidebar component for new sort by field
+[33me720c0e[m feat: add sorting functionality to model filters
+[33m2ba5af1[m feat: add created and lastModified timestamps to model metadata
+[33m253f5d3[m feat: add model upload functionality with folder management
+[33m5c925b0[m chore(release): 0.11.0 [skip ci]
+[33m609aa1e[m docs: update release notes and improve attributions documentation
+[33m307bb30[m fix: positioned download button to bottom of model card for consistency
+[33mede76fb[m fix: bulk edit related files with same names but different filetypes
+[33mb083552[m fix: improve styling and layout in various components
+[33mcfc80d1[m fix: integrate legacy image migration into scan endpoint, removed migration button from settings
+[33m1dd0bb3[m feat: added bulk editing related files, can now link other models together
+[33m18bb21f[m fix: better styling management, increased default font-size
+[33mceafcc3[m refactor: move label utility to constants and update imports
+[33mac583ee[m Merge branch 'main' of https://github.com/robsturgill/3d-model-muncher
+[33mb348b25[m build: env variable management and add GOOGLE_API_KEY to docker-compose
+[33m219a7f1[m chore(release): 0.10.1 [skip ci]
+[33mb9ab6cf[m fix: add configurable model card fields and printed badge visibility
+[33m997a0c8[m chore(release): 0.10.0 [skip ci]
+[33m1d849b0[m Merge pull request #22 from robsturgill/save-3d-preview-as-thumbnail
+[33m93924b5[m Update src/components/ModelViewer3D.tsx
+[33m3d07acc[m fix: toast secondary text color, fix drawer width on smaller screens exceeding container
+[33m51d71c3[m fix: loading indicators for refresh and initalizing large libraries
+[33m8c4b01a[m chore: update docs with saving 3d preview to model images via capture button
+[33m3b1c79c[m feat: add image capture functionality to ModelViewer3D and saving to model images
+[33m3e7545e[m chore(release): 0.9.0 [skip ci]
+[33m53306b4[m Merge pull request #18 from robsturgill/experimental-tab
+[33mba361ed[m Update src/components/settings/ExperimentalTab.tsx
+[33medb63dc[m fix: refactor userDefined structure in model-related components
+[33mc38a4f3[m docs(readme): update fields preserved and noted deprecated fields
+[33mefbcef0[m fix: thumbnail image not displaying in settings, other styling updates
+[33m01ebfb0[m fix: image gallery exceeding browser window when fullscreen
+[33meca6972[m feat: add migration endpoint for legacy images and implement release notes dialog
+[33mcf36689[m fix: enhance munchie JSON processing so  userDefined thumbnail and imageOrder are set correctly
+[33me843316[m fix: persist user added images, order and refactored how parsed images are separate from user images
+[33m52f708b[m fix: improve image persistance for user added images and image ordering
+[33m066b240[m fix: persist user images with regeneration, improve image ordering method
+[33m2f392ce[m fix: changed alert styling in bulkEditDrawer, image size issue in settings support
+[33m6613e85[m fix: error reporting if no google api key is present, updated readme for adding api key
+[33mbf5e022[m chore: experimentalTab moved under src/components/settings/ExperimentalTab.tsx
+[33ma6c8124[m fix: preserve user description and related files when regenerating json
+[33md647121[m feat: add options to include image and model name in AI prompts
+[33m1f0861e[m fix(experimental): user prompt issue, select other from templates to display field for input
+[33m442d74c[m fix: switched to use userDefined description for generative ai
+[33m0907694[m feat: allow restoring of descriptions to original, user changes are stored separately
+[33mffac84c[m fix: enhance model loading and saving by implementing id-based lookups
+[33m997ba0f[m fix: enforce model directory containment for saved files
+[33m63fc591[m fix: cleanup how ai generated content replaces field content when saving
+[33mf35d536[m fix: enhance ai-gen experiment saving by updating top-level category and tags
+[33m6ce5c89[m feat(settings): add unmapped categories feature to display and add categories from model metadata
+[33m7322962[m fix(experimental): drawer layout and styling, category options, ai error messaging
+[33m0fa647f[m feat: added experimental AI workflow to suggest metadata for description, category, and tags
+[33m95794b6[m chore: add .env to .gitignore
+[33mfefcf0c[m feat(experimentaltab): add experimental tab with lazy loading for settings page
+[33m54b1168[m chore(release): 0.8.0 [skip ci]
+[33mec77ae2[m Merge pull request #13 from robsturgill/related-files
+[33ma4a4a08[m docs: updated user-defined metadata section to include related_files and designer
+[33m7d14bb7[m feat: add designer field to model and update related components
+[33m21b9222[m chore: moved related files below notes section in drawer
+[33m2b05dc9[m fix: restore remove tags from edited model in ModelDetailsDrawer
+[33m8d5b43d[m fix: settings default filters now apply on reload, sets active filters in UI
+[33ma4a1a38[m fix: centralize license types with constant, update components, unknown values will display for edit
+[33mcb9e833[m refactor: download utility functions refactor for ModelCard and ModelDetails
+[33m796f085[m feat: add dropdown for related files download in ModelCard component
+[33m65f7af6[m feat: can add related files to a model, validation and saving enhancements
+[33ma2c41c8[m docs(readme.md): added user-defined metadata preservation details
+[33m4a9b110[m chore(release): 0.7.1 [skip ci]
+[33m0bebd94[m fix: clarify processed item count display in settings page
+[33m4afd439[m fix: enhance file integrity result handling and status display counts
+[33m54a91f4[m fix: improve handling of file types in settings file integrity actions
+[33m8f12a8f[m fix: enhance logging by adding sanitization and truncating large outputs
+[33m29634a2[m fix: enhance debugging and sanitization of jsonFilePath in BulkEditDrawer
+[33m89a494f[m fix: positioning of print status in tag view models dialog
+[33m3fabf17[m Merge branch 'main' of https://github.com/robsturgill/3d-model-muncher
+[33m3450058[m fix: enhance model saving logic to handle corrupt files and normalize tags
+[33m67f40cf[m fix: prevent duplicate tags, increase tag display limit in filter sidebar
+[33m7f6e97f[m fix: added missing icons to filter sheet
+[33ma9aea87[m fix: correct uncategorized icon
+[33maee6662[m chore(release): 0.7.0 [skip ci]
+[33meb778e4[m fix: fix for react-tree intrinsic type errors
+[33md50dd3a[m feat: choose icon for category
+[33mbc4fa83[m feat: added category deletion, fix renaming issue, fix filtering issue
+[33m233d88f[m fix(modelviewer3d): removed max zoom level
+[33m6cb5fa7[m feat: added file type filtering for model view
+[33m99db556[m refactor: badge color toned down for printed status
+[33m281cc2d[m chore(release): 0.6.0 [skip ci]
+[33m0735177[m feat: update ModelDetailsDrawer to add model path rearranged sections and display conditionals
+[33m269af75[m docs: copilot instructions
+[33m29b4ba3[m refactor: updated bulk edit drawer text and added missing icons
+[33mc1968d5[m feat: added file scanning and generation actions to top toolbar
+[33ma3b6254[m feat: add shortcut to File Integrity view from Appbar
+[33mc468505[m chore(release): 0.5.2 [skip ci]
+[33mef26a66[m fix: docker workflows to streamline build and push steps
+[33m33b6d98[m chore(release): 0.5.1 [skip ci]
+[33mabfed43[m fix: enhance and streamline image build process
+[33m139f26b[m fix: update .gitignore for data dir and removed testing config
+[33mffe016a[m chore(release): 0.5.0 [skip ci]
+[33m2ea47f6[m fix: list view missing image with ImageWithFallback
+[33mdf658de[m feat: can add categories and updated configuration management and UI preferences handling
+[33m15b20b2[m chore(release): 0.4.2 [skip ci]
+[33m3888588[m fix: placeholder image color toned down for dark theme
+[33m2622941[m chore: release
+[33m64a7b0a[m chore(release): 0.4.1
+[33mc39b127[m fix: docker tag fix
+[33md24b3ba[m fix: build versioning issue
+[33m1e8f322[m fix(align semantic-release and docker workflows): align semantic-release and docker workflows
+[33me8cd726[m fix: update Docker tags pattern for versioning and adjust tag format in release configuration
+[33m500a7e8[m fix: update Docker metadata tags to include branch suffix and enable default branch versioning
+[33m3a3a7ce[m feat: add automated release and versioning system
+[33maf436ad[m Merge pull request #9 from robsturgill/stl-filetype-support
+[33m50deb8e[m fix: ensure boolean values are correctly set for checkbox and switch components
+[33mff6db70[m fix: remove version numbers from imports for consistency across UI components
+[33m6100fb1[m feat: add API endpoint to regenerate munchie files and integrate with bulk edit functionality
+[33md38cff0[m fix: bulk deletion to include .stl files alongside .3mf and update related UI messages
+[33mfc026a6[m feat: refresh model metadata after bulk deletion to ensure UI consistency
+[33md88845e[m feat: enhance bulk delete functionality and improve alert dialog components
+[33mc5d6446[m feat: enhance status message handling with toast notifications using sonner's API
+[33m24726b3[m feat: implement toast notifications for status messages in SettingsPage
+[33m51574d8[m feat: clear generate results when switching tabs to avoid stale counts
+[33m9bbf9fc[m feat: add duplicate group dialog management and improve remove duplicates handling
+[33mee53740[m feat: enhance model file handling to support both lowercase and uppercase STL extensions
+[33mbb0b43b[m feat: integrate ImageWithFallback component for placeholder image
+[33m0fcaadc[m feat: custom color options to ModelViewer3D components
+[33m3f812d2[m feat: rotate model groups to upright position for STL and 3MF files
+[33m562a37e[m feat: enhance model viewer to support STL files and improve file path conversions
+[33md9e52eb[m feat: enhance model scanning and JSON generation to support STL files and improve file type handling
+[33mbd7282b[m feat: implement image compression utility and enhance image upload handling in ModelDetailsDrawer
+[33m3df42e3[m feat: add functionality to upload images in edit mode with thumbnail handling
+[33mcd3376b[m fix: issue during image fullscreen escape key closing detail drawer
+[33m491249b[m feat: enhance image selection and drag-and-drop functionality in edit mode to set main image
+[33m88c4c83[m feat: implement in-window fullscreen mode for image previews and enhance keyboard navigation
+[33mac5ca54[m feat: add print time and filament fields to model editing
+[33m14a5e1c[m feat: enhance tags display with icon and improve pricing section layout
+[33m009f860[m feat: update print settings to replace 'supports' with 'nozzle' in model and parsing logic
+[33mb47825c[m feat: exclude computed properties from model updates in save-model API and JSON path conversion
+[33mdc65fe7[m feat: update README and added demo gif
+[33m8e95571[m feat: add file type selection for model deletion in App component
+[33m6b6528a[m feat: enhance selection mode controls and integrate bulk actions in ModelGrid component
+[33m00461b6[m feat: integrate ScrollArea component for improved scrolling in BulkEditDrawer, FilterSidebar, and ModelDetailsDrawer
+[33mb2502a8[m fix: remove unnecessary Heart icon from the thank you message in SettingsPage
+[33mbb8cea6[m fix: improve mobile layout for the settings page
+[33m3e1dbb6[m feat: Improve layout and responsiveness of backup and restore strategy sections in SettingsPage
+[33m1d8bbdc[m feat: Refactor category ID display and button layout for improved readability
+[33m2cae175[m feat: Update Tabs layout in SettingsPage for improved responsiveness and styling
+[33mb2949ab[m feat: Update settings category section to allow renaming and updating corresponding models.
+[33m9bfa5ce[m feat: Update Slider component for improved cursor interactivity and hide UI demo button
+[33m81b6f87[m feat: Enhance UI components with cursor pointer styles for better interactivity
+[33m6be944d[m feat: Add delete confirmation dialog for bulk model deletion
+[33m683452e[m refactor: Remove export directory settings from configuration and related components
+[33m34c97fa[m refactor: Update README for clarity and remove redundant sections; delete unused documentation index
+[33me16eedc[m feat: Add environment configuration files for Docker, production, and Unraid setups
+[33m51a4ea5[m fix: update workflow
+[33me62809a[m fix: update Docker image reference in production compose file
+[33m7e1c8fa[m feat: add Docker support with multi-stage build, Docker Compose, and deployment documentation
+[33mec48975[m feat: update documentation to include backup and restore feature in README
+[33mfcd5cd2[m feat: add backup and restore functionality for munchie.json files
+[33m7cd64c9[m feat: enhance tag management with async save operations and UI updates
+[33mef999da[m fix: reset editing state when ModelDetailsDrawer closes
+[33m3b152d9[m feat: pass models prop to FilterSidebar for dynamic tag generation
+[33mc8973a0[m fix: remove unused Eye icon import from FilterSidebar component
+[33me29325c[m feat: add hidden model functionality with filtering and UI updates across components
+[33mafb2d6b[m feat: update file path handling in model saving functions to ensure correct JSON file paths
+[33md02da05[m feat: implement bulk delete functionality for models with API integration and enhanced user feedback
+[33m46c8972[m feat: enhance model refresh functionality with improved toast messages and add Toaster component
+[33ma8f9224[m feat: update donation dialog icons and links; replace empty state image; add community mascot image
+[33m1da9532[m feat: add favicon and touch icons; update loading indicators in AppContent and FilterSidebar; enhance empty state in ModelGrid
+[33m70e635d[m fix: resolve model loading issues in preview mode by adding Vite proxy configuration and updating API calls to use relative URLs
+[33m926e271[m fix: update @types/node version in package.json and package-lock.json; refactor model scanning logic in AppContent; enhance duplicate model handling in clientUtils; adjust config path in ConfigManager; remove unused LoadingManager in useSafeThreeMFLoader; add node type to tsconfig
+[33mfd33590[m feat: Add script to copy models to build directory and update build process
+[33mf5d4266[m feat: add preview script to package.json; update .gitignore to include build directory
+[33md5af65b[m refactor: remove unused category and config type definitions; delete configManager and threeMFToJson utility files
+[33md5f189f[m feat: add Unraid-optimized Dockerfile, docker-compose file, and setup guide; implement health check endpoint in server
+[33mfeacf5b[m docs: update README.md to enhance technology stack details, add Docker deployment instructions, and improve model file management section
+[33m7dccc92[m refactor: enhance styling for Alert component in DemoPage; remove unused selectedPlatform state in DonationDialog; update import statements in ErrorBoundary; adjust SheetHeader class for improved layout
+[33meab637d[m fix: update sonner dependency to version 2.0.7 and adjust related imports; clean up Attributions.md; refactor hash check result structure in fileManager; set default price to 0 in parse3MF function
+[33ma7944ab[m feat: enhance model file path handling and add saving state management in BulkEditDrawer
+[33mdbffbcc[m refactor: streamline imports and clean up unused code in SettingsPage
+[33md405a82[m feat: add getDisplayPath helper function for improved model file path display in SettingsPage
+[33m4611ac0[m refactor: clean up console logs and enhance model fallback logic in SettingsPage
+[33mb74a7e8[m refactor: remove Duplicates tab and associated content from SettingsPage
+[33m3b4f74e[m feat: implement ModelThumbnail component for improved thumbnail handling in SettingsPage
+[33mae188e3[m feat: add placeholder image handling and enhance file verification UI in SettingsPage
+[33m4fc40d0[m fix: add dist-backend/ to .gitignore to prevent unnecessary files from being tracked
+[33m6cd4423[m feat: add API endpoint to load models from munchie.json files and enhance corrupted file handling in SettingsPage
+[33mf6805dd[m feat: enhance configuration management with validation, theme handling, and auto-save functionality
+[33m3b59480[m fix: refine model selection logic and enhance corrupted files handling in SettingsPage
+[33m2df0800[m feat: enhance 3MF metadata parsing and file integrity checks
+[33m5f1abcf[m feat: enhance metadata parsing by adding HTML entity decoding and extracting layer height and infill from profile title
+[33mf504a97[m feat: enhance model download functionality to use model's URL for accurate file paths
+[33m5d8c381[m feat: add Dockerfile and docker-compose.yml for containerized application setup
+[33m03b4c3c[m feat: implement download functionality for model files in ModelCard and ModelDetailsDrawer components
+[33m1d5a0e1[m feat: enhance model saving functionality and update model interface
+[33m4c4eaa8[m feat: added price display
+[33m5e3b47b[m feat: enhance model refresh logic to fetch updated metadata from backend
+[33m4227be1[m feat: made title clickable to route to home page
+[33m04bea2c[m feat: add API endpoint for deleting models and update duplicate removal logic
+[33m5eb954c[m feat: add backend build script and enhance API for model management
+[33m9d0f6b2[m fix: format devDependencies in package.json
+[33m4ea301d[m fix: build changes
+[33m140fef2[m feat: loads 3dmodel removing  placeholders
+[33maa7724f[m fix: typo in readme
+[33m52b3736[m feat: add hash to munchie jsons, eliminated mock data
+[33mcf60464[m feat: scan model directory and generate JSON
+[33m5a8df17[m initial project setup
+[33m3407cb2[m Initial commit
