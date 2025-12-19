@@ -11,6 +11,7 @@ import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { LICENSES } from '../constants/licenses';
 import { Switch } from "./ui/switch";
+import { Checkbox } from "./ui/checkbox";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -203,7 +204,10 @@ export function SettingsPage({
     // Switch to integrity tab and capture fileType to avoid async state races
     setSelectedTab('integrity');
     const actionFileType = settingsAction.fileType;
-    setSelectedFileType(actionFileType);
+    // Only set specific checkboxes if a fileType is provided; otherwise keep default (both true)
+    if (actionFileType) {
+      setSelectedFileTypes({ "3mf": actionFileType === "3mf", "stl": actionFileType === "stl" });
+    }
 
     (async () => {
       try {
@@ -351,41 +355,60 @@ export function SettingsPage({
   const [generateResult, setGenerateResult] = useState<{ skipped?: number; generated?: number; verified?: number; processed?: number } | null>(null);
 
   const handleGenerateModelJson = async (fileType?: "3mf" | "stl") => {
-    const effectiveFileType = fileType || selectedFileType;
+    // Determine which file types to process
+    const fileTypesToProcess: Array<"3mf" | "stl"> = fileType 
+      ? [fileType] 
+      : [...(selectedFileTypes["3mf"] ? ["3mf" as const] : []), ...(selectedFileTypes["stl"] ? ["stl" as const] : [])];
+    
+    if (fileTypesToProcess.length === 0) return;
+    
     // Clear any previous hash-check results so UI doesn't show stale verified counts
     if (hashCheckResult) setHashCheckResult(null);
     setIsGeneratingJson(true);
     // Clear previous generation result so UI shows fresh status while running
     setGenerateResult(null);
-    const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
-    setStatusMessage(`Generating JSON for all ${fileTypeText} files...`);
+    
     try {
-      // Request streaming progress from backend
-      setIsGeneratingJson(true);
+      let totalProcessed = 0;
+      let totalSkipped = 0;
+      let totalGenerated = 0;
+      let totalVerified = 0;
+      
+      // Process each selected file type sequentially
+      for (const effectiveFileType of fileTypesToProcess) {
+        const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
+        setStatusMessage(`Generating JSON for all ${fileTypeText} files...`);
+        
+        const resp = await fetch('/api/scan-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: effectiveFileType })
+        });
 
-      const resp = await fetch('/api/scan-models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileType: effectiveFileType })
-      });
+        if (!resp.ok) {
+          const errBody = await resp.text().catch(() => '');
+          throw new Error(`Scan failed for ${fileTypeText}: ${resp.status} ${errBody}`);
+        }
 
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => '');
-        throw new Error(`Scan failed: ${resp.status} ${errBody}`);
+        // Read final JSON summary from the server
+        const data = await resp.json().catch(() => ({} as any));
+        if (!data || (data.success === false)) {
+          throw new Error(data?.error || `Scan failed for ${fileTypeText}`);
+        }
+
+        // Accumulate counts from each file type
+        totalProcessed += typeof data.processed === 'number' ? data.processed : 0;
+        totalSkipped += typeof data.skipped === 'number' ? data.skipped : 0;
+        totalGenerated += typeof data.generated === 'number' ? data.generated : 0;
+        totalVerified += typeof data.verified === 'number' ? data.verified : 0;
       }
-
-      // Read final JSON summary from the server
-      const data = await resp.json().catch(() => ({} as any));
-      if (!data || (data.success === false)) {
-        throw new Error(data?.error || 'Scan failed');
-      }
-
-      // Populate generateResult with any counts the server provided
+      
+      // Populate generateResult with accumulated counts
       setGenerateResult({
-        processed: typeof data.processed === 'number' ? data.processed : undefined,
-        skipped: typeof data.skipped === 'number' ? data.skipped : undefined,
-        generated: typeof data.generated === 'number' ? data.generated : undefined,
-        verified: typeof data.verified === 'number' ? data.verified : undefined,
+        processed: totalProcessed > 0 ? totalProcessed : undefined,
+        skipped: totalSkipped > 0 ? totalSkipped : undefined,
+        generated: totalGenerated > 0 ? totalGenerated : undefined,
+        verified: totalVerified > 0 ? totalVerified : undefined,
       });
 
       setSaveStatus('saved');
@@ -1466,8 +1489,9 @@ export function SettingsPage({
         toast.success('Regenerated munchie data');
       }
 
-      // Re-run the hash check to refresh UI
-      handleRunHashCheck(selectedFileType);
+      // Re-run the hash check to refresh UI with the first selected file type
+      const firstSelectedType = selectedFileTypes["3mf"] ? "3mf" : "stl";
+      handleRunHashCheck(firstSelectedType);
     } catch (e: any) {
       console.error('Regenerate error:', e);
       toast.error(e?.message || 'Failed to regenerate munchie file');
