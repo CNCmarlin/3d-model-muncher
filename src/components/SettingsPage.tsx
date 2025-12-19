@@ -19,7 +19,6 @@ import { CollectionEditorDialog } from "./CollectionEditorDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Progress } from "./ui/progress";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { AutoImportDialog } from "./AutoImportDialog"; // Ensure this import exists
 import * as LucideIcons from 'lucide-react';
 
@@ -36,6 +35,7 @@ import { getLabel } from '../constants/labels';
 import { resolveModelThumbnail } from '../utils/thumbnailUtils';
 import { Collection } from "../types/collection";
 import { applyThemeColor } from "../utils/themeUtils";
+import { Checkbox } from "./ui/checkbox";
 
 // Thumbnail resolver: prefer model object, fall back to explicit prop
 const ModelThumbnail = ({ thumbnail, name, model }: { thumbnail?: string | null; name: string; model?: any }) => {
@@ -200,19 +200,24 @@ export function SettingsPage({
   // If parent opened settings with an action, run it and then notify parent
   useEffect(() => {
     if (!settingsAction) return;
-    // Switch to integrity tab and capture fileType to avoid async state races
     setSelectedTab('integrity');
     const actionFileType = settingsAction.fileType;
-    setSelectedFileType(actionFileType);
+    
+    // Fix: Map string to object
+    if (actionFileType) {
+      setSelectedFileTypes({ 
+        "3mf": actionFileType === "3mf", 
+        "stl": actionFileType === "stl" 
+      });
+    }
 
     (async () => {
       try {
+        const typeObj = { "3mf": actionFileType === "3mf", "stl": actionFileType === "stl" };
         if (settingsAction.type === 'hash-check') {
-          // Call the hash check with the explicit file type
-          handleRunHashCheck(actionFileType);
+          handleRunHashCheck(typeObj);
         } else if (settingsAction.type === 'generate') {
-          // Call the generate handler with the explicit file type
-          await handleGenerateModelJson(actionFileType);
+          await handleGenerateModelJson(typeObj);
         }
       } catch (err) {
         console.error('Error running settingsAction:', err);
@@ -304,7 +309,7 @@ export function SettingsPage({
 
 
   // File type selection state - "3mf", "stl", or "all"
-  const [selectedFileType, setSelectedFileType] = useState<"3mf" | "stl" | "all">("all");
+  const [selectedFileTypes, setSelectedFileTypes] = useState({ "3mf": true, "stl": false });
 
   // Lazy load experimental tab component from separate file
   const ExperimentalTab = lazy(() => import('./settings/ExperimentalTab'));
@@ -319,13 +324,13 @@ export function SettingsPage({
 
   // Add this new state variable
   const [unsavedPrimaryColor, setUnsavedPrimaryColor] = useState<string | null>(null);
-  
+
   // Update the useEffect to sync it when config loads
   useEffect(() => {
     if (config) {
       // Fallback to default gray if undefined
       setUnsavedDefaultModelColor(config.settings.defaultModelColor ?? '#aaaaaa');
-      
+
       // Fallback to null if undefined
       setUnsavedPrimaryColor(config.settings.primaryColor ?? null);
     }
@@ -350,23 +355,75 @@ export function SettingsPage({
   const [isGeneratingJson, setIsGeneratingJson] = useState(false);
   const [generateResult, setGenerateResult] = useState<{ skipped?: number; generated?: number; verified?: number; processed?: number } | null>(null);
 
-  const handleGenerateModelJson = async (fileType?: "3mf" | "stl") => {
-    const effectiveFileType = fileType || selectedFileType;
-    // Clear any previous hash-check results so UI doesn't show stale verified counts
+  // --- THUMBNAIL GENERATION STATE & HANDLERS ---
+  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+
+  const handleCancelThumbnails = async () => {
+    try {
+      toast.info('Stopping generator...');
+      await fetch('/api/cancel-thumbnails', { method: 'POST' });
+      // We don't force false here; we wait for the main loop to exit
+    } catch (error) {
+      console.error('Failed to cancel:', error);
+      toast.error('Could not send stop signal');
+    }
+  };
+
+  const handleGenerateThumbnails = async () => {
+    const confirm = window.confirm("This uses significant server CPU. Continue?");
+    if (!confirm) return;
+
+    setIsGeneratingThumbnails(true);
+
+    toast.promise(
+      (async () => {
+        try {
+          const res = await fetch('/api/generate-thumbnails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: false })
+          });
+
+          const data = await res.json();
+
+          if (data.aborted) throw new Error("Cancelled by user");
+          if (!data.success) throw new Error(data.error || "Generation failed");
+
+          window.dispatchEvent(new CustomEvent('collection-updated'));
+          return `Generated ${data.processed} thumbnails`;
+        } finally {
+          setIsGeneratingThumbnails(false);
+        }
+      })(),
+      {
+        loading: 'Generating thumbnails...',
+        success: (msg) => `${msg}`,
+        error: (err) => `${err.message}`,
+      }
+    );
+  };
+
+  const handleGenerateModelJson = async (overrideTypes?: { "3mf": boolean; stl: boolean }) => {
+    const types = overrideTypes || selectedFileTypes;
+    
     if (hashCheckResult) setHashCheckResult(null);
     setIsGeneratingJson(true);
-    // Clear previous generation result so UI shows fresh status while running
     setGenerateResult(null);
-    const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
-    setStatusMessage(`Generating JSON for all ${fileTypeText} files...`);
-    try {
-      // Request streaming progress from backend
-      setIsGeneratingJson(true);
 
+    const activeTypes = [];
+    if (types["3mf"]) activeTypes.push(".3mf");
+    if (types["stl"]) activeTypes.push(".stl");
+    const fileTypeText = activeTypes.join(" & ") || "no files";
+
+    setStatusMessage(`Generating JSON for ${fileTypeText} files...`);
+    try {
       const resp = await fetch('/api/scan-models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileType: effectiveFileType })
+        body: JSON.stringify({ 
+            check3mf: types["3mf"],
+            checkStl: types["stl"]
+        })
       });
 
       if (!resp.ok) {
@@ -1199,24 +1256,29 @@ export function SettingsPage({
   };
 
   // Run scanModelFile for all models, update models, and produce a HashCheckResult
-  const handleRunHashCheck = (fileType?: "3mf" | "stl" | "all") => {
-    // Clear any previous generate or duplicate results so the UI doesn't show stale counts
+  const handleRunHashCheck = (overrideTypes?: { "3mf": boolean; stl: boolean }) => {
     if (generateResult) setGenerateResult(null);
     setDuplicateGroups([]);
     setHashCheckResult(null);
     setIsHashChecking(true);
     setHashCheckProgress(0);
 
-    // Determine which file type to scan (defaults to "all")
-    const effectiveFileType = fileType || selectedFileType;
-    const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : effectiveFileType === "stl" ? ".stl" : ".3mf & .stl";
+    const types = overrideTypes || selectedFileTypes;
+    
+    const activeTypes = [];
+    if (types["3mf"]) activeTypes.push(".3mf");
+    if (types["stl"]) activeTypes.push(".stl");
+    const fileTypeText = activeTypes.join(" & ") || "no files";
 
-    setStatusMessage(`Rescanning ${fileTypeText} files and comparing hashes...`);
+    setStatusMessage(`Rescanning ${fileTypeText} files...`);
 
     fetch('/api/hash-check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileType: effectiveFileType })
+      body: JSON.stringify({ 
+        check3mf: types["3mf"],
+        checkStl: types["stl"]
+      })
     })
       .then(resp => resp.json())
       .then(data => {
@@ -1467,7 +1529,7 @@ export function SettingsPage({
       }
 
       // Re-run the hash check to refresh UI
-      handleRunHashCheck(selectedFileType);
+      handleRunHashCheck(selectedFileTypes);
     } catch (e: any) {
       console.error('Regenerate error:', e);
       toast.error(e?.message || 'Failed to regenerate munchie file');
@@ -1547,7 +1609,7 @@ export function SettingsPage({
     backupFileInputRef.current?.click();
   };
 
-  
+
 
   const handleBackupFileRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1911,7 +1973,7 @@ export function SettingsPage({
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
 
                   <div className="space-y-2">
                     <Label htmlFor="default-model-view">Default Model View</Label>
@@ -2106,7 +2168,7 @@ export function SettingsPage({
                 {/* Visual Settings Section */}
                 <div className="space-y-4">
                   <h3 className="font-medium">Appearance & Viewer</h3>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                     {/* 1. Default Model Color (Your existing code) */}
@@ -2182,15 +2244,15 @@ export function SettingsPage({
                         <div className="flex items-center gap-2">
                           <div className="relative">
                             <div className="w-10 h-10 rounded-full border border-border shadow-sm flex items-center justify-center overflow-hidden transition-transform hover:scale-105 relative">
-                              <input 
-                                type="color" 
+                              <input
+                                type="color"
                                 className="absolute -top-2 -left-2 w-16 h-16 p-0 cursor-pointer border-0"
-                                value={unsavedPrimaryColor ?? "#7c3aed"} 
+                                value={unsavedPrimaryColor ?? "#7c3aed"}
                                 onChange={(e) => {
-                                   const newColor = e.target.value;
-                                   setUnsavedPrimaryColor(newColor);
-                                   // Only apply VISUALLY (preview), do not save yet
-                                   applyThemeColor(newColor); 
+                                  const newColor = e.target.value;
+                                  setUnsavedPrimaryColor(newColor);
+                                  // Only apply VISUALLY (preview), do not save yet
+                                  applyThemeColor(newColor);
                                 }}
                               />
                             </div>
@@ -2216,8 +2278,8 @@ export function SettingsPage({
                             onClick={() => {
                               // [FIX] Reset to "null" to clear overrides and use globals.css defaults
                               setUnsavedPrimaryColor(null);
-                              applyThemeColor(null); 
-                              
+                              applyThemeColor(null);
+
                               // Optional: If you want to persist the "reset" state immediately:
                               handleConfigFieldChange('settings.primaryColor', null);
                             }}
@@ -2228,56 +2290,45 @@ export function SettingsPage({
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                         Primary accent color for the sidebar, buttons, and active states.
+                        Primary accent color for the sidebar, buttons, and active states.
                       </p>
                     </div>
-                    </div>
-                  {/* [NEW] Thumbnail Generation Section */}
+                  </div>
+                  {/* 3. Thumbnail Generation Section (PASTE THIS HERE) */}
                   <div className="pt-4 border-t mt-4">
                     <h4 className="text-sm font-medium mb-2">Thumbnail Generation</h4>
                     <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
                       <div className="space-y-1">
                         <p className="text-sm font-medium">Generate Missing Thumbnails</p>
                         <p className="text-xs text-muted-foreground">
-                          Uses the server's background generator to create clean PNG snapshots for models that don't have them.
+                          Create clean PNG snapshots for models that don't have them.
                         </p>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          const confirm = window.confirm("This process uses significant server CPU. It may take a few seconds per model. Continue?");
-                          if (!confirm) return;
-
-                          toast.info("Starting background generation...");
-                          try {
-                            const res = await fetch('/api/generate-thumbnails', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ force: false }) // Set true to overwrite existing
-                            });
-                            const data = await res.json();
-                            if (data.success) {
-                              toast.success(`Generated ${data.processed} thumbnails`, {
-                                description: `Skipped: ${data.skipped}, Errors: ${data.errors.length}`
-                              });
-                              // Trigger a refresh of the grid
-                              window.dispatchEvent(new CustomEvent('collection-updated'));
-                            } else {
-                              toast.error("Generation failed", { description: data.error });
-                            }
-                          } catch (e) {
-                            toast.error("Request failed");
-                          }
-                        }}
-                      >
-                        <Box className="mr-2 h-4 w-4" />
-                        Generate All
-                      </Button>
+                      
+                      {/* CONDITIONAL BUTTONS */}
+                      {isGeneratingThumbnails ? (
+                        <Button 
+                          variant="destructive" 
+                          size="sm" 
+                          onClick={handleCancelThumbnails}
+                          className="animate-pulse"
+                        >
+                          <X className="mr-2 h-4 w-4" />
+                          Stop
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleGenerateThumbnails}
+                        >
+                          <Box className="mr-2 h-4 w-4" />
+                          Generate All
+                        </Button>
+                      )}
                     </div>
                   </div>
-                </div>
-
+                  </div>
                 <Separator />
 
                 {/* G-code Settings */}
@@ -3018,31 +3069,31 @@ export function SettingsPage({
                         Check for duplicates and verify model metadata
                       </p>
                       <div className="mt-2">
-                        <Label className="text-sm font-medium">Scanning Mode</Label>
-                        <RadioGroup
-                          value={selectedFileType}
-                          onValueChange={(value: "3mf" | "stl" | "all") => setSelectedFileType(value)}
-                          className="flex gap-4 mt-2"
-                        >
+                        <Label className="text-sm font-medium">File Types</Label>
+                        <div className="flex gap-4 mt-2">
                           <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="all" id="file-type-all" />
-                            <Label htmlFor="file-type-all">All Files</Label>
+                            <Checkbox
+                              id="file-type-3mf"
+                              checked={selectedFileTypes["3mf"]}
+                              onCheckedChange={(checked) => setSelectedFileTypes(prev => ({ ...prev, "3mf": Boolean(checked) }))}
+                            />
+                            <Label htmlFor="file-type-3mf" className="cursor-pointer">3MF</Label>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="3mf" id="file-type-3mf" />
-                            <Label htmlFor="file-type-3mf">3MF Only</Label>
+                            <Checkbox
+                              id="file-type-stl"
+                              checked={selectedFileTypes["stl"]}
+                              onCheckedChange={(checked) => setSelectedFileTypes(prev => ({ ...prev, "stl": Boolean(checked) }))}
+                            />
+                            <Label htmlFor="file-type-stl" className="cursor-pointer">STL</Label>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="stl" id="file-type-stl" />
-                            <Label htmlFor="file-type-stl">STL Only</Label>
-                          </div>
-                        </RadioGroup>
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-2">
                       <Button
                         onClick={() => handleRunHashCheck()}
-                        disabled={isHashChecking}
+                        disabled={isHashChecking || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
                         className="gap-2"
                       >
                         {isHashChecking ? (
@@ -3054,7 +3105,7 @@ export function SettingsPage({
                       </Button>
                       <Button
                         onClick={() => handleGenerateModelJson()}
-                        disabled={isGeneratingJson}
+                        disabled={isGeneratingJson || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
                         className="gap-2"
                         variant="secondary"
                       >
