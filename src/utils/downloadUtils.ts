@@ -1,3 +1,8 @@
+import JSZip from "jszip";
+import { toast } from "sonner";
+
+
+
 // Shared helpers for normalizing model file paths and triggering downloads
 export function normalizeModelPath(url: string | undefined | null): string | null {
   if (!url) return null;
@@ -46,3 +51,52 @@ export function triggerDownload(url: string | undefined | null, e?: MouseEvent, 
   link.click();
   document.body.removeChild(link);
 }
+
+export const downloadAllFiles = async (mainFilePath: string, relatedFiles: string[], baseName: string) => {
+  const toastId = toast.loading("Preparing ZIP archive...");
+  try {
+    const zip = new JSZip();
+    
+    // 1. Add Main File
+    // Uses your existing helper if available, otherwise falls back to split
+    const mainName = typeof extractFileName === 'function' ? extractFileName(mainFilePath) : mainFilePath.split(/[/\\]/).pop() || 'main_model';
+    
+    try {
+        const mainResp = await fetch(`/api/download?path=${encodeURIComponent(mainFilePath)}`);
+        if (mainResp.ok) {
+            zip.file(mainName, await mainResp.blob());
+        }
+    } catch (e) { console.error("Failed to add main file", e); }
+
+    // 2. Add Related Files
+    if (relatedFiles && relatedFiles.length > 0) {
+        await Promise.all(relatedFiles.map(async (rf) => {
+            const rfName = typeof extractFileName === 'function' ? extractFileName(rf) : rf.split(/[/\\]/).pop() || 'related_file';
+            try {
+                const rfResp = await fetch(`/api/download?path=${encodeURIComponent(rf)}`);
+                if (rfResp.ok) {
+                    zip.file(rfName, await rfResp.blob());
+                }
+            } catch (e) { console.error(`Failed to add ${rfName}`, e); }
+        }));
+    }
+
+    // 3. Generate Zip
+    const content = await zip.generateAsync({ type: "blob" });
+    const url = window.URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${baseName}_All_Files.zip`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    toast.dismiss(toastId);
+    toast.success("All files downloaded!");
+  } catch (error) {
+    console.error("Zip download failed", error);
+    toast.dismiss(toastId);
+    toast.error("Failed to create ZIP archive");
+  }
+};

@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Loader2, CloudDownload, AlertCircle } from 'lucide-react';
+import { Loader2, CloudDownload, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ThingiverseImportDialogProps {
@@ -33,14 +33,19 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
   useEffect(() => {
     if (!isOpen) return;
     setErrorMessage(null);
+    setInputUrl(''); // Reset input
     
     // Defaults
     if (defaultFolder) setSelectedFolder(defaultFolder);
-    if (defaultCollectionId) setSelectedCollection(defaultCollectionId);
+    
+    // Reset or set collection based on prop
+    if (defaultCollectionId) {
+      setSelectedCollection(defaultCollectionId);
+    } else {
+      setSelectedCollection('none');
+    }
 
     const loadData = async () => {
-        console.log('[ImportDialog] Loading options...');
-        
         // 1. Folders
         try {
             const resp = await fetch('/api/model-folders');
@@ -48,7 +53,6 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
                 const data = await resp.json();
                 const loadedFolders = Array.from(new Set(['imported', 'uploads', ...(data.folders || [])]));
                 setFolders(loadedFolders);
-                console.log('[ImportDialog] Folders loaded:', loadedFolders);
             }
         } catch (e) { console.error('Failed to load folders', e); }
 
@@ -58,7 +62,6 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
             if (resp.ok) {
                 const data = await resp.json();
                 setCollections(data.collections || []);
-                console.log('[ImportDialog] Collections loaded:', data.collections?.length);
             }
         } catch (e) { console.error('Failed to load collections', e); }
 
@@ -69,8 +72,9 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
                  const d = await resp.json();
                  const cats = d.config?.categories?.map((c: any) => c.label) || [];
                  if (cats.length > 0) {
-                    setCategories(['Uncategorized', ...cats]);
-                    console.log('[ImportDialog] Categories loaded:', cats);
+                    // [FIX] Deduplicate categories using Set to prevent "Encountered two children with the same key" error
+                    const uniqueCats = Array.from(new Set(['Uncategorized', ...cats]));
+                    setCategories(uniqueCats);
                  }
              }
         } catch (e) { console.error('Failed to load categories', e); }
@@ -80,9 +84,11 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
 
   const handleImport = async () => {
     setErrorMessage(null);
-    const match = inputUrl.match(/thing:(\d+)/) || inputUrl.match(/\/thing\/(\d+)/) || inputUrl.match(/^(\d+)$/);
+    // Simple validation to ensure it looks like a Thingiverse URL or ID
+    const match = inputUrl.match(/thing:(\d+)/) || inputUrl.match(/\/thing:(\d+)/) || inputUrl.match(/\/thing\/(\d+)/) || inputUrl.match(/^(\d+)$/);
+    
     if (!match) {
-      setErrorMessage("Invalid URL. Please use format 'thing:12345' or the full URL.");
+      setErrorMessage("Invalid URL. Please use the link from the 'Share' button (e.g., https://www.thingiverse.com/thing:12345).");
       return;
     }
 
@@ -102,10 +108,9 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
         })
       });
 
-      // Handle non-JSON responses (like 404 HTML pages)
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-          throw new Error(`Server returned ${res.status} ${res.statusText}. Is the route /api/import/thingiverse added to server.js?`);
+          throw new Error(`Server returned ${res.status} ${res.statusText}.`);
       }
 
       const data = await res.json();
@@ -126,18 +131,27 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CloudDownload className="w-5 h-5" />
-            Import from Thingiverse
+            Thingiverse Import
           </DialogTitle>
           <DialogDescription>
-            Enter ID or URL. We'll download files, tags, and license info automatically.
+             Enter a Thingiverse URL or ID to download files, tags, and license info.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
+          
+          <div className="bg-blue-50 border border-blue-200 rounded p-3 flex gap-3 text-sm text-blue-800">
+             <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
+             <div>
+               <strong>Tip:</strong> For the most reliable results, please use the 
+               <strong> "Share"</strong> button on the Thingiverse page to copy the link.
+             </div>
+          </div>
+
           {errorMessage && (
             <div className="p-3 text-sm text-red-500 bg-red-50 border border-red-200 rounded flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" />
@@ -149,7 +163,7 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
             <Label htmlFor="tv-url">Thingiverse URL / ID</Label>
             <Input 
               id="tv-url" 
-              placeholder="e.g. thing:123456" 
+              placeholder="e.g. https://www.thingiverse.com/thing:123456" 
               value={inputUrl}
               onChange={(e) => setInputUrl(e.target.value)}
               disabled={isLoading}
@@ -178,14 +192,21 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
           </div>
 
           <div className="grid gap-2">
-            <Label>Add to Collection (Optional)</Label>
+            <Label>Add to Collection</Label>
             <Select value={selectedCollection} onValueChange={setSelectedCollection} disabled={isLoading}>
-                <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                <SelectTrigger>
+                    <SelectValue placeholder="None" />
+                </SelectTrigger>
                 <SelectContent>
                     <SelectItem value="none">None</SelectItem>
                     {collections.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                 </SelectContent>
             </Select>
+            {defaultCollectionId && selectedCollection === defaultCollectionId && (
+                <p className="text-xs text-muted-foreground">
+                    * Automatically selected based on your current view.
+                </p>
+            )}
           </div>
           
           {isLoading && (

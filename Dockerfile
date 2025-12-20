@@ -1,5 +1,5 @@
 # Multi-stage build for optimized production image
-FROM node:22-alpine AS builder
+FROM node:22-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -23,23 +23,23 @@ RUN npm run build:backend
 RUN npx tsc --outDir dist-backend --module commonjs --target es2019 src/utils/threeMFToJson.ts src/utils/configManager.ts
 
 # Production stage
-FROM node:22-alpine AS production
+FROM node:22-slim AS production
 
 # Alpine needs these specific packages to run a headless browser.
-RUN apk add --no-cache \
-      chromium \
-      nss \
-      freetype \
-      harfbuzz \
-      ca-certificates \
-      ttf-freefont \
-      mesa-gl \
-      mesa-egl \
-      mesa-gles
-
-#Tell Puppeteer to use the installed Chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    procps \
+    libxss1 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libgbm-dev \
+    libnss3 \
+    libxshmfence1 \
+    libglu1-mesa \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app

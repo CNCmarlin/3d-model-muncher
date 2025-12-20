@@ -90,23 +90,26 @@ export class ThingiverseImporter {
       await this.downloadFile(meta.thumbnail, path.join(destDir, thumbName));
     }
 
-    // 6. Generate Munchie JSON
-    const mainFile = importedFiles[0];
-    const jsonPath = mainFile.endsWith('.3mf') 
-      ? mainFile.replace('.3mf', '-munchie.json')
-      : mainFile.replace('.stl', '-stl-munchie.json');
+  // 6. Generate Munchie JSON for ALL files
+    // This ensures that even if a user clicks a "child" file in the grid, 
+    // they still see the relationship to the parent and siblings.
 
-    // Use forward slashes for URLs/Paths in JSON
     const relativeWebPath = destRelPath.replace(/\\/g, '/');
+    const mainFile = importedFiles[0];
 
-    const modelData: Model = {
-        id: `tv-${thingId}`, // Keep consistent ID
+    // Helper to get full relative web path for a filename
+    const getWebPath = (fname: string) => `/models/${relativeWebPath}/${fname}`;
+    // Helper to get relative path for related_files list (no /models prefix)
+    const getRelPath = (fname: string) => `${relativeWebPath}/${fname}`;
+
+    // Common metadata for the whole group
+    const baseMetadata: Partial<Model> = {
+        id: `tv-${thingId}`, // All share the same Thing ID base? Or maybe `tv-${thingId}-${index}`? 
+                             // Ideally they share an ID if they are variations, but the system expects unique IDs for unique entries.
+                             // Let's stick to unique IDs for safety: `tv-${thingId}` for main, others get suffix.
         name: meta.name,
-        filePath: path.join(relativeWebPath, mainFile), // Relative path for deletion/mgmt
-        fileSize: '0', 
-        modelUrl: `/models/${relativeWebPath}/${mainFile}`,
         description: meta.description || `Imported from Thingiverse: ${meta.public_url}`,
-        category: 'Uncategorized', // This will be overwritten by the API handler if user selected one
+        category: 'Uncategorized',
         tags: meta.tags ? meta.tags.map((t: any) => t.name) : [],
         isPrinted: false,
         printTime: '',
@@ -114,20 +117,50 @@ export class ThingiverseImporter {
         license: meta.license || 'Unknown',
         source: meta.public_url,
         designer: meta.creator?.name || 'Unknown',
-        // New Image Structure (Canonical)
-        parsedImages: thumbName ? [`/models/${relativeWebPath}/${thumbName}`] : [],
-        // Legacy fields for compat
-        images: thumbName ? [`/models/${relativeWebPath}/${thumbName}`] : [],
-        thumbnail: thumbName ? `/models/${relativeWebPath}/${thumbName}` : undefined,
-        related_files: importedFiles.slice(1).map(f => `${relativeWebPath}/${f}`),
         printSettings: { layerHeight: '', infill: '', nozzle: '' },
         created: new Date().toISOString(),
-        lastModified: new Date().toISOString()
+        lastModified: new Date().toISOString(),
+        // Images are shared across the group
+        parsedImages: thumbName ? [getWebPath(thumbName)] : [],
+        images: thumbName ? [getWebPath(thumbName)] : [],
+        thumbnail: thumbName ? getWebPath(thumbName) : undefined,
     };
 
-    fs.writeFileSync(path.join(destDir, jsonPath), JSON.stringify(modelData, null, 2));
+    // Iterate all files to generate metadata
+    for (let i = 0; i < importedFiles.length; i++) {
+        const currentFile = importedFiles[i];
+        const isMain = i === 0;
+        
+        const jsonPath = currentFile.endsWith('.3mf') 
+          ? currentFile.replace('.3mf', '-munchie.json')
+          : currentFile.replace('.stl', '-stl-munchie.json');
 
-    // Return the Model object so the server can post-process it (add to collection/category)
-    return modelData;
+        // Calculate related files: All files in the group EXCEPT the current one
+        const others = importedFiles.filter(f => f !== currentFile);
+        const relatedList = others.map(f => getRelPath(f));
+
+        const fileData: Model = {
+            ...baseMetadata as Model,
+            // Unique ID for each file entry to avoid conflicts in the DB/Grid
+            id: isMain ? `tv-${thingId}` : `tv-${thingId}-${i}`, 
+            name: isMain ? meta.name : `${meta.name} (${currentFile})`, // Differentiate names for children
+            filePath: path.join(relativeWebPath, currentFile),
+            modelUrl: getWebPath(currentFile),
+            fileSize: '0', // Will be updated by scanner/server later if needed
+            related_files: relatedList
+        };
+
+        fs.writeFileSync(path.join(destDir, jsonPath), JSON.stringify(fileData, null, 2));
+    }
+
+    // Return the Main Model object so the server can post-process it (add to collection/category)
+    // We recreate the main model object here to ensure the return value matches exactly what was written
+    const mainJsonPath = mainFile.endsWith('.3mf') 
+        ? mainFile.replace('.3mf', '-munchie.json')
+        : mainFile.replace('.stl', '-stl-munchie.json');
+    
+    const finalMainModel = JSON.parse(fs.readFileSync(path.join(destDir, mainJsonPath), 'utf8'));
+
+    return finalMainModel;
   }
 }

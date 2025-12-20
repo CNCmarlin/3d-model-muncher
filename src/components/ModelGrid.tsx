@@ -236,7 +236,7 @@ export function ModelGrid({
                 title="Import from Thingiverse"
               >
                 <CloudDownload className="h-4 w-4" />
-                <span className="hidden sm:inline">Import</span>
+                <span className="hidden sm:inline">Thingiverse Import</span>
               </Button>
             )}
             {viewMode === 'grid' && !isSelectionMode && (

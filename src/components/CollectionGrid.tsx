@@ -5,19 +5,21 @@ import type { Collection } from '../types/collection';
 import { ModelCard } from './ModelCard';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
-import { ArrowLeft, ChevronRight, FileCheck, Folder } from 'lucide-react';
+import { ArrowLeft, ChevronRight, FileCheck, Folder, CloudDownload } from 'lucide-react';
 import type { AppConfig } from '../types/config';
 import CollectionEditDrawer from './CollectionEditDrawer';
 import { SelectionModeControls } from './SelectionModeControls';
+
 
 interface CollectionGridProps {
   name: string;
   modelIds: string[];
   models: Model[];
   collections: Collection[]; // All collections (to find children)
-  onOpenCollection: (col: Collection) => void; // To drill down
+  onOpenCollection: (col: Collection) => void; 
   onBack: () => void;
   onModelClick: (model: Model) => void;
+  onImportClick?: (collectionId: string) => void;
   config?: AppConfig | null;
   activeCollection?: Collection | null;
   isSelectionMode?: boolean;
@@ -36,8 +38,9 @@ export default function CollectionGrid({
   modelIds,
   models,
   collections,        // <--- Add this
-  onOpenCollection,   // <--- Add this
+  onOpenCollection,
   onBack,
+  onImportClick,
   onModelClick,
   config,
   activeCollection,
@@ -120,6 +123,7 @@ export default function CollectionGrid({
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 lg:p-6 border-b bg-card shadow-sm shrink-0 flex flex-wrap items-center justify-between gap-4">
+        {/* Left Side: Back + Title */}
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={onBack} className="gap-2" title="Back">
             <ArrowLeft className="h-4 w-4" />
@@ -131,17 +135,33 @@ export default function CollectionGrid({
           </div>
         </div>
 
-        <SelectionModeControls
-          isSelectionMode={isSelectionMode}
-          selectedCount={selectedCount}
-          onEnterSelectionMode={onToggleSelectionMode}
-          onExitSelectionMode={onToggleSelectionMode}
-          onBulkEdit={onBulkEdit}
-          onCreateCollection={selectedCount > 0 ? () => setIsCreateCollectionOpen(true) : undefined}
-          onBulkDelete={onBulkDelete ? handleBulkDeleteClick : undefined}
-          onSelectAll={onSelectAll}
-          onDeselectAll={onDeselectAll}
-        />
+        {/* Right Side: Actions */}
+        <div className="flex items-center gap-2">
+            <SelectionModeControls
+              isSelectionMode={isSelectionMode}
+              selectedCount={selectedCount}
+              onEnterSelectionMode={onToggleSelectionMode}
+              onExitSelectionMode={onToggleSelectionMode}
+              onBulkEdit={onBulkEdit}
+              onCreateCollection={selectedCount > 0 ? () => setIsCreateCollectionOpen(true) : undefined}
+              onBulkDelete={onBulkDelete ? handleBulkDeleteClick : undefined}
+              onSelectAll={onSelectAll}
+              onDeselectAll={onDeselectAll}
+            />
+
+            {/* NEW IMPORT BUTTON */}
+            {!isSelectionMode && activeCollection && (
+                <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="gap-2"
+                    onClick={() => onImportClick?.(activeCollection.id)}
+                >
+                    <CloudDownload className="h-4 w-4" />
+                    Thingiverse Import
+                </Button>
+            )}
+        </div>
       </div>
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-4 lg:p-6 pb-8 lg:pb-12 space-y-6">

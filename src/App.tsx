@@ -43,6 +43,7 @@ import { Separator } from "./components/ui/separator";
 import CollectionGrid from "./components/CollectionGrid";
 import type { Collection } from "./types/collection";
 import { applyThemeColor } from "./utils/themeUtils"; // <--- Ensure this is imported
+import { ThingiverseImportDialog } from "./components/ThingiverseImportDialog";
 
 // Initial type for view
 type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view';
@@ -634,6 +635,40 @@ function AppContent() {
 
   // Upload dialog state
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false); // Existing state
+  const [importTargetCollectionId, setImportTargetCollectionId] = useState<string | undefined>(undefined); // NEW State
+  const [importTargetFolder, setImportTargetFolder] = useState<string | undefined>(undefined);
+
+  const handleOpenImport = (collectionId?: string) => {
+    setImportTargetCollectionId(collectionId);
+    
+    // Smart Folder Inference:
+    // If we are in a collection, check the first file in that collection.
+    // Use its folder as the default for the new import.
+    let inferredFolder: string | undefined = undefined;
+
+    if (collectionId) {
+       const col = collections.find(c => c.id === collectionId);
+       if (col && col.modelIds && col.modelIds.length > 0) {
+          // Find the first model to check its path
+          const firstModelId = col.modelIds[0];
+          const representativeModel = models.find(m => m.id === firstModelId);
+          
+          // [FIX] Use 'filePath' instead of 'fileName'
+          if (representativeModel && representativeModel.filePath) {
+             // Split "folder/subfolder/file.stl" -> ["folder", "subfolder", "file.stl"]
+             const parts = representativeModel.filePath.split(/[/\\]/);
+             if (parts.length > 1) {
+                // The first part is the root folder (e.g. 'imported' or 'uploads')
+                inferredFolder = parts[0];
+             }
+          }
+       }
+    }
+    
+    setImportTargetFolder(inferredFolder);
+    setIsImportOpen(true);
+  };
 
   const openSettingsOnTab = (tab: string, action?: { type: 'hash-check' | 'generate'; fileType: '3mf' | 'stl' }) => {
     setSettingsInitialTab(tab);
@@ -1074,6 +1109,7 @@ function AppContent() {
               models={filteredModels}
               collections={collections}
               onOpenCollection={openCollection}
+              onImportClick={handleOpenImport}
               onBack={() => {
                 if (collectionReturnView === 'models') {
                   setCurrentView('models');
@@ -1146,6 +1182,22 @@ function AppContent() {
         />
       )}
 
+      {/* [NEW] Thingiverse Import Dialog */}
+      <ThingiverseImportDialog
+        isOpen={isImportOpen}
+        onClose={() => {
+            setIsImportOpen(false);
+            setImportTargetCollectionId(undefined); // Reset
+            setImportTargetFolder(undefined);       // Reset
+        }}
+        defaultCollectionId={importTargetCollectionId} 
+        defaultFolder={importTargetFolder}          // Pass the inferred folder
+        onImportComplete={() => {
+          handleRefreshModels();
+          refreshCollections();
+        }}
+      />
+
       {/* Dialogs */}
       <DonationDialog
         isOpen={isDonationDialogOpen}
@@ -1161,9 +1213,13 @@ function AppContent() {
             </AlertDialogDescription>
 
             <div className="mt-2 text-sm">
-              <h3 className="text-lg">v0.15.x - Release updates</h3>
-              <ul className="list-disc pl-5 list-outside mb-4">
-                <li><strong>G-Code Support</strong> - Upload a gcode file to complete filament type, amount and print duration.</li>
+              <h3 className="text-lg font-semibold">v0.16.0 - The Features & Style Update</h3>
+              <ul className="list-disc pl-5 list-outside mb-4 space-y-2 mt-2">
+                <li><strong>🎨 Dynamic Theme Engine</strong> - Pick any primary color in Settings, and the app now mathematically generates a perfect, accessible Dark and Light theme to match.</li>
+                <li><strong>🚀 Docker Architecture Upgrade</strong> - Migrated from Alpine to Debian Slim. This fixes the persistent 'Context Lost' WebGL crashes and enables native support for complex 3MF texture parsing.</li>
+                <li><strong>🛑 Thumbnail Cancellation</strong> - Added a 'Stop' button to the thumbnail generator. You can now safely abort long-running rendering jobs without restarting the server.</li>
+                <li><strong>📂 Nested Collections Editor</strong> - Manage your library organization directly from the 'All Models' view with the new nested collection editor.</li>
+                <li><strong>✨ UI Polish</strong> - Light mode has been remastered with softer backgrounds and improved contrast for better readability.</li>
               </ul>
             </div>
 
