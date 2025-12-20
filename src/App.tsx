@@ -434,6 +434,37 @@ function AppContent() {
     }
   };
 
+  const handleSingleModelDelete = async (model: Model) => {
+    try {
+      const fileTypes = ['json', '3mf', 'stl']; 
+      toast("Deleting model...", { description: model.name });
+
+      const deleteResponse = await fetch('/api/models/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          modelIds: [model.id],
+          fileTypes: fileTypes
+        })
+      });
+
+      if (!deleteResponse.ok) throw new Error('Failed to delete');
+      const result = await deleteResponse.json();
+
+      if (result.success) {
+        toast.success("Model deleted");
+        setIsDrawerOpen(false); // Close the drawer
+        setSelectedModel(null);
+        await handleRefreshModels(); // Refresh grid
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error('Delete failed:', error);
+      toast.error("Failed to delete model");
+    }
+  };
+
   const handleBulkUpdateModels = (updatedModelsData: Partial<Model> & { bulkTagChanges?: { add: string[]; remove: string[] } }) => {
     const updatedModels = models.map(model => {
       if (selectedModelIds.includes(model.id)) {
@@ -1156,6 +1187,7 @@ function AppContent() {
           isOpen={isDrawerOpen}
           onClose={() => setIsDrawerOpen(false)}
           onModelUpdate={handleModelUpdate}
+          onDelete={handleSingleModelDelete}
           defaultModelView={appConfig?.settings.defaultModelView || 'images'}
           defaultModelColor={appConfig?.settings?.defaultModelColor}
           categories={categories}

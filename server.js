@@ -1140,13 +1140,17 @@ app.get('/api/models', async (req, res) => {
 
 // API endpoint to trigger model directory scan and JSON generation
 // API endpoint to trigger model directory scan and JSON generation
+// API endpoint to trigger model directory scan and JSON generation
 app.post('/api/scan-models', async (req, res) => {
   try {
-    const { fileType = "all", stream = false } = req.body;
+    // [FIX] Accept new boolean flags from frontend, fall back to legacy 'fileType'
+    const { fileType, check3mf, checkStl, stream = false } = req.body;
     const dir = getModelsDirectory();
-
-    // We need absolute path for the migration logic later
     const modelsDir = getAbsoluteModelsPath();
+
+    // Determine what to scan based on flags
+    const do3mf = check3mf === true || (fileType === '3mf') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
+    const doStl = checkStl === true || (fileType === 'stl') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
 
     // Helper to run scan for a specific type
     async function runScan(type) {
@@ -1155,16 +1159,20 @@ app.post('/api/scan-models', async (req, res) => {
 
     let result = { processed: 0, skipped: 0 };
 
-    // MODIFIED LOGIC: Handle "all" by running both scans sequentially and summing results
-    if (fileType === 'all') {
-      const scan3mf = await runScan('3mf');
-      const scanStl = await runScan('stl');
-      result.processed = scan3mf.processed + scanStl.processed;
-      result.skipped = scan3mf.skipped + scanStl.skipped;
-    } else {
-      // Original behavior for single file types
-      result = await runScan(fileType);
+    // [FIX] Run scans based on boolean flags
+    if (do3mf) {
+      const r = await runScan('3mf');
+      result.processed += r.processed;
+      result.skipped += r.skipped;
     }
+    
+    if (doStl) {
+      const r = await runScan('stl');
+      result.processed += r.processed;
+      result.skipped += r.skipped;
+    }
+    
+    // ... rest of the function (legacy migration logic) remains the same ...
 
     // --- ORIGINAL LEGACY MIGRATION LOGIC STARTS HERE ---
     // (Preserved exactly as is to ensure old files are updated)
@@ -2349,14 +2357,21 @@ app.get('/api/munchie-files', (req, res) => {
 // --- API: Hash check for all .3mf files and their -munchie.json ---
 app.post('/api/hash-check', async (req, res) => {
   try {
-    const { fileType = "all" } = req.body;
+    // [FIX] Accept new boolean flags
+    const { fileType, check3mf, checkStl } = req.body;
     const modelsDir = getAbsoluteModelsPath();
-    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) { }
+    
     const { computeMD5 } = require('./dist-backend/utils/threeMFToJson');
     let result = [];
     let seenHashes = new Set();
     let hashToFiles = {};
     let modelMap = {};
+
+    // Determine active types
+    const do3mf = check3mf === true || (fileType === '3mf') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
+    const doStl = checkStl === true || (fileType === 'stl') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
+
+    try { console.log('[debug] /api/hash-check', { do3mf, doStl, modelsDir }); } catch (e) { }
 
     // Recursively scan directories
     function scanDirectory(dir) {
@@ -2370,7 +2385,8 @@ app.post('/api/hash-check', async (req, res) => {
           const lowerPath = relativePath.toLowerCase();
 
           // Logic for 3MF files
-          if (fileType === "3mf" || fileType === "all") {
+          // [FIX] Use calculated boolean flag
+          if (do3mf) {
             // Skip G-code archives
             if (!(lowerPath.endsWith('.gcode.3mf') || lowerPath.endsWith('.3mf.gcode'))) {
               if (lowerPath.endsWith('.3mf')) {
@@ -2386,7 +2402,8 @@ app.post('/api/hash-check', async (req, res) => {
           }
 
           // Logic for STL files
-          if (fileType === "stl" || fileType === "all") {
+          // [FIX] Use calculated boolean flag
+          if (doStl) {
             if (lowerPath.endsWith('.stl')) {
               const base = relativePath.replace(/\.stl$/i, '');
               modelMap[base] = modelMap[base] || {};
@@ -2411,12 +2428,9 @@ app.post('/api/hash-check', async (req, res) => {
       const has3mf = !!entry.threeMF;
       const hasStl = !!entry.stl;
 
-      if (fileType === 'all') {
-        if (has3mf || hasStl) cleanedModelMap[base] = entry;
-      } else if (fileType === '3mf' && has3mf) {
-        cleanedModelMap[base] = entry;
-      } else if (fileType === 'stl' && hasStl) {
-        cleanedModelMap[base] = entry;
+      // [FIX] Only include if it matches one of the requested types
+      if ((do3mf && has3mf) || (doStl && hasStl)) {
+         cleanedModelMap[base] = entry;
       }
     }
 

@@ -19,8 +19,7 @@ import { ModelViewer3D } from "./ModelViewer3D";
 import { ModelViewerErrorBoundary } from "./ErrorBoundary";
 import { compressImageFile } from "../utils/imageUtils";
 import { ImageWithFallback } from "./ImageWithFallback";
-import { Clock, Weight, HardDrive, Layers, Droplet, Diameter, Edit3, Save, X, FileText, Tag, Box, Images, ChevronLeft, ChevronRight, Maximize2, StickyNote, ExternalLink, Globe, DollarSign, Store, CheckCircle, Ban, User, RefreshCw, Plus, List, MinusCircle, Upload, ChevronDown, ChevronUp, Codesandbox } from "lucide-react";
-import TagsInput from "./TagsInput";
+import { Clock, Weight, HardDrive, Layers, Droplet, Diameter, Edit3, Save, X, FileText, Tag, Box, Images, ChevronLeft, ChevronRight, Maximize2, StickyNote, ExternalLink, Globe, DollarSign, Store, CheckCircle, Ban, User, RefreshCw, Plus, List, MinusCircle, Upload, ChevronDown, ChevronUp, Codesandbox, Trash2 } from "lucide-react";import TagsInput from "./TagsInput";
 import { Download } from "lucide-react";
 import { toast } from 'sonner';
 import type { Collection } from "../types/collection";
@@ -34,6 +33,7 @@ interface ModelDetailsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onModelUpdate: (model: Model) => void;
+  onDelete?: (model: Model) => void;
   defaultModelView?: '3d' | 'images';
   categories: Category[];
   defaultModelColor?: string | null;
@@ -44,6 +44,7 @@ export function ModelDetailsDrawer({
   isOpen,
   onClose,
   onModelUpdate,
+  onDelete,
   defaultModelView = 'images',
   defaultModelColor = null,
   categories
@@ -73,6 +74,7 @@ export function ModelDetailsDrawer({
   // Remove-from-Collection UI state
   const [isRemoveFromCollectionOpen, setIsRemoveFromCollectionOpen] = useState(false);
   const [removeTargetCollectionId, setRemoveTargetCollectionId] = useState<string | null>(null);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   // G-code upload state
   const gcodeInputRef = useRef<HTMLInputElement>(null);
@@ -2269,6 +2271,17 @@ export function ModelDetailsDrawer({
                       <Download className="h-4 w-4" />
                       Download
                     </Button>
+                    {/* [UPDATE] Themed Delete Button (Ghost style, turns red on hover) */}
+                    <Button 
+                      onClick={() => setIsDeleteConfirmOpen(true)} 
+                      size="icon" 
+                      variant="ghost" 
+                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
+                      title="Delete Model"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </Button>
+                  
                   </div>
                 </div>
               </div>
@@ -3617,6 +3630,31 @@ export function ModelDetailsDrawer({
                 setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' });
               }}>
                 Overwrite
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Model</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete <strong>{currentModel.name}</strong>?
+                <br /><br />
+                This will permanently delete the model files and metadata from your library.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => {
+                   if (onDelete) onDelete(currentModel);
+                   setIsDeleteConfirmOpen(false);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
