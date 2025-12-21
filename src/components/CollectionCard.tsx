@@ -24,6 +24,8 @@ export function CollectionCard({ collection, categories, onOpen, onChanged, onDe
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
+  if (fallbackImage) console.log(`[CardRender] '${collection.name}' received fallback:`, fallbackImage);
+
   const displayImage = (collection.images && collection.images.length > 0)
     ? collection.images[0]
     : fallbackImage || null;

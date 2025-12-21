@@ -10,15 +10,15 @@ import { resolveModelThumbnail } from '../utils/thumbnailUtils';
 import { ConfigManager } from "../utils/configManager";
 import { ScrollArea } from "./ui/scroll-area";
 import { Button } from "./ui/button";
-import { Slider } from "./ui/slider";
 import { Checkbox } from "./ui/checkbox";
-import { LayoutGrid, List, Sliders, Clock, Weight, HardDrive } from "lucide-react";
+import { Clock, Weight, HardDrive, CloudDownload } from "lucide-react";
 import { Badge } from "./ui/badge";
 import CollectionEditDrawer from "./CollectionEditDrawer";
 import { SortKey, getModelTimestamp, getCollectionTimestamp } from "../utils/sortUtils";
 import { SelectionModeControls } from "./SelectionModeControls";
 import { ThingiverseImportDialog } from './ThingiverseImportDialog';
-import { CloudDownload } from 'lucide-react'; // Import Icon
+import { useLayoutSettings } from "./LayoutSettingsContext";
+import { LayoutControls } from "./LayoutControls";
 
 interface ModelGridProps {
   models: Model[];
@@ -39,28 +39,7 @@ interface ModelGridProps {
   sortBy?: SortKey;
 }
 
-type ViewMode = 'grid' | 'list';
 
-const UI_PREFS_KEY = '3d-model-muncher-ui-prefs';
-
-function loadUiPrefs() {
-  try {
-    const raw = localStorage.getItem(UI_PREFS_KEY);
-    if (!raw) return {} as any;
-    return JSON.parse(raw);
-  } catch (err) {
-    console.warn('[ModelGrid] Failed to load UI prefs:', err);
-    return {} as any;
-  }
-}
-
-function saveUiPrefs(prefs: any) {
-  try {
-    localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs));
-  } catch (err) {
-    console.warn('[ModelGrid] Failed to save UI prefs:', err);
-  }
-}
 
 export function ModelGrid({ 
   models,
@@ -81,50 +60,11 @@ export function ModelGrid({
   sortBy = 'none'
 }: ModelGridProps) {
   const config = providedConfig ?? ConfigManager.loadConfig();
-  const uiPrefs = loadUiPrefs();
 
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    if (uiPrefs && (uiPrefs.defaultView === 'grid' || uiPrefs.defaultView === 'list')) {
-      return uiPrefs.defaultView;
-    }
-    return ['grid', 'list'].includes(config.settings.defaultView) ? config.settings.defaultView : 'grid';
-  });
-
-  const [gridDensity, setGridDensity] = useState<number[]>(() => {
-    if (uiPrefs && typeof uiPrefs.defaultGridDensity === 'number') return [uiPrefs.defaultGridDensity];
-    const density = config.settings.defaultGridDensity;
-    return [density >= 1 && density <= 6 ? density : 4];
-  });
+  const { viewMode, getGridClasses } = useLayoutSettings();
 
   const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
-
   const [isImportOpen, setIsImportOpen] = useState(false);
-
-  const handleViewModeChange = (newMode: ViewMode) => {
-    setViewMode(newMode);
-    const prefs = loadUiPrefs();
-    prefs.defaultView = newMode;
-    saveUiPrefs(prefs);
-  };
-
-  const handleGridDensityChange = (newDensity: number[]) => {
-    setGridDensity(newDensity);
-    const prefs = loadUiPrefs();
-    prefs.defaultGridDensity = newDensity[0];
-    saveUiPrefs(prefs);
-  };
-
-  const getGridClasses = (density: number) => {
-    const densityMap: Record<number, string> = {
-      1: "grid-cols-1",
-      2: "grid-cols-1 sm:grid-cols-2",
-      3: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
-      4: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-      5: "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5",
-      6: "grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
-    };
-    return densityMap[density] || densityMap[4];
-  };
 
   const handleModelInteraction = (e: React.MouseEvent, model: Model, index: number) => {
     if (isSelectionMode && onModelSelection) {
@@ -201,19 +141,12 @@ export function ModelGrid({
                 ? `${collections.length} collection${collections.length !== 1 ? 's' : ''}`
                 : 'No items found'}
             </p>
-            
+
+
             {!isSelectionMode && (
-              <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-                <Button variant={viewMode === 'grid' ? 'default' : 'ghost'} size="sm" onClick={() => handleViewModeChange('grid')} className="h-8 px-3 transition-all">
-                  <LayoutGrid className="h-4 w-4 mr-2" /> Grid
-                </Button>
-                <Button variant={viewMode === 'list' ? 'default' : 'ghost'} size="sm" onClick={() => handleViewModeChange('list')} className="h-8 px-3 transition-all">
-                  <List className="h-4 w-4 mr-2" /> List
-                </Button>
-              </div>
+               <LayoutControls />
             )}
           </div>
-
           <div className="flex items-center gap-2">
             <SelectionModeControls
               isSelectionMode={isSelectionMode}
@@ -226,7 +159,6 @@ export function ModelGrid({
               onSelectAll={onSelectAll}
               onDeselectAll={onDeselectAll}
             />
-            {/* [NEW] Import Button - Visible when NOT in selection mode */}
             {!isSelectionMode && (
               <Button
                 variant="outline"
@@ -239,25 +171,10 @@ export function ModelGrid({
                 <span className="hidden sm:inline">Thingiverse Import</span>
               </Button>
             )}
-            {viewMode === 'grid' && !isSelectionMode && (
-              <div className="flex items-center gap-3 min-w-0 hidden md:flex">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Sliders className="h-4 w-4" />
-                  <span className="hidden sm:inline">Density</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground w-3">1</span>
-                  <Slider value={gridDensity} onValueChange={handleGridDensityChange} min={1} max={6} step={1} className="w-20 sm:w-28" />
-                  <span className="text-xs text-muted-foreground w-3">6</span>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
 
-
-      
       <ScrollArea className="flex-1 min-h-0">
         <div className="p-4 lg:p-6 pb-8 lg:pb-12">
           {(models.length === 0 && collections.length === 0) ? (
@@ -267,7 +184,8 @@ export function ModelGrid({
               <img src="/images/munchie-front.png" alt="No items found" width="418" />
             </div>
           ) : viewMode === 'grid' ? (
-            <div className={`grid ${getGridClasses(gridDensity[0])} gap-4 lg:gap-6`}>
+            // [NEW] Dynamic grid classes
+            <div className={`grid ${getGridClasses()} gap-4 lg:gap-6`}>
               {unifiedItems ? (
                 unifiedItems.map((it, idx) => {
                   if (it.kind === 'collection') {

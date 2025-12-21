@@ -42,9 +42,13 @@ import {
 import { Separator } from "./components/ui/separator";
 import CollectionGrid from "./components/CollectionGrid";
 import type { Collection } from "./types/collection";
-import { applyThemeColor } from "./utils/themeUtils"; // <--- Ensure this is imported
+import { applyThemeColor } from "./utils/themeUtils"; 
 import { ThingiverseImportDialog } from "./components/ThingiverseImportDialog";
 import { CollectionCard } from "./components/CollectionCard";
+import { LayoutSettingsProvider } from "./components/LayoutSettingsContext";
+import { CollectionListRow } from "./components/CollectionListRow"; 
+import { useLayoutSettings } from "./components/LayoutSettingsContext";
+import { LayoutControls } from "./components/LayoutControls";
 
 // Initial type for view
 type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view';
@@ -61,6 +65,7 @@ const getRecursiveModelIds = (col: Collection, allCols: Collection[]): Set<strin
 };
 
 function AppContent() {
+  const { viewMode, getGridClasses } = useLayoutSettings();
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [models, setModels] = useState<Model[]>([]);
   const [filteredModels, setFilteredModels] = useState<Model[]>([]);
@@ -1122,40 +1127,56 @@ function AppContent() {
             ) : currentView === 'collections' ? (
               <div className="h-full flex flex-col">
                 {/* ... header ... */}
+                {/* Collections Header with Layout Controls */}
+                <div className="p-4 lg:p-6 pb-0 flex justify-between items-center">
+                    <h2 className="text-lg font-semibold">All Collections</h2>
+                    <LayoutControls />
+                 </div>
+
                 <div className="p-4 lg:p-6">
                   {collections.length === 0 ? (
                     <div className="text-sm text-muted-foreground">No collections yet...</div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {/* NEW: Uses 'collectionsForDisplay' to respect Root-Only logic */}
-                      {sortCollections(collectionsForDisplay, currentSortBy).map(c => {
-                      // 1. Logic: Look for the first model in this collection that has an image
-                      let fallback: string | undefined = undefined;
-                      if (c.modelIds && c.modelIds.length > 0) {
-                        for (const id of c.modelIds) {
-                          const m = models.find(mod => mod.id === id);
-                          if (m && m.images && m.images.length > 0) {
-                            fallback = m.images[0];
-                            break; // Found one! Stop looking.
+                    // DYNAMIC VIEW FOR COLLECTIONS
+                    viewMode === 'grid' ? (
+                      <div className={`grid ${getGridClasses()} gap-3`}>
+                        {sortCollections(collectionsForDisplay, currentSortBy).map(c => {
+                          let fallback: string | undefined = undefined;
+                          if (c.modelIds && c.modelIds.length > 0) {
+                            for (const id of c.modelIds) {
+                              const m = models.find(mod => mod.id === id);
+                              if (m && m.images && m.images.length > 0) {
+                                fallback = m.images[0];
+                                break; 
+                              }
+                            }
                           }
-                        }
-                      }
-                      
-                      // [DEBUG: Remove this line after testing]
-                       if (fallback) console.log(`[CoverArt] Found cover for ${c.name}:`, fallback);
-
-                      return (
-                        <CollectionCard
-                          key={c.id}
-                          collection={c}
-                          categories={categories}
-                          onOpen={() => openCollection(c)}
-                          onChanged={refreshCollections}
-                          fallbackImage={fallback} // Pass it here
-                        />
-                      );
-                    })}
-                    </div>
+                          
+                          return (
+                            <CollectionCard
+                              key={c.id}
+                              collection={c}
+                              categories={categories}
+                              onOpen={() => openCollection(c)}
+                              onChanged={refreshCollections}
+                              fallbackImage={fallback}
+                            />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                         {sortCollections(collectionsForDisplay, currentSortBy).map(c => (
+                            <CollectionListRow
+                              key={c.id}
+                              collection={c}
+                              categories={categories}
+                              onOpen={() => openCollection(c)}
+                              onChanged={refreshCollections}
+                            />
+                         ))}
+                      </div>
+                    )
                   )}
                 </div>
               </div>
@@ -1379,8 +1400,10 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider defaultTheme="system">
+      <LayoutSettingsProvider>
       <AppContent />
       <Toaster />
+      </LayoutSettingsProvider>
     </ThemeProvider>
   );
 }
