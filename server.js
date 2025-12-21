@@ -393,6 +393,8 @@ app.delete('/api/collections/:id', async (req, res) => {
 });
 
 // API: Auto-Import Collections from Directory
+// [SEARCH FOR app.post('/api/collections/auto-import', ...) AND REPLACE BLOCK]
+
 // API: Auto-Import Collections from Directory
 app.post('/api/collections/auto-import', async (req, res) => {
   try {
@@ -415,15 +417,14 @@ app.post('/api/collections/auto-import', async (req, res) => {
     // 2. Run the Scanner
     const discoveredCollections = scanCollections(scanRoot, modelsDir, { strategy });
 
-    // 3. Queue the Merge (or Replace) Logic
+    // 3. Queue the Merge Logic
     const mergeTask = (currentCols) => {
       let updatedCols = [...currentCols];
       
       // Step A: If requested, prune old auto-collections
       if (clearPrevious) {
         const beforeCount = updatedCols.length;
-        // Keep only collections that are NOT auto-imported, or keep "Auto-Imported" ones that are outside our scan scope?
-        // Simpler: Delete ALL 'Auto-Imported' category collections to ensure a clean slate.
+        // Delete ALL 'Auto-Imported' category collections to ensure a clean slate
         updatedCols = updatedCols.filter(c => c.category !== 'Auto-Imported');
         console.log(`[Auto-Import] Pruned ${beforeCount - updatedCols.length} old auto-collections.`);
       }
@@ -437,17 +438,12 @@ app.post('/api/collections/auto-import', async (req, res) => {
         if (existingIdx !== -1) {
           // UPDATE existing
           const existing = updatedCols[existingIdx];
-          
-          // Logic Choice: 
-          // If clearPrevious was TRUE, we actually shouldn't find existing 'Auto-Imported' ones (deleted above).
-          // But we might find manually created ones with conflicting IDs. 
-          // Safe Default: Merge modelIds.
+          // Merge modelIds
           const mergedIds = [...new Set([...existing.modelIds, ...importCol.modelIds])];
 
           updatedCols[existingIdx] = {
             ...existing,
             modelIds: mergedIds,
-            // Ensure category is marked
             category: existing.category || 'Auto-Imported',
             parentId: existing.parentId || importCol.parentId,
             lastModified: new Date().toISOString()

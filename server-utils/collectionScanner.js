@@ -3,18 +3,12 @@ const path = require('path');
 
 /**
  * Strategy: "Top-Level Aggregation" with "Path-Based Tagging"
- * * 1. Identify direct subfolders of the Models Root (e.g., "Dump Truck", "CNC Files").
- * 2. For each folder, find ALL models inside it (recursive).
- * 3. TAGGING: For each model, calculate its relative path from the collection root.
- * Use subfolder names as Tags (e.g. "Bed/Axle/Part.stl" -> tags: ["Bed", "Axle"]).
- * Write these tags to the model's JSON file.
- * 4. Create a single Collection for that top-level folder.
- * 5. PRUNING: Skip folders that end up with 0 models.
  */
 function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' }) {
   console.log(`🔍 Auto-generating collections using 'Top-Level Aggregation' & 'Auto-Tagging'...`);
   
   const collections = [];
+  let taggedCount = 0;
   
   // Helper to safely read JSON
   function readJson(fp) {
@@ -35,24 +29,27 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
       const lowerExisting = new Set(existingTags.map(t => t.toLowerCase()));
       
       let changed = false;
+      const addedTags = [];
+
       for (const t of newTags) {
         if (!lowerExisting.has(t.toLowerCase())) {
           combined.push(t);
           lowerExisting.add(t.toLowerCase());
+          addedTags.push(t);
           changed = true;
         }
       }
 
       if (changed) {
         data.tags = combined;
-        // Update lastModified
         data.lastModified = new Date().toISOString();
         
         // Write atomically
         const tmp = jsonPath + '.tmp';
         fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
         fs.renameSync(tmp, jsonPath);
-        // console.log(`   🏷️ Tagged ${path.basename(jsonPath)} with: [${newTags.join(', ')}]`);
+        console.log(`   🏷️  Tagged ${path.basename(jsonPath, '.json')} +[${addedTags.join(', ')}]`);
+        taggedCount++;
       }
     } catch (e) {
       console.warn(`   ⚠️ Failed to update tags for ${path.basename(jsonPath)}:`, e.message);
@@ -95,7 +92,6 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
 
             // --- PATH-BASED TAGGING LOGIC ---
             // Calculate path relative to the Collection Root (fullFolderPath)
-            // e.g. /models/Dump Truck/Bed/Axle/screw-munchie.json -> relative: Bed/Axle/screw-munchie.json
             const relPath = path.relative(fullFolderPath, fullSubPath);
             const pathParts = relPath.split(path.sep);
             
@@ -108,7 +104,6 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
             if (validTags.length > 0) {
               updateModelTags(fullSubPath, validTags);
             }
-            // --------------------------------
           }
         }
       }
@@ -119,12 +114,10 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
 
     // 3. PRUNING: Skip if 0 models found
     if (modelIds.length === 0) {
-      // console.log(`   Skipping empty folder: ${folderName}`);
       continue;
     }
 
     // 4. Create the Collection
-    // Stable ID based on folder name
     const stableId = `col_${Buffer.from(folderName).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
 
     collections.push({
@@ -137,9 +130,8 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
     });
   }
 
-  console.log(`📂 Generated ${collections.length} collections.`);
+  console.log(`📂 Scan complete. Found ${collections.length} collections. Updated tags for ${taggedCount} models.`);
   return collections;
 }
 
-// Export as scanDirectory to maintain compatibility with server.js import
 module.exports = { scanDirectory: generateCollections };

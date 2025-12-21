@@ -17,8 +17,7 @@ interface AutoImportDialogProps {
 
 export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoImportDialogProps) {
   const [folders, setFolders] = useState<string[]>([]);
-  // Default to (Root) for entire library scan
-  const [selectedFolder, setSelectedFolder] = useState<string>("(Root)");
+  const [selectedFolder, setSelectedFolder] = useState<string>("(Root)"); // Default to Root
   const [strategy, setStrategy] = useState<"smart" | "strict">("smart");
   const [clearPrevious, setClearPrevious] = useState(false);
   
@@ -29,10 +28,8 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
   useEffect(() => {
     if (open) {
       setResult(null);
-      // Reset defaults when opening
       setClearPrevious(false);
       setSelectedFolder("(Root)");
-      
       fetch('/api/model-folders')
         .then(res => res.json())
         .then(data => {
@@ -91,23 +88,17 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
 
           {!result ? (
             <div className="grid gap-6 py-4">
-              {/* Folder Selection */}
               <div className="grid gap-2">
                 <Label>Target Directory</Label>
                 <Select value={selectedFolder} onValueChange={setSelectedFolder}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select folder..." />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Select folder..." /></SelectTrigger>
                   <SelectContent className="max-h-[200px]">
                     <SelectItem value="(Root)">/ (Entire Library)</SelectItem>
-                    {folders.map(f => (
-                      <SelectItem key={f} value={f}>{f}</SelectItem>
-                    ))}
+                    {folders.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Strategy Selection */}
               <div className="grid gap-3">
                 <Label>Strategy</Label>
                 <RadioGroup value={strategy} onValueChange={(v) => setStrategy(v as any)} className="gap-4">
@@ -115,43 +106,26 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
                     <RadioGroupItem value="smart" id="smart" className="mt-1" />
                     <div className="cursor-pointer">
                       <Label htmlFor="smart" className="cursor-pointer font-medium">Smart Grouping (Top-Level)</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Creates collections for top-level folders only. Contents of subfolders are flattened into the parent. Best for clean, project-based views.
-                      </p>
+                      <p className="text-xs text-muted-foreground">Aggregates subfolders into parent collection. Best for clean, project-based views.</p>
                     </div>
                   </div>
                   <div className="flex items-start space-x-3 border p-3 rounded-md hover:bg-accent/50 cursor-pointer" onClick={() => setStrategy('strict')}>
                     <RadioGroupItem value="strict" id="strict" className="mt-1" />
                     <div className="cursor-pointer">
                       <Label htmlFor="strict" className="cursor-pointer font-medium">Strict Mirroring</Label>
-                      <p className="text-xs text-muted-foreground">
-                        Creates a separate collection for every single subfolder found.
-                      </p>
+                      <p className="text-xs text-muted-foreground">Creates a separate collection for every subfolder found.</p>
                     </div>
                   </div>
                 </RadioGroup>
               </div>
 
-              {/* Reset Option */}
               <div className="flex items-start space-x-2 border-t pt-4">
-                <Checkbox 
-                  id="clearPrevious" 
-                  checked={clearPrevious} 
-                  onCheckedChange={(c) => setClearPrevious(!!c)} 
-                />
+                <Checkbox id="clearPrevious" checked={clearPrevious} onCheckedChange={(c) => setClearPrevious(!!c)} />
                 <div className="grid gap-1.5 leading-none">
-                  <Label 
-                    htmlFor="clearPrevious" 
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-destructive"
-                  >
-                    Clean Re-Import (Reset)
-                  </Label>
+                  <Label htmlFor="clearPrevious" className="text-sm font-medium text-destructive">Clean Re-Import (Reset)</Label>
                   <p className="text-xs text-muted-foreground">
                     Check this to <b>delete all existing auto-imported collections</b> before scanning. 
-                    <br/>
-                    Use this to fix "messy" folder structures. 
-                    <br/>
-                    <span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
+                    <br/><span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
                   </p>
                 </div>
               </div>
@@ -177,7 +151,6 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
         </DialogContent>
       </Dialog>
 
-      {/* Confirmation Dialog for Reset */}
       <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -186,18 +159,14 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
               Confirm Reset?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This action is <b>not reversible</b>. 
+              This action is <b>not reversible</b>. It will delete all collections marked as "Auto-Imported" and rebuild them from scratch.
               <br/><br/>
-              It will delete all collections marked as "Auto-Imported" and rebuild them from scratch based on your current folder structure.
-              <br/><br/>
-              If you manually added items to these collections, those links will be lost. (Collections you created manually will be safe).
+              If you manually added items to these collections, those links will be lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={runImport} className="bg-destructive hover:bg-destructive/90">
-              Yes, Wipe & Rebuild
-            </AlertDialogAction>
+            <AlertDialogAction onClick={runImport} className="bg-destructive hover:bg-destructive/90">Yes, Wipe & Rebuild</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
