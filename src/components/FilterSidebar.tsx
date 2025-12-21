@@ -417,7 +417,7 @@ export function FilterSidebar({
             </div>
 
             {/* Collections Accordion */}
-            <Accordion type="multiple" defaultValue={['collections']} className="w-full">
+            <Accordion type="multiple" defaultValue={[]} className="w-full">
               <AccordionItem value="collections" className="border-b-0">
                 <AccordionTrigger className="py-2 hover:no-underline">
                   <div className="flex items-center gap-2">

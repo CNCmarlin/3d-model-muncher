@@ -17,11 +17,16 @@ export interface CollectionCardProps {
   onOpen: (id: string) => void;
   onChanged?: () => void; // called after edit save
   onDeleted?: (id: string) => void;
+  fallbackImage?: string;
 }
 
-export function CollectionCard({ collection, categories, onOpen, onChanged, onDeleted }: CollectionCardProps) {
+export function CollectionCard({ collection, categories, onOpen, onChanged, onDeleted, fallbackImage }: CollectionCardProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+
+  const displayImage = (collection.images && collection.images.length > 0)
+    ? collection.images[0]
+    : fallbackImage || null;
 
   const handleSaved = (_updated: any) => {
     // Ask parent to refresh collections list
@@ -57,9 +62,9 @@ export function CollectionCard({ collection, categories, onOpen, onChanged, onDe
     >
       <CardHeader className="p-0">
         <div className="relative aspect-[4/3] overflow-hidden rounded-t-lg bg-muted/40 flex items-center justify-center">
-          {Array.isArray(collection?.images) && collection!.images!.length > 0 ? (
+          {displayImage ? (
             <img
-              src={collection!.images![0]}
+              src={displayImage}
               alt={collection?.name || 'Collection cover'}
               className="absolute inset-0 w-full h-full object-cover"
               draggable={false}
@@ -154,8 +159,8 @@ export function CollectionCard({ collection, categories, onOpen, onChanged, onDe
         </Button>
       </CardFooter>
 
-  {/* Edit drawer */}
-  <CollectionEditDrawer open={isEditOpen} onOpenChange={setIsEditOpen} collection={collection ?? null} categories={categories} onSaved={handleSaved} />
+      {/* Edit drawer */}
+      <CollectionEditDrawer open={isEditOpen} onOpenChange={setIsEditOpen} collection={collection ?? null} categories={categories} onSaved={handleSaved} />
 
       {/* Delete confirmation */}
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

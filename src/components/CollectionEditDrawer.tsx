@@ -389,26 +389,33 @@ export default function CollectionEditDrawer({
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Images</Label>
-                  <div className="flex gap-2">
-                    <Button variant="outline" onClick={(e) => { e.stopPropagation(); onPickImages(); }}>Add Images</Button>
-                    <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={onFiles} />
-                  </div>
-                  {images.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 pt-2">
-                      {images.map((src, i) => (
-                        <div key={i} className="relative group border rounded overflow-hidden">
-                          <img src={src} alt="" className="object-cover w-full h-24" />
+                  <Label>Custom Cover Photo</Label>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" onClick={(e) => { e.stopPropagation(); onPickImages(); }}>
+                        {images.length > 0 ? "Change Photo" : "Set Cover Photo"}
+                      </Button>
+                      {/* Removed 'multiple' to enforce single file selection */}
+                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFiles} />
+                    </div>
+                    <p className="text-[0.8rem] text-muted-foreground">
+                      If left empty, the first model's thumbnail will be used automatically.
+                    </p>
+                    
+                    {images.length > 0 && (
+                      <div className="pt-2">
+                        <div className="relative group border rounded overflow-hidden w-40 h-28">
+                          <img src={images[0]} alt="Cover" className="object-cover w-full h-full" />
                           <button
-                            className="absolute top-1 right-1 bg-background/80 rounded px-1 text-xs opacity-0 group-hover:opacity-100"
-                            onClick={(e) => { e.stopPropagation(); setImages(images.filter((_, idx) => idx !== i)); }}
+                            className="absolute top-1 right-1 bg-background/80 rounded px-1 text-xs opacity-0 group-hover:opacity-100 hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                            onClick={(e) => { e.stopPropagation(); setImages([]); }}
                           >
                             Remove
                           </button>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}

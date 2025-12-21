@@ -17,7 +17,7 @@ import { ConfigManager } from "./utils/configManager";
 import * as pkg from '../package.json';
 import { applyFiltersToModels, FilterState } from "./utils/filterUtils";
 import { sortModels, sortCollections, SortKey } from "./utils/sortUtils";
-import { Menu, RefreshCw, Heart, FileCheck, Files, Box, Upload, List} from "lucide-react";
+import { Menu, RefreshCw, Heart, FileCheck, Files, Box, Upload, List } from "lucide-react";
 import ModelUploadDialog from "./components/ModelUploadDialog";
 import { Button } from "./components/ui/button";
 import {
@@ -44,9 +44,21 @@ import CollectionGrid from "./components/CollectionGrid";
 import type { Collection } from "./types/collection";
 import { applyThemeColor } from "./utils/themeUtils"; // <--- Ensure this is imported
 import { ThingiverseImportDialog } from "./components/ThingiverseImportDialog";
+import { CollectionCard } from "./components/CollectionCard";
 
 // Initial type for view
 type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view';
+
+// Helper: Recursively get all model IDs from a collection and its children
+const getRecursiveModelIds = (col: Collection, allCols: Collection[]): Set<string> => {
+  const ids = new Set(col.modelIds || []);
+  const children = allCols.filter(c => c.parentId === col.id);
+  for (const child of children) {
+    const childIds = getRecursiveModelIds(child, allCols);
+    childIds.forEach(id => ids.add(id));
+  }
+  return ids;
+};
 
 function AppContent() {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
@@ -72,27 +84,35 @@ function AppContent() {
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null);
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  
+
   // Collections state
   const [collections, setCollections] = useState<Collection[]>([]);
   const [activeCollection, setActiveCollection] = useState<Collection | null>(null);
-  const [collectionReturnView, setCollectionReturnView] = useState<ViewType>('models');
-  
+
   const [lastFilters, setLastFilters] = useState<{ search: string; category: string; printStatus: string; license: string; fileType: string; tags: string[]; showHidden: boolean; showMissingImages: boolean; sortBy?: string }>(
     { search: '', category: 'all', printStatus: 'all', license: 'all', fileType: 'all', tags: [], showHidden: false, showMissingImages: false, sortBy: 'none' }
   );
-  
+
   const [sidebarResetKey, setSidebarResetKey] = useState(0);
   const [currentSortBy, setCurrentSortBy] = useState<SortKey>('none');
-  
+
+  const hasActiveFilters = useMemo(() => {
+    return lastFilters.search.length > 0 || 
+           lastFilters.tags.length > 0 || 
+           lastFilters.category !== 'all' ||
+           lastFilters.printStatus !== 'all' ||
+           lastFilters.license !== 'all';
+  }, [lastFilters]);
+
   const collectionBaseModels = useMemo(() => {
-    if (activeCollection && Array.isArray(activeCollection.modelIds)) {
-      const idSet = new Set(activeCollection.modelIds);
+    if (activeCollection) {
+      // Use recursive helper to get ALL nested model IDs so tags populate correctly
+      const idSet = getRecursiveModelIds(activeCollection, collections);
       return models.filter(m => idSet.has(m.id));
     }
     return models;
-  }, [models, activeCollection]);
-  
+  }, [models, activeCollection, collections]);
+
   const [includeThreeMfFiles, setIncludeThreeMfFiles] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<string | undefined>(undefined);
   const [settingsAction, setSettingsAction] = useState<null | { type: 'hash-check' | 'generate'; fileType: '3mf' | 'stl' }>(null);
@@ -102,7 +122,7 @@ function AppContent() {
     setPendingBulkCollectionId(collectionId);
     // Switch to models view so the BulkEditDrawer (and grid) can render
     setCurrentView('models');
-    
+
     // Ensure selection mode is on; the useEffect below will open the drawer
     if (!isSelectionMode) {
       setIsSelectionMode(true);
@@ -132,7 +152,7 @@ function AppContent() {
     async function loadInitialData() {
       try {
         let config: AppConfig | null = null;
-        
+
         // 1. Try to load from LocalStorage first (Fastest)
         try {
           const stored = localStorage.getItem('3d-model-muncher-config');
@@ -144,17 +164,17 @@ function AppContent() {
         // 2. Try to load from Server (Authoritative)
         // Note: Logic allows local storage to win if it exists, to support offline dev or overrides
         if (!config) {
-            try {
-              const resp = await fetch('/api/load-config');
-              if (resp.ok) {
-                const data = await resp.json();
-                if (data && data.success && data.config) {
-                  config = data.config;
-                  // Sync server config to local storage
-                  try { ConfigManager.saveConfig(data.config); } catch (e) { console.warn(e); }
-                }
+          try {
+            const resp = await fetch('/api/load-config');
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data && data.success && data.config) {
+                config = data.config;
+                // Sync server config to local storage
+                try { ConfigManager.saveConfig(data.config); } catch (e) { console.warn(e); }
               }
-            } catch (e) { console.warn(e); }
+            }
+          } catch (e) { console.warn(e); }
         }
 
         // 3. Fallback to Defaults
@@ -166,10 +186,10 @@ function AppContent() {
         // We do this before setting state so it paints as fast as possible
         const savedColor = config.settings?.primaryColor || null;
         if (savedColor) {
-            applyThemeColor(savedColor);
+          applyThemeColor(savedColor);
         } else {
-            // Ensure we reset if no color is saved
-            applyThemeColor(null);
+          // Ensure we reset if no color is saved
+          applyThemeColor(null);
         }
 
         setAppConfig(config);
@@ -186,7 +206,7 @@ function AppContent() {
         }
         const loadedModels = await response.json();
         setModels(loadedModels);
-        
+
         const defaultFilters = config.filters || { defaultCategory: 'all', defaultPrintStatus: 'all', defaultLicense: 'all' };
         const initialFilterState = {
           search: '',
@@ -199,13 +219,13 @@ function AppContent() {
           showMissingImages: false,
           sortBy: defaultFilters.defaultSortBy || 'none',
         };
-  
+
         const visibleModels = applyFiltersToModels(loadedModels, initialFilterState as FilterState);
         setFilteredModels(visibleModels);
         setLastFilters(initialFilterState);
         setCurrentSortBy((initialFilterState.sortBy || 'none') as SortKey);
         setIsModelsLoading(false);
-        
+
         try {
           const colResp = await fetch('/api/collections');
           if (colResp.ok) {
@@ -272,12 +292,12 @@ function AppContent() {
   };
 
   const handleModelUpdate = (updatedModel: Model) => {
-    const updatedModels = models.map(model => 
+    const updatedModels = models.map(model =>
       model.id === updatedModel.id ? updatedModel : model
     );
     setModels(updatedModels);
     setSelectedModel(updatedModel);
-    
+
     const updatedFilteredModels = filteredModels.map(model =>
       model.id === updatedModel.id ? updatedModel : model
     );
@@ -323,8 +343,8 @@ function AppContent() {
 
     setSelectedModelIds(prev =>
       prev.includes(modelId)
-      ? prev.filter(id => id !== modelId)
-      : [...prev, modelId]
+        ? prev.filter(id => id !== modelId)
+        : [...prev, modelId]
     );
     if (currentIndex !== -1) setSelectionAnchorIndex(currentIndex);
   };
@@ -372,7 +392,7 @@ function AppContent() {
     setIsDeleteDialogOpen(false);
 
     try {
-      const fileTypes = ['json']; 
+      const fileTypes = ['json'];
       if (includeThreeMfFiles) {
         fileTypes.push('3mf');
         fileTypes.push('stl');
@@ -385,7 +405,7 @@ function AppContent() {
       const deleteResponse = await fetch('/api/models/delete', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           modelIds: selectedModelIds,
           fileTypes: fileTypes
         })
@@ -397,7 +417,7 @@ function AppContent() {
 
       if (deleteResult.success) {
         const successfullyDeletedIds = selectedModelIds.filter(modelId => {
-          const modelDeleted = deleteResult.deleted?.some((item: any) => 
+          const modelDeleted = deleteResult.deleted?.some((item: any) =>
             item.modelId === modelId && fileTypes.includes(item.type)
           );
           return modelDeleted;
@@ -405,19 +425,19 @@ function AppContent() {
 
         const updatedModels = models.filter(model => !successfullyDeletedIds.includes(model.id));
         setModels(updatedModels);
-        
+
         const updatedFilteredModels = filteredModels.filter(model => !successfullyDeletedIds.includes(model.id));
         setFilteredModels(updatedFilteredModels);
-        
+
         setSelectedModelIds([]);
-        
+
         const successCount = successfullyDeletedIds.length;
         const errorCount = deleteResult.errors?.length || 0;
-        
+
         if (successCount > 0) {
           toast(`Deleted ${successCount} models`);
         }
-        
+
         if (errorCount > 0) {
           console.error('Deletion errors:', deleteResult.errors);
           toast(`${errorCount} models could not be deleted`);
@@ -436,13 +456,13 @@ function AppContent() {
 
   const handleSingleModelDelete = async (model: Model) => {
     try {
-      const fileTypes = ['json', '3mf', 'stl']; 
+      const fileTypes = ['json', '3mf', 'stl'];
       toast("Deleting model...", { description: model.name });
 
       const deleteResponse = await fetch('/api/models/delete', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           modelIds: [model.id],
           fileTypes: fileTypes
         })
@@ -494,7 +514,7 @@ function AppContent() {
     });
 
     setModels(updatedModels);
-    
+
     const updatedFilteredModels = filteredModels.map(model => {
       if (selectedModelIds.includes(model.id)) {
         const updatedModel = updatedModels.find(m => m.id === model.id);
@@ -570,6 +590,7 @@ function AppContent() {
       showMissingImages: filters.showMissingImages,
     };
     
+
     const filtered = applyFiltersToModels(baseModels, filterState);
     const sortKey = (filters.sortBy || 'none') as SortKey;
     const sorted = sortModels(filtered as any[], sortKey);
@@ -577,9 +598,9 @@ function AppContent() {
     setLastFilters({ ...filters });
     setSelectionAnchorIndex(null);
     setLastCategoryFilter(incomingCategory);
-    
+
     if (isSelectionMode) {
-      const validSelections = selectedModelIds.filter(id => 
+      const validSelections = selectedModelIds.filter(id =>
         filtered.some(model => model.id === id)
       );
       setSelectedModelIds(validSelections);
@@ -672,31 +693,31 @@ function AppContent() {
 
   const handleOpenImport = (collectionId?: string) => {
     setImportTargetCollectionId(collectionId);
-    
+
     // Smart Folder Inference:
     // If we are in a collection, check the first file in that collection.
     // Use its folder as the default for the new import.
     let inferredFolder: string | undefined = undefined;
 
     if (collectionId) {
-       const col = collections.find(c => c.id === collectionId);
-       if (col && col.modelIds && col.modelIds.length > 0) {
-          // Find the first model to check its path
-          const firstModelId = col.modelIds[0];
-          const representativeModel = models.find(m => m.id === firstModelId);
-          
-          // [FIX] Use 'filePath' instead of 'fileName'
-          if (representativeModel && representativeModel.filePath) {
-             // Split "folder/subfolder/file.stl" -> ["folder", "subfolder", "file.stl"]
-             const parts = representativeModel.filePath.split(/[/\\]/);
-             if (parts.length > 1) {
-                // The first part is the root folder (e.g. 'imported' or 'uploads')
-                inferredFolder = parts[0];
-             }
+      const col = collections.find(c => c.id === collectionId);
+      if (col && col.modelIds && col.modelIds.length > 0) {
+        // Find the first model to check its path
+        const firstModelId = col.modelIds[0];
+        const representativeModel = models.find(m => m.id === firstModelId);
+
+        // [FIX] Use 'filePath' instead of 'fileName'
+        if (representativeModel && representativeModel.filePath) {
+          // Split "folder/subfolder/file.stl" -> ["folder", "subfolder", "file.stl"]
+          const parts = representativeModel.filePath.split(/[/\\]/);
+          if (parts.length > 1) {
+            // The first part is the root folder (e.g. 'imported' or 'uploads')
+            inferredFolder = parts[0];
           }
-       }
+        }
+      }
     }
-    
+
     setImportTargetFolder(inferredFolder);
     setIsImportOpen(true);
   };
@@ -723,7 +744,6 @@ function AppContent() {
     setActiveCollection(col);
     setCurrentView('collection-view');
     setIsDrawerOpen(false);
-    setCollectionReturnView('collections');
     try {
       const setIds = new Set(col.modelIds || []);
       const base = models.filter(m => setIds.has(m.id));
@@ -822,7 +842,7 @@ function AppContent() {
 
     const filters = lastFilters;
     const fileType = (filters.fileType || 'all').toLowerCase();
-    
+
     // If filtering for model files specifically, hide collections
     if (fileType === '3mf' || fileType === 'stl') {
       return [] as Collection[];
@@ -862,9 +882,9 @@ function AppContent() {
     // If no search/filters are active, only show Root collections (no parent).
     // If filters ARE active, show all matching collections (flat list) so deep items are found.
     const isFiltering = searchTerm !== '' || hasCategoryFilter || hasTagFilter;
-    
+
     if (!isFiltering) {
-        filteredList = filteredList.filter(c => !c.parentId);
+      filteredList = filteredList.filter(c => !c.parentId);
     }
 
     return filteredList;
@@ -894,443 +914,464 @@ function AppContent() {
 
   return (
     <TagsProvider tags={globalTags}>
-    <div className="flex h-screen bg-background">
-      {/* Mobile Overlay - Only when sidebar is open AND not in settings */}
-      {isSidebarOpen && currentView !== 'settings' && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
+      <div className="flex h-screen bg-background">
+        {/* Mobile Overlay - Only when sidebar is open AND not in settings */}
+        {isSidebarOpen && currentView !== 'settings' && (
+          <div
+            className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
 
-      {/* Sidebar - Hide when in Settings view */}
-      {currentView !== 'settings' && (
-      <div className={`
+        {/* Sidebar - Hide when in Settings view */}
+        {currentView !== 'settings' && (
+          <div className={`
         fixed lg:relative z-30 lg:z-0
         h-full bg-sidebar border-r border-sidebar-border shadow-xl
         transform transition-all duration-300 ease-in-out
         ${isSidebarOpen ? 'w-80 translate-x-0' : 'w-0 lg:w-12 -translate-x-full lg:translate-x-0'}
         overflow-hidden
       `}
-      onClick={() => !isSidebarOpen && setIsSidebarOpen(true)}
-      >
-        <FilterSidebar 
-          key={sidebarResetKey}
-          onFilterChange={handleFilterChange}
-          onCategoryChosen={(label) => {
-            const currentViewSafe = currentView as ViewType;
-            if (currentViewSafe === 'settings') {
-              setCurrentView('models');
-            }
-            setLastCategoryFilter(label || 'all');
-          }}
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-          onSettingsClick={handleSettingsClick}
-          categories={categories}
-          collections={collections}
-          onOpenCollection={openCollection}
-          // [NEW] Provide the navigation handler
-          onBackToRoot={() => {
-            setActiveCollection(null);
-            setCurrentView('models');
-            // Optionally clear selection mode if you want a clean slate
-            setIsSelectionMode(false);
-            setSelectedModelIds([]);
-          }}
-          models={(currentView === 'collection-view' && activeCollection)
-            ? collectionBaseModels
-            : models}
-          initialFilters={{
-            search: '',
-            category: appConfig?.filters?.defaultCategory || 'all',
-            printStatus: appConfig?.filters?.defaultPrintStatus || 'all',
-            license: appConfig?.filters?.defaultLicense || 'all',
-            fileType: 'all',
-            tags: [],
-            showHidden: currentView === 'collection-view',
-            showMissingImages: false,
-            sortBy: appConfig?.filters?.defaultSortBy || 'none',
-          }}
-        />
-      </div>
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 p-4 border-b bg-card shadow-sm shrink-0">
-          <div className="flex items-center gap-3">
-            {/* Hide sidebar toggle menu if in settings view */}
-            {currentView !== 'settings' && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleSidebar}
-                className="p-2 hover:bg-accent transition-colors"
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-            )}
-            {/* Show title/logo if sidebar is closed OR we are in settings (because sidebar is hidden there) */}
-            {(!isSidebarOpen || currentView === 'settings') && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl shadow-lg">
-                  <img
-                    src="/images/favicon-32x32.png"
-                    alt="3D Model Muncher"
-                  />
-                </div>
-                <div>
-                  <h1 className="text-lg font-semibold text-foreground tracking-tight leading-none">
-                    3D Model Muncher
-                  </h1>
-                  <p className="text-xs text-muted-foreground mt-1 font-medium">
-                    {getViewTitle()}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="p-2 hover:bg-accent transition-colors" title="Actions" aria-label="Actions">
-                    <Box className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => { handleRefreshModels(); }} disabled={isRefreshing}>
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} /> Refresh
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={openCollectionsList}>
-                    <List className="h-4 w-4 mr-2" /> Collections
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'hash-check', fileType: '3mf' })}> 
-                    <FileCheck className="h-4 w-4 mr-2" /> 3MF Check
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'hash-check', fileType: 'stl' })}>
-                    <FileCheck className="h-4 w-4 mr-2" /> STL Check
-                  </DropdownMenuItem>                  
-                  <Separator className="mt-2 mb-2" />
-                  <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'generate', fileType: '3mf' })}>
-                    <Files className="h-4 w-4 mr-2" /> 3MF Generate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'generate', fileType: 'stl' })}>
-                    <Files className="h-4 w-4 mr-2" /> STL Generate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setIsUploadDialogOpen(true)}>
-                    <Upload className="h-4 w-4 mr-2" /> Upload Files
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleDonationClick}
-                className="p-2 hover:bg-accent transition-colors"
-                title="Support the project"
-              >
-                <Heart className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content Area */}
-        <div className="flex-1 min-h-0">
-          {isModelsLoading && (
-            <div className="flex items-center gap-3 px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-yellow-800">
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              <div className="text-sm">
-                Loading models — this may take a minute for large libraries. Please wait...
-              </div>
-            </div>
-          )}
-          {currentView === 'models' ? (
-            <ModelGrid 
-              models={filteredModels} 
-              collections={sortCollections(collectionsForDisplay, currentSortBy)}
-              allCollections={collections} 
-              sortBy={currentSortBy}
-              onModelClick={handleModelClick}
-              onOpenCollection={(id) => {
-                const col = collections.find(c => c.id === id);
-                if (col) {
-                  setCollectionReturnView('models');
-                  setActiveCollection(col);
-                  setCurrentView('collection-view');
-                  try {
-                    const setIds = new Set(col.modelIds || []);
-                    const base = models.filter(m => setIds.has(m.id));
-                    setFilteredModels(base);
-                  } catch { /* ignore */ }
-                  setSidebarResetKey(k => k + 1);
+            onClick={() => !isSidebarOpen && setIsSidebarOpen(true)}
+          >
+            <FilterSidebar
+              key={sidebarResetKey}
+              onFilterChange={handleFilterChange}
+              onCategoryChosen={(label) => {
+                const currentViewSafe = currentView as ViewType;
+                if (currentViewSafe === 'settings') {
+                  setCurrentView('models');
                 }
+                setLastCategoryFilter(label || 'all');
               }}
-              onCollectionChanged={refreshCollections}
-              isSelectionMode={isSelectionMode}
-              selectedModelIds={selectedModelIds}
-              onModelSelection={handleModelSelection}
-              onToggleSelectionMode={toggleSelectionMode}
-              onSelectAll={selectAllModels}
-              onDeselectAll={deselectAllModels}
-              onBulkEdit={handleBulkEdit}
-              onBulkDelete={handleBulkDeleteClick}
-              config={appConfig}
-            />
-          ) : currentView === 'settings' ? (
-            <SettingsPage 
-              onBack={handleBackToModels} 
+              isOpen={isSidebarOpen}
+              onClose={() => setIsSidebarOpen(false)}
+              onSettingsClick={handleSettingsClick}
               categories={categories}
-              onCategoriesUpdate={handleCategoriesUpdate}
-              config={appConfig}
-              onConfigUpdate={handleConfigUpdate}
-              models={models}
-              onModelsUpdate={handleBulkModelsUpdate}
-              onModelClick={handleModelClick}
-              onDonationClick={handleDonationClick}
-              initialTab={settingsInitialTab}
-              settingsAction={settingsAction}
-              onActionHandled={() => setSettingsAction(null)}
-              onCollectionCreatedForBulkEdit={handleCollectionCreatedForBulkEdit}
-            />
-          ) : currentView === 'collections' ? (
-            <div className="h-full flex flex-col">
-              {/* ... header ... */}
-              <div className="p-4 lg:p-6">
-                {collections.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No collections yet...</div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {/* NEW: Uses 'collectionsForDisplay' to respect Root-Only logic */}
-                    {sortCollections(collectionsForDisplay, currentSortBy).map(c => (
-                      <button key={c.id} onClick={() => openCollection(c)} className="p-4 text-left rounded-lg border bg-card hover:bg-accent/50 transition-colors">
-                        {/* ... (keep existing button content) ... */}
-                        <div className="flex items-center gap-3">
-                          <div className="relative w-16 h-12 rounded overflow-hidden bg-muted/40 flex-shrink-0">
-                            {Array.isArray(c.images) && c.images.length > 0 ? (
-                              <img src={c.images[0]} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                            ) : (
-                              <div className="w-full h-full" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium truncate">{c.name}</div>
-                            {/* Optional: Show how many items OR how many sub-collections */}
-                            <div className="text-xs text-muted-foreground mt-1">{(c.modelIds || []).length} items</div>
-                            {c.description && <div className="text-xs line-clamp-2 mt-2">{c.description}</div>}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : currentView === 'collection-view' && activeCollection ? (
-            <CollectionGrid
-              name={activeCollection.name}
-              modelIds={activeCollection.modelIds}
-              models={filteredModels}
               collections={collections}
               onOpenCollection={openCollection}
-              onImportClick={handleOpenImport}
-              onBack={() => {
-                if (collectionReturnView === 'models') {
-                  setCurrentView('models');
-                  if ((lastFilters.fileType || '').toLowerCase() === 'collections') {
-                    setFilteredModels([]);
-                  } else {
-                    const filtered = applyFiltersToModels(models, lastFilters as FilterState);
-                    const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
-                    setFilteredModels(sorted);
-                  }
-                  setSidebarResetKey(k => k + 1);
-                  setSelectedModelIds([]);
-                  setSelectionAnchorIndex(null);
-                  setIsSelectionMode(false);
-                  setActiveCollection(null);
-                } else {
-                  setCurrentView('collections');
-                  setActiveCollection(null);
-                }
+              // [NEW] Provide the navigation handler
+              onBackToRoot={() => {
+                setActiveCollection(null);
+                setCurrentView('models');
+                // Optionally clear selection mode if you want a clean slate
+                setIsSelectionMode(false);
+                setSelectedModelIds([]);
               }}
-              onModelClick={handleModelClick}
-              config={appConfig}
-              activeCollection={activeCollection}
-              isSelectionMode={isSelectionMode}
-              selectedModelIds={selectedModelIds}
-              onModelSelection={handleModelSelection}
-              onToggleSelectionMode={toggleSelectionMode}
-              onSelectAll={selectAllModels}
-              onDeselectAll={deselectAllModels}
-              onBulkEdit={handleBulkEdit}
-              onBulkDelete={handleBulkDeleteClick}
-              onCollectionChanged={refreshCollections}
+              models={(currentView === 'collection-view' && activeCollection)
+                ? collectionBaseModels
+                : models}
+              initialFilters={{
+                search: '',
+                category: appConfig?.filters?.defaultCategory || 'all',
+                printStatus: appConfig?.filters?.defaultPrintStatus || 'all',
+                license: appConfig?.filters?.defaultLicense || 'all',
+                fileType: 'all',
+                tags: [],
+                showHidden: currentView === 'collection-view',
+                showMissingImages: false,
+                sortBy: appConfig?.filters?.defaultSortBy || 'none',
+              }}
             />
-          ) : (
-            <DemoPage onBack={handleBackToModels} />
-          )}
+          </div>
+        )}
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Header */}
+          <div className="flex items-center justify-between gap-2 p-4 border-b bg-card shadow-sm shrink-0">
+            <div className="flex items-center gap-3">
+              {/* Hide sidebar toggle menu if in settings view */}
+              {currentView !== 'settings' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleSidebar}
+                  className="p-2 hover:bg-accent transition-colors"
+                >
+                  <Menu className="h-4 w-4" />
+                </Button>
+              )}
+              {/* Show title/logo if sidebar is closed OR we are in settings (because sidebar is hidden there) */}
+              {(!isSidebarOpen || currentView === 'settings') && (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl shadow-lg">
+                    <img
+                      src="/images/favicon-32x32.png"
+                      alt="3D Model Muncher"
+                    />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-semibold text-foreground tracking-tight leading-none">
+                      3D Model Muncher
+                    </h1>
+                    <p className="text-xs text-muted-foreground mt-1 font-medium">
+                      {getViewTitle()}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="p-2 hover:bg-accent transition-colors" title="Actions" aria-label="Actions">
+                      <Box className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={() => { handleRefreshModels(); }} disabled={isRefreshing}>
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} /> Refresh
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={openCollectionsList}>
+                      <List className="h-4 w-4 mr-2" /> Collections
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'hash-check', fileType: '3mf' })}>
+                      <FileCheck className="h-4 w-4 mr-2" /> 3MF Check
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'hash-check', fileType: 'stl' })}>
+                      <FileCheck className="h-4 w-4 mr-2" /> STL Check
+                    </DropdownMenuItem>
+                    <Separator className="mt-2 mb-2" />
+                    <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'generate', fileType: '3mf' })}>
+                      <Files className="h-4 w-4 mr-2" /> 3MF Generate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openSettingsOnTab('integrity', { type: 'generate', fileType: 'stl' })}>
+                      <Files className="h-4 w-4 mr-2" /> STL Generate
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setIsUploadDialogOpen(true)}>
+                      <Upload className="h-4 w-4 mr-2" /> Upload Files
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDonationClick}
+                  className="p-2 hover:bg-accent transition-colors"
+                  title="Support the project"
+                >
+                  <Heart className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex-1 min-h-0">
+            {isModelsLoading && (
+              <div className="flex items-center gap-3 px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-yellow-800">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <div className="text-sm">
+                  Loading models — this may take a minute for large libraries. Please wait...
+                </div>
+              </div>
+            )}
+            {currentView === 'models' ? (
+              <ModelGrid
+                models={filteredModels}
+                collections={sortCollections(collectionsForDisplay, currentSortBy)}
+                allCollections={collections}
+                sortBy={currentSortBy}
+                onModelClick={handleModelClick}
+                onOpenCollection={(id) => {
+                  const col = collections.find(c => c.id === id);
+                  if (col) {
+                    setActiveCollection(col);
+                    setCurrentView('collection-view');
+                    try {
+                      const setIds = new Set(col.modelIds || []);
+                      const base = models.filter(m => setIds.has(m.id));
+                      setFilteredModels(base);
+                    } catch { /* ignore */ }
+                    setSidebarResetKey(k => k + 1);
+                  }
+                }}
+                onCollectionChanged={refreshCollections}
+                isSelectionMode={isSelectionMode}
+                selectedModelIds={selectedModelIds}
+                onModelSelection={handleModelSelection}
+                onToggleSelectionMode={toggleSelectionMode}
+                onSelectAll={selectAllModels}
+                onDeselectAll={deselectAllModels}
+                onBulkEdit={handleBulkEdit}
+                onBulkDelete={handleBulkDeleteClick}
+                config={appConfig}
+              />
+            ) : currentView === 'settings' ? (
+              <SettingsPage
+                onBack={handleBackToModels}
+                categories={categories}
+                onCategoriesUpdate={handleCategoriesUpdate}
+                config={appConfig}
+                onConfigUpdate={handleConfigUpdate}
+                models={models}
+                onModelsUpdate={handleBulkModelsUpdate}
+                onModelClick={handleModelClick}
+                onDonationClick={handleDonationClick}
+                initialTab={settingsInitialTab}
+                settingsAction={settingsAction}
+                onActionHandled={() => setSettingsAction(null)}
+                onCollectionCreatedForBulkEdit={handleCollectionCreatedForBulkEdit}
+              />
+            ) : currentView === 'collections' ? (
+              <div className="h-full flex flex-col">
+                {/* ... header ... */}
+                <div className="p-4 lg:p-6">
+                  {collections.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No collections yet...</div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {/* NEW: Uses 'collectionsForDisplay' to respect Root-Only logic */}
+                      {sortCollections(collectionsForDisplay, currentSortBy).map(c => {
+                      // 1. Logic: Look for the first model in this collection that has an image
+                      let fallback: string | undefined = undefined;
+                      if (c.modelIds && c.modelIds.length > 0) {
+                        for (const id of c.modelIds) {
+                          const m = models.find(mod => mod.id === id);
+                          if (m && m.images && m.images.length > 0) {
+                            fallback = m.images[0];
+                            break; // Found one! Stop looking.
+                          }
+                        }
+                      }
+                      
+                      // [DEBUG: Remove this line after testing]
+                       if (fallback) console.log(`[CoverArt] Found cover for ${c.name}:`, fallback);
+
+                      return (
+                        <CollectionCard
+                          key={c.id}
+                          collection={c}
+                          categories={categories}
+                          onOpen={() => openCollection(c)}
+                          onChanged={refreshCollections}
+                          fallbackImage={fallback} // Pass it here
+                        />
+                      );
+                    })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : currentView === 'collection-view' && activeCollection ? (
+              <CollectionGrid
+                name={activeCollection.name}
+                modelIds={activeCollection.modelIds}
+                models={filteredModels}
+                collections={collections}
+                onOpenCollection={openCollection}
+                onImportClick={handleOpenImport}
+                onBack={() => {
+                  // 1. FILTER RESET: If filtering, clear filters but STAY in the collection.
+                  if (hasActiveFilters) {
+                    handleFilterChange({
+                      search: '',
+                      category: 'all',
+                      printStatus: 'all',
+                      license: 'all',
+                      fileType: 'all',
+                      tags: [],
+                      showHidden: true, // Always show hidden items when inside a collection
+                      showMissingImages: false,
+                      sortBy: currentSortBy
+                    });
+                    setSidebarResetKey(k => k + 1); // Reset the sidebar UI (uncheck boxes)
+                    return;
+                  }
+  
+                  // 2. HIERARCHY NAV: Go up one level
+                  if (activeCollection?.parentId) {
+                     const parent = collections.find(c => c.id === activeCollection.parentId);
+                     if (parent) {
+                       setActiveCollection(parent);
+                       return;
+                     }
+                  }
+                  
+                  // 3. EXIT NAV: Go Home
+                  setActiveCollection(null);
+                  setCurrentView('models');
+                  setSidebarResetKey(k => k + 1);
+                  setIsSelectionMode(false);
+                  setSelectedModelIds([]);
+                }}
+                onModelClick={handleModelClick}
+                config={appConfig}
+                activeCollection={activeCollection}
+                isFiltering={hasActiveFilters}
+                isSelectionMode={isSelectionMode}
+                selectedModelIds={selectedModelIds}
+                onModelSelection={handleModelSelection}
+                onToggleSelectionMode={toggleSelectionMode}
+                onSelectAll={selectAllModels}
+                onDeselectAll={deselectAllModels}
+                onBulkEdit={handleBulkEdit}
+                onBulkDelete={handleBulkDeleteClick}
+                onCollectionChanged={refreshCollections}
+              />
+            ) : (
+              <DemoPage onBack={handleBackToModels} />
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Model Details Drawer */}
-      {(((currentView === 'models' || currentView === 'collection-view') && !isSelectionMode) || currentView === 'settings') && (
-        <ModelDetailsDrawer
-          model={selectedModel}
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-          onModelUpdate={handleModelUpdate}
-          onDelete={handleSingleModelDelete}
-          defaultModelView={appConfig?.settings.defaultModelView || 'images'}
-          defaultModelColor={appConfig?.settings?.defaultModelColor}
-          categories={categories}
-        />
-      )}
+        {/* Model Details Drawer */}
+        {(((currentView === 'models' || currentView === 'collection-view') && !isSelectionMode) || currentView === 'settings') && (
+          <ModelDetailsDrawer
+            model={selectedModel}
+            isOpen={isDrawerOpen}
+            onClose={() => setIsDrawerOpen(false)}
+            onModelUpdate={handleModelUpdate}
+            onDelete={handleSingleModelDelete}
+            defaultModelView={appConfig?.settings.defaultModelView || 'images'}
+            defaultModelColor={appConfig?.settings?.defaultModelColor}
+            categories={categories}
+          />
+        )}
 
-      {/* Bulk Edit Drawer */}
-      {(currentView === 'models' || currentView === 'collection-view') && (
-        <BulkEditDrawer
-          models={getSelectedModels()}
-          isOpen={isBulkEditOpen}
-          onClose={() => setIsBulkEditOpen(false)}
-          onBulkUpdate={handleBulkUpdateModels}
-          onRefresh={handleRefreshModels}
-          onBulkSaved={handleBulkSavedModels}
-          onModelUpdate={handleModelUpdate}
-          onClearSelections={exitSelectionMode}
-          categories={categories}
-          modelDirectory={appConfig?.settings?.modelDirectory || './models'}
-          collectionsList={collections}
-          pendingBulkCollectionId={pendingBulkCollectionId}
-          onBulkEditComplete={() => setPendingBulkCollectionId(null)}
+        {/* Bulk Edit Drawer */}
+        {(currentView === 'models' || currentView === 'collection-view') && (
+          <BulkEditDrawer
+            models={getSelectedModels()}
+            isOpen={isBulkEditOpen}
+            onClose={() => setIsBulkEditOpen(false)}
+            onBulkUpdate={handleBulkUpdateModels}
+            onRefresh={handleRefreshModels}
+            onBulkSaved={handleBulkSavedModels}
+            onModelUpdate={handleModelUpdate}
+            onClearSelections={exitSelectionMode}
+            categories={categories}
+            modelDirectory={appConfig?.settings?.modelDirectory || './models'}
+            collectionsList={collections}
+            pendingBulkCollectionId={pendingBulkCollectionId}
+            onBulkEditComplete={() => setPendingBulkCollectionId(null)}
 
-        />
-      )}
+          />
+        )}
 
-      {/* [NEW] Thingiverse Import Dialog */}
-      <ThingiverseImportDialog
-        isOpen={isImportOpen}
-        onClose={() => {
+        {/* [NEW] Thingiverse Import Dialog */}
+        <ThingiverseImportDialog
+          isOpen={isImportOpen}
+          onClose={() => {
             setIsImportOpen(false);
             setImportTargetCollectionId(undefined); // Reset
             setImportTargetFolder(undefined);       // Reset
-        }}
-        defaultCollectionId={importTargetCollectionId} 
-        defaultFolder={importTargetFolder}          // Pass the inferred folder
-        onImportComplete={() => {
-          handleRefreshModels();
-          refreshCollections();
-        }}
-      />
+          }}
+          defaultCollectionId={importTargetCollectionId}
+          defaultFolder={importTargetFolder}          // Pass the inferred folder
+          onImportComplete={() => {
+            handleRefreshModels();
+            refreshCollections();
+          }}
+        />
 
-      {/* Dialogs */}
-      <DonationDialog
-        isOpen={isDonationDialogOpen}
-        onClose={() => setIsDonationDialogOpen(false)}
-      />
+        {/* Dialogs */}
+        <DonationDialog
+          isOpen={isDonationDialogOpen}
+          onClose={() => setIsDonationDialogOpen(false)}
+        />
 
-      <AlertDialog open={isReleaseNotesOpen} onOpenChange={(open) => { if (!open) closeReleaseNotes(dontShowReleaseNotes); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>What's new in this version</AlertDialogTitle>
-            <AlertDialogDescription>
-              Thanks for updating! Here are a few notable changes in the latest release:
-            </AlertDialogDescription>
+        <AlertDialog open={isReleaseNotesOpen} onOpenChange={(open) => { if (!open) closeReleaseNotes(dontShowReleaseNotes); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>What's new in this version</AlertDialogTitle>
+              <AlertDialogDescription>
+                Thanks for updating! Here are a few notable changes in the latest release:
+              </AlertDialogDescription>
 
-            <div className="mt-2 text-sm">
-              <h3 className="text-lg font-semibold">v0.16.0 - The Features & Style Update</h3>
-              <ul className="list-disc pl-5 list-outside mb-4 space-y-2 mt-2">
-                <li><strong>🎨 Dynamic Theme Engine</strong> - Pick any primary color in Settings, and the app now mathematically generates a perfect, accessible Dark and Light theme to match.</li>
-                <li><strong>🚀 Docker Architecture Upgrade</strong> - Migrated from Alpine to Debian Slim. This fixes the persistent 'Context Lost' WebGL crashes and enables native support for complex 3MF texture parsing.</li>
-                <li><strong>🛑 Thumbnail Cancellation</strong> - Added a 'Stop' button to the thumbnail generator. You can now safely abort long-running rendering jobs without restarting the server.</li>
-                <li><strong>📂 Nested Collections Editor</strong> - Manage your library organization directly from the 'All Models' view with the new nested collection editor.</li>
-                <li><strong>✨ UI Polish</strong> - Light mode has been remastered with softer backgrounds and improved contrast for better readability.</li>
-              </ul>
-            </div>
-
-            <div className="space-y-3 my-4 mb-4 mt-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="dont-show-release-notes"
-                  checked={dontShowReleaseNotes}
-                  onCheckedChange={(v) => setDontShowReleaseNotes(Boolean(v))}
-                />
-                <label 
-                  htmlFor="dont-show-release-notes" 
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Do not show these notes again for this version
-                </label>
+              <div className="mt-2 text-sm">
+                <h3 className="text-lg font-semibold">v0.16.0 - The Features & Style Update</h3>
+                <ul className="list-disc pl-5 list-outside mb-4 space-y-2 mt-2">
+                  <li><strong>🎨 Dynamic Theme Engine</strong> - Pick any primary color in Settings, and the app now mathematically generates a perfect, accessible Dark and Light theme to match.</li>
+                  <li><strong>🚀 Docker Architecture Upgrade</strong> - Migrated from Alpine to Debian Slim. This fixes the persistent 'Context Lost' WebGL crashes and enables native support for complex 3MF texture parsing.</li>
+                  <li><strong>🛑 Thumbnail Cancellation</strong> - Added a 'Stop' button to the thumbnail generator. You can now safely abort long-running rendering jobs without restarting the server.</li>
+                  <li><strong>📂 Nested Collections Editor</strong> - Manage your library organization directly from the 'All Models' view with the new nested collection editor.</li>
+                  <li><strong>✨ UI Polish</strong> - Light mode has been remastered with softer backgrounds and improved contrast for better readability.</li>
+                </ul>
               </div>
-            </div>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <div className="flex-1">
-              <a
-                href="https://github.com/robsturgill/3d-model-muncher/blob/main/CHANGELOG.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary hover:underline"
+
+              <div className="space-y-3 my-4 mb-4 mt-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="dont-show-release-notes"
+                    checked={dontShowReleaseNotes}
+                    onCheckedChange={(v) => setDontShowReleaseNotes(Boolean(v))}
+                  />
+                  <label
+                    htmlFor="dont-show-release-notes"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Do not show these notes again for this version
+                  </label>
+                </div>
+              </div>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <div className="flex-1">
+                <a
+                  href="https://github.com/robsturgill/3d-model-muncher/blob/main/CHANGELOG.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-primary hover:underline"
+                >
+                  View full changelog on GitHub
+                </a>
+              </div>
+              <AlertDialogAction onClick={() => { closeReleaseNotes(dontShowReleaseNotes); }}>Close</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Models</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {selectedModelIds.length} model{selectedModelIds.length !== 1 ? 's' : ''}?
+                <br /><br />
+                <strong>This action cannot be undone.</strong>
+              </AlertDialogDescription>
+              <div className="space-y-3 my-4 mb-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="include-3mf"
+                    checked={includeThreeMfFiles}
+                    onCheckedChange={(v) => setIncludeThreeMfFiles(Boolean(v))}
+                  />
+                  <label
+                    htmlFor="include-3mf"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Include .3mf and .stl files (3D model files) when deleting
+                  </label>
+                </div>
+              </div>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                View full changelog on GitHub
-              </a>
-            </div>
-            <AlertDialogAction onClick={() => { closeReleaseNotes(dontShowReleaseNotes); }}>Close</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                {includeThreeMfFiles ? 'Delete All Files' : 'Delete Metadata Only'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Models</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete {selectedModelIds.length} model{selectedModelIds.length !== 1 ? 's' : ''}? 
-              <br /><br />
-              <strong>This action cannot be undone.</strong>
-            </AlertDialogDescription>
-            <div className="space-y-3 my-4 mb-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="include-3mf"
-                  checked={includeThreeMfFiles}
-                  onCheckedChange={(v) => setIncludeThreeMfFiles(Boolean(v))}
-                />
-                <label 
-                  htmlFor="include-3mf" 
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Include .3mf and .stl files (3D model files) when deleting
-                </label>
-              </div>
-            </div>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBulkDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {includeThreeMfFiles ? 'Delete All Files' : 'Delete Metadata Only'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Upload Dialog */}
-      <ModelUploadDialog
-        isOpen={isUploadDialogOpen}
-        onClose={() => setIsUploadDialogOpen(false)}
-        onUploaded={() => { handleRefreshModels(); }}
-      />
-    </div>
+        {/* Upload Dialog */}
+        <ModelUploadDialog
+          isOpen={isUploadDialogOpen}
+          onClose={() => setIsUploadDialogOpen(false)}
+          onUploaded={() => { handleRefreshModels(); }}
+        />
+      </div>
     </TagsProvider>
   );
 }

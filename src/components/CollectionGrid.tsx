@@ -9,6 +9,7 @@ import { ArrowLeft, ChevronRight, FileCheck, Folder, CloudDownload } from 'lucid
 import type { AppConfig } from '../types/config';
 import CollectionEditDrawer from './CollectionEditDrawer';
 import { SelectionModeControls } from './SelectionModeControls';
+import { CollectionCard } from './CollectionCard';
 
 
 interface CollectionGridProps {
@@ -31,19 +32,21 @@ interface CollectionGridProps {
   onBulkEdit?: () => void | Promise<void>;
   onBulkDelete?: () => void | Promise<void>;
   onCollectionChanged?: () => void;
+  isFiltering?: boolean;
 }
 
 export default function CollectionGrid({
   name,
   modelIds,
   models,
-  collections,        // <--- Add this
+  collections,
   onOpenCollection,
   onBack,
   onImportClick,
   onModelClick,
   config,
   activeCollection,
+  isFiltering = false,
   isSelectionMode = false,
   selectedModelIds = [],
   onModelSelection,
@@ -55,9 +58,12 @@ export default function CollectionGrid({
   onCollectionChanged,
 }: CollectionGridProps) {
   const items = useMemo(() => {
+    if (isFiltering) {
+      return models; 
+    }
     const set = new Set(modelIds);
     return models.filter(m => set.has(m.id));
-  }, [modelIds, models]);
+  }, [modelIds, models, isFiltering]);
 
   const modelIndexMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -67,11 +73,12 @@ export default function CollectionGrid({
 
   // Find direct children of the active collection
   const childCollections = useMemo(() => {
-    if (!activeCollection) return [];
+    if (isFiltering || !activeCollection) return [];
+    
     return collections
       .filter(c => c.parentId === activeCollection.id)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [collections, activeCollection]);
+  }, [collections, activeCollection, isFiltering]);
 
   // Build breadcrumb path
   const breadcrumbs = useMemo(() => {
@@ -192,22 +199,30 @@ export default function CollectionGrid({
                 Folders
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {childCollections.map(col => (
-                  <div 
-                    key={col.id} 
-                    onClick={() => onOpenCollection(col)}
-                    className="cursor-pointer"
-                  >
-                    {/* Reusing CollectionCard - ensure it handles click correctly or wrap it */}
-                    <div className="p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors flex items-center gap-3">
-                        <Folder className="h-8 w-8 text-blue-500/80 fill-blue-500/20" />
-                        <div className="min-w-0">
-                            <div className="font-medium truncate">{col.name}</div>
-                            <div className="text-xs text-muted-foreground">{col.modelIds?.length || 0} models</div>
-                        </div>
-                    </div>
-                  </div>
-                ))}
+                {childCollections.map(col => {
+                  // 1. Logic: Look for the first model in this sub-collection that has an image
+                  let fallback: string | undefined = undefined;
+                   if (col.modelIds && col.modelIds.length > 0) {
+                     for (const id of col.modelIds) {
+                       const m = models.find(mod => mod.id === id);
+                       if (m && m.images && m.images.length > 0) {
+                         fallback = m.images[0];
+                         break;
+                       }
+                     }
+                   }
+
+                  return (
+                    <CollectionCard
+                      key={col.id}
+                      collection={col}
+                      categories={config?.categories || []}
+                      onOpen={() => onOpenCollection(col)} 
+                      onChanged={onCollectionChanged}
+                      fallbackImage={fallback} // Pass it here
+                    />
+                  );
+                })}
               </div>
             </div>
           )}
