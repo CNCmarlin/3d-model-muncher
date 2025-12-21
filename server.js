@@ -1497,8 +1497,6 @@ app.post('/api/regenerate-munchie-files', async (req, res) => {
       }
     }
 
-
-
     scanForModels(modelsDir);
 
     // Helper to regenerate from an absolute model file path and target jsonPath
@@ -2355,23 +2353,18 @@ app.get('/api/munchie-files', (req, res) => {
 });
 
 // --- API: Hash check for all .3mf files and their -munchie.json ---
+// --- API: Hash check for all .3mf files and their -munchie.json ---
 app.post('/api/hash-check', async (req, res) => {
   try {
-    // [FIX] Accept new boolean flags
-    const { fileType, check3mf, checkStl } = req.body;
+    const { fileType = "3mf" } = req.body; // "3mf" or "stl" only
     const modelsDir = getAbsoluteModelsPath();
-    
+    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) {}
     const { computeMD5 } = require('./dist-backend/utils/threeMFToJson');
     let result = [];
     let seenHashes = new Set();
     let hashToFiles = {};
+    let errors = [];
     let modelMap = {};
-
-    // Determine active types
-    const do3mf = check3mf === true || (fileType === '3mf') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
-    const doStl = checkStl === true || (fileType === 'stl') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
-
-    try { console.log('[debug] /api/hash-check', { do3mf, doStl, modelsDir }); } catch (e) { }
 
     // Recursively scan directories
     function scanDirectory(dir) {
@@ -2382,33 +2375,30 @@ app.post('/api/hash-check', async (req, res) => {
           scanDirectory(fullPath);
         } else {
           const relativePath = path.relative(modelsDir, fullPath);
-          const lowerPath = relativePath.toLowerCase();
-
-          // Logic for 3MF files
-          // [FIX] Use calculated boolean flag
-          if (do3mf) {
-            // Skip G-code archives
-            if (!(lowerPath.endsWith('.gcode.3mf') || lowerPath.endsWith('.3mf.gcode'))) {
-              if (lowerPath.endsWith('.3mf')) {
-                const base = relativePath.replace(/\.3mf$/i, '');
-                modelMap[base] = modelMap[base] || {};
-                modelMap[base].threeMF = relativePath;
-              } else if (lowerPath.endsWith('-munchie.json') && !lowerPath.endsWith('-stl-munchie.json')) {
-                const base = relativePath.replace(/-munchie\.json$/i, '');
-                modelMap[base] = modelMap[base] || {};
-                modelMap[base].json = relativePath;
-              }
+          
+          if (fileType === "3mf") {
+            // Only process 3MF files and their JSON companions
+            const lowerPath = relativePath.toLowerCase();
+            // Skip G-code archives (.gcode.3mf and .3mf.gcode)
+            if ((lowerPath.endsWith('.gcode.3mf') || lowerPath.endsWith('.3mf.gcode'))) {
+              continue;
             }
-          }
-
-          // Logic for STL files
-          // [FIX] Use calculated boolean flag
-          if (doStl) {
-            if (lowerPath.endsWith('.stl')) {
+            if (lowerPath.endsWith('.3mf')) {
+              const base = relativePath.replace(/\.3mf$/i, '');
+              modelMap[base] = modelMap[base] || {};
+              modelMap[base].threeMF = relativePath;
+            } else if (lowerPath.endsWith('-munchie.json')) {
+              const base = relativePath.replace(/-munchie\.json$/i, '');
+              modelMap[base] = modelMap[base] || {};
+              modelMap[base].json = relativePath;
+            }
+          } else if (fileType === "stl") {
+            // Only process STL files and their JSON companions
+            if (relativePath.toLowerCase().endsWith('.stl')) {
               const base = relativePath.replace(/\.stl$/i, '');
               modelMap[base] = modelMap[base] || {};
               modelMap[base].stl = relativePath;
-            } else if (lowerPath.endsWith('-stl-munchie.json')) {
+            } else if (relativePath.toLowerCase().endsWith('-stl-munchie.json')) {
               const base = relativePath.replace(/-stl-munchie\.json$/i, '');
               modelMap[base] = modelMap[base] || {};
               modelMap[base].json = relativePath;
@@ -2418,30 +2408,30 @@ app.post('/api/hash-check', async (req, res) => {
       }
     }
 
-    // Start recursive scan
-    scanDirectory(modelsDir);
+  // Start recursive scan
+  scanDirectory(modelsDir);
 
-    // Filter map based on requested type (cleanup orphans if strict type selected)
+    // Clean up the modelMap to only include entries that have the expected file type
     const cleanedModelMap = {};
     for (const base in modelMap) {
       const entry = modelMap[base];
-      const has3mf = !!entry.threeMF;
-      const hasStl = !!entry.stl;
-
-      // [FIX] Only include if it matches one of the requested types
-      if ((do3mf && has3mf) || (doStl && hasStl)) {
-         cleanedModelMap[base] = entry;
+      if (fileType === "3mf" && entry.threeMF) {
+        // Only include 3MF entries when in 3MF mode
+        cleanedModelMap[base] = entry;
+      } else if (fileType === "stl" && entry.stl) {
+        // Only include STL entries when in STL mode
+        cleanedModelMap[base] = entry;
       }
     }
 
     // Process all found models
+    try { console.log('[debug] /api/hash-check base entries count=', Object.keys(cleanedModelMap).length); } catch (e) {}
     for (const base in cleanedModelMap) {
       const entry = cleanedModelMap[base];
       const threeMFPath = entry.threeMF ? path.join(modelsDir, entry.threeMF) : null;
       const stlPath = entry.stl ? path.join(modelsDir, entry.stl) : null;
       const jsonPath = entry.json ? path.join(modelsDir, entry.json) : null;
-      const modelPath = threeMFPath || stlPath;
-
+      const modelPath = threeMFPath || stlPath; // Prefer 3MF, but use STL if no 3MF
       let status = 'ok';
       let details = '';
       let hash = null;
@@ -2461,22 +2451,30 @@ app.post('/api/hash-check', async (req, res) => {
             details = 'Failed to compute hash: ' + (e && e.message ? e.message : String(e));
           }
 
-          // Try reading stored hash
+          // Try reading stored hash from munchie JSON if present
           if (jsonPath && fs.existsSync(jsonPath)) {
             try {
               const raw = fs.readFileSync(jsonPath, 'utf8');
               if (raw && raw.trim().length > 0) {
                 const parsed = JSON.parse(raw);
+                // Common stored hash field names: hash, md5, fileHash
                 storedHash = parsed && (parsed.hash || parsed.md5 || parsed.fileHash || null);
               }
             } catch (e) {
-              if (!details) details = 'Failed to read munchie JSON';
+              // ignore parse errors, but record details
+              if (!details) details = 'Failed to read munchie JSON: ' + (e && e.message ? e.message : String(e));
             }
           } else {
-            if (!details) details = 'Munchie JSON file missing';
-            if (status === 'ok') status = 'missing_munchie';
+            // munchie JSON is missing for this model
+            if (!details) {
+              details = 'Munchie JSON file missing';
+            }
+            if (status === 'ok') {
+              status = 'missing_munchie';
+            }
           }
 
+          // Compare hashes if both present
           if (hash && storedHash && hash !== storedHash) {
             status = 'changed';
             details = details ? details + '; hash mismatch' : 'Hash mismatch: file changed since last recorded';
@@ -2484,12 +2482,16 @@ app.post('/api/hash-check', async (req, res) => {
         }
       } catch (e) {
         status = 'error';
-        details = e.message;
+        details = e && e.message ? e.message : String(e);
       }
 
+      // Store hash for duplicate checking (but don't change status for duplicates)
       if (hash) {
-        if (hashToFiles[hash]) hashToFiles[hash].push(base);
-        else hashToFiles[hash] = [base];
+        if (hashToFiles[hash]) {
+          hashToFiles[hash].push(base);
+        } else {
+          hashToFiles[hash] = [base];
+        }
       }
 
       result.push({
@@ -2504,7 +2506,7 @@ app.post('/api/hash-check', async (req, res) => {
       });
     }
 
-    // Add info about duplicates
+    // Add info about which files share duplicate hashes
     result.forEach(r => {
       if (r.hash && hashToFiles[r.hash] && hashToFiles[r.hash].length > 1) {
         r.duplicates = hashToFiles[r.hash].filter(b => b !== r.baseName);
