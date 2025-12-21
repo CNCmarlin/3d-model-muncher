@@ -1,102 +1,159 @@
-// src/components/AutoImportDialog.tsx
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Label } from "./ui/label";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Loader2, FolderOpen, CheckCircle2 } from "lucide-react";
-import { toast } from "sonner"; // Assuming you use sonner or similar for toasts
+import { Checkbox } from "./ui/checkbox";
+import { Loader2, FolderOpen, CheckCircle2, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 
 interface AutoImportDialogProps {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    onImportComplete?: () => void;
-  }
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onImportComplete?: () => void;
+}
+
+export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoImportDialogProps) {
+  const [folders, setFolders] = useState<string[]>([]);
+  // Default to (Root) for entire library scan
+  const [selectedFolder, setSelectedFolder] = useState<string>("(Root)");
+  const [strategy, setStrategy] = useState<"smart" | "strict">("smart");
+  const [clearPrevious, setClearPrevious] = useState(false);
   
-  export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoImportDialogProps) {
-    const [folders, setFolders] = useState<string[]>([]);
-    const [selectedFolder, setSelectedFolder] = useState<string>("uploads");
-    const [strategy, setStrategy] = useState<"smart" | "strict">("smart");
-    const [isLoading, setIsLoading] = useState(false);
-    const [result, setResult] = useState<{ count: number; message: string } | null>(null);
-  
-    useEffect(() => {
-      if (open) {
-        setResult(null);
-        fetch('/api/model-folders')
-          .then(res => res.json())
-          .then(data => {
-            if (data.success && Array.isArray(data.folders)) setFolders(data.folders);
-          })
-          .catch(err => console.error("Failed to load folders", err));
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<{ count: number; message: string } | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setResult(null);
+      // Reset defaults when opening
+      setClearPrevious(false);
+      setSelectedFolder("(Root)");
+      
+      fetch('/api/model-folders')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.folders)) setFolders(data.folders);
+        })
+        .catch(err => console.error("Failed to load folders", err));
+    }
+  }, [open]);
+
+  const handleStartClick = () => {
+    if (clearPrevious) {
+      setShowConfirm(true);
+    } else {
+      runImport();
+    }
+  };
+
+  const runImport = async () => {
+    setShowConfirm(false);
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/collections/auto-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetFolder: selectedFolder === '(Root)' ? '' : selectedFolder,
+          strategy: strategy,
+          clearPrevious: clearPrevious
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setResult({ count: data.count, message: data.message });
+        toast.success(`Success! Processed ${data.count} collections.`);
+        if (onImportComplete) onImportComplete();
+      } else {
+        toast.error(data.error || "Import failed");
       }
-    }, [open]);
-  
-    const handleRunImport = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch('/api/collections/auto-import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            targetFolder: selectedFolder === '(Root)' ? '' : selectedFolder,
-            strategy: strategy
-          })
-        });
-        const data = await response.json();
-        if (data.success) {
-          setResult({ count: data.count, message: data.message });
-          toast.success(`Success! Processed ${data.count} collections.`);
-          if (onImportComplete) onImportComplete();
-        } else {
-          toast.error(data.error || "Import failed");
-        }
-      } catch (error) {
-        toast.error("Network error occurred");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-  
-    return (
+    } catch (error) {
+      toast.error("Network error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Auto-Import Collections</DialogTitle>
-            <DialogDescription>Generate collections from your folder structure.</DialogDescription>
+            <DialogDescription>
+              Generate collections from your folder structure.
+            </DialogDescription>
           </DialogHeader>
-  
+
           {!result ? (
             <div className="grid gap-6 py-4">
+              {/* Folder Selection */}
               <div className="grid gap-2">
                 <Label>Target Directory</Label>
                 <Select value={selectedFolder} onValueChange={setSelectedFolder}>
-                  <SelectTrigger><SelectValue placeholder="Select folder..." /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select folder..." />
+                  </SelectTrigger>
                   <SelectContent className="max-h-[200px]">
                     <SelectItem value="(Root)">/ (Entire Library)</SelectItem>
-                    {folders.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    {folders.map(f => (
+                      <SelectItem key={f} value={f}>{f}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Strategy Selection */}
               <div className="grid gap-3">
                 <Label>Strategy</Label>
                 <RadioGroup value={strategy} onValueChange={(v) => setStrategy(v as any)} className="gap-4">
-                  <div className="flex items-start space-x-3 border p-3 rounded-md">
+                  <div className="flex items-start space-x-3 border p-3 rounded-md hover:bg-accent/50 cursor-pointer" onClick={() => setStrategy('smart')}>
                     <RadioGroupItem value="smart" id="smart" className="mt-1" />
-                    <div>
-                      <Label htmlFor="smart">Smart Grouping (Recommended)</Label>
-                      <p className="text-xs text-muted-foreground">Skips empty folders. Reduces clutter.</p>
+                    <div className="cursor-pointer">
+                      <Label htmlFor="smart" className="cursor-pointer font-medium">Smart Grouping (Top-Level)</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Creates collections for top-level folders only. Contents of subfolders are flattened into the parent. Best for clean, project-based views.
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-start space-x-3 border p-3 rounded-md">
+                  <div className="flex items-start space-x-3 border p-3 rounded-md hover:bg-accent/50 cursor-pointer" onClick={() => setStrategy('strict')}>
                     <RadioGroupItem value="strict" id="strict" className="mt-1" />
-                    <div>
-                      <Label htmlFor="strict">Strict Mirroring</Label>
-                      <p className="text-xs text-muted-foreground">Creates a collection for every folder.</p>
+                    <div className="cursor-pointer">
+                      <Label htmlFor="strict" className="cursor-pointer font-medium">Strict Mirroring</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Creates a separate collection for every single subfolder found.
+                      </p>
                     </div>
                   </div>
                 </RadioGroup>
+              </div>
+
+              {/* Reset Option */}
+              <div className="flex items-start space-x-2 border-t pt-4">
+                <Checkbox 
+                  id="clearPrevious" 
+                  checked={clearPrevious} 
+                  onCheckedChange={(c) => setClearPrevious(!!c)} 
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label 
+                    htmlFor="clearPrevious" 
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-destructive"
+                  >
+                    Clean Re-Import (Reset)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Check this to <b>delete all existing auto-imported collections</b> before scanning. 
+                    <br/>
+                    Use this to fix "messy" folder structures. 
+                    <br/>
+                    <span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
+                  </p>
+                </div>
               </div>
             </div>
           ) : (
@@ -106,12 +163,12 @@ interface AutoImportDialogProps {
               <p className="text-sm text-muted-foreground">{result.message}</p>
             </div>
           )}
-  
+
           <DialogFooter>
             {!result ? (
-              <Button onClick={handleRunImport} disabled={isLoading}>
+              <Button onClick={handleStartClick} disabled={isLoading} variant={clearPrevious ? "destructive" : "default"}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FolderOpen className="mr-2 h-4 w-4" />}
-                Start Import
+                {clearPrevious ? "Reset & Import" : "Start Import"}
               </Button>
             ) : (
               <Button onClick={() => onOpenChange(false)}>Done</Button>
@@ -119,6 +176,31 @@ interface AutoImportDialogProps {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    );
-  }
-  
+
+      {/* Confirmation Dialog for Reset */}
+      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirm Reset?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This action is <b>not reversible</b>. 
+              <br/><br/>
+              It will delete all collections marked as "Auto-Imported" and rebuild them from scratch based on your current folder structure.
+              <br/><br/>
+              If you manually added items to these collections, those links will be lost. (Collections you created manually will be safe).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={runImport} className="bg-destructive hover:bg-destructive/90">
+              Yes, Wipe & Rebuild
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

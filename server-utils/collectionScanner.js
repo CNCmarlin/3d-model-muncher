@@ -11,7 +11,7 @@ const path = require('path');
  * 4. Create a single Collection for that top-level folder.
  * 5. PRUNING: Skip folders that end up with 0 models.
  */
-async function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' }) {
+function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' }) {
   console.log(`🔍 Auto-generating collections using 'Top-Level Aggregation' & 'Auto-Tagging'...`);
   
   const collections = [];

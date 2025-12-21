@@ -393,9 +393,10 @@ app.delete('/api/collections/:id', async (req, res) => {
 });
 
 // API: Auto-Import Collections from Directory
+// API: Auto-Import Collections from Directory
 app.post('/api/collections/auto-import', async (req, res) => {
   try {
-    const { targetFolder, strategy = 'smart' } = req.body;
+    const { targetFolder, strategy = 'smart', clearPrevious = false } = req.body;
     const modelsDir = getAbsoluteModelsPath();
 
     // 1. Determine directory to scan
@@ -409,18 +410,24 @@ app.post('/api/collections/auto-import', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Directory not found' });
     }
 
-    console.log(`[Auto-Import] Scanning ${scanRoot} with strategy: ${strategy}`);
+    console.log(`[Auto-Import] Scanning ${scanRoot} (Strategy: ${strategy}, ClearPrevious: ${clearPrevious})`);
 
     // 2. Run the Scanner
     const discoveredCollections = scanCollections(scanRoot, modelsDir, { strategy });
 
-    if (discoveredCollections.length === 0) {
-      return res.json({ success: true, message: 'No new collections found.', count: 0 });
-    }
-
-    // 3. Queue the Merge Logic
+    // 3. Queue the Merge (or Replace) Logic
     const mergeTask = (currentCols) => {
-      const updatedCols = [...currentCols];
+      let updatedCols = [...currentCols];
+      
+      // Step A: If requested, prune old auto-collections
+      if (clearPrevious) {
+        const beforeCount = updatedCols.length;
+        // Keep only collections that are NOT auto-imported, or keep "Auto-Imported" ones that are outside our scan scope?
+        // Simpler: Delete ALL 'Auto-Imported' category collections to ensure a clean slate.
+        updatedCols = updatedCols.filter(c => c.category !== 'Auto-Imported');
+        console.log(`[Auto-Import] Pruned ${beforeCount - updatedCols.length} old auto-collections.`);
+      }
+
       let added = 0;
       let updated = 0;
 
@@ -428,14 +435,20 @@ app.post('/api/collections/auto-import', async (req, res) => {
         const existingIdx = updatedCols.findIndex(c => c.id === importCol.id);
 
         if (existingIdx !== -1) {
-          // UPDATE existing: Merge modelIds, preserve user edits to name/desc
+          // UPDATE existing
           const existing = updatedCols[existingIdx];
+          
+          // Logic Choice: 
+          // If clearPrevious was TRUE, we actually shouldn't find existing 'Auto-Imported' ones (deleted above).
+          // But we might find manually created ones with conflicting IDs. 
+          // Safe Default: Merge modelIds.
           const mergedIds = [...new Set([...existing.modelIds, ...importCol.modelIds])];
 
           updatedCols[existingIdx] = {
             ...existing,
             modelIds: mergedIds,
-            // Only update parentId if it wasn't set or matches old import logic
+            // Ensure category is marked
+            category: existing.category || 'Auto-Imported',
             parentId: existing.parentId || importCol.parentId,
             lastModified: new Date().toISOString()
           };
@@ -455,7 +468,7 @@ app.post('/api/collections/auto-import', async (req, res) => {
     res.json({
       success: true,
       count: discoveredCollections.length,
-      message: `Import complete. Processed ${discoveredCollections.length} collections.`
+      message: `Import complete. ${clearPrevious ? 'Cleaned old maps. ' : ''}Processed ${discoveredCollections.length} collections.`
     });
 
   } catch (e) {
