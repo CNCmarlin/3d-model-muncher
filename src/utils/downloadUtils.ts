@@ -1,22 +1,17 @@
 import JSZip from "jszip";
 import { toast } from "sonner";
+import { Model } from "../types/model"; 
 
-
-
-// Shared helpers for normalizing model file paths and triggering downloads
 export function normalizeModelPath(url: string | undefined | null): string | null {
   if (!url) return null;
-  // Normalize backslashes to forward slashes so we handle Windows paths
   let resolved = url.replace(/\\/g, '/');
-  // If URL starts with '/models/' already, keep as-is
+  if (resolved.startsWith('http')) return resolved; 
+  
   if (resolved.startsWith('/models/')) {
-    // resolved as normalized
+    // ok
   } else if (resolved.startsWith('models/')) {
-    // relative without leading slash
     resolved = '/' + resolved;
   } else {
-    // If it's a bare filename or a path without models prefix, make it /models/<path>
-    // Strip any leading slashes to avoid double slashes
     const trimmed = resolved.replace(/^\/+/, '');
     resolved = '/models/' + trimmed;
   }
@@ -25,17 +20,11 @@ export function normalizeModelPath(url: string | undefined | null): string | nul
 
 export function extractFileName(resolvedPath: string | null): string {
   if (!resolvedPath) return '';
-  // Support both forward and backward slashes to be defensive
   const parts = resolvedPath.split(/[/\\]/);
-  return parts.pop() || '';
+  const name = parts.pop() || '';
+  return name.split('?')[0]; 
 }
 
-/**
- * Trigger a browser download for a given model path.
- * @param url - the path or URL to the resource (may be a relative path like 'models/sub/file.stl' or '/models/sub/file.stl')
- * @param e - optional MouseEvent to stop propagation
- * @param downloadName - optional filename to use for the saved file (if omitted, derived from the URL)
- */
 export function triggerDownload(url: string | undefined | null, e?: MouseEvent, downloadName?: string) {
   if (e && typeof (e as MouseEvent).stopPropagation === 'function') {
     (e as MouseEvent).stopPropagation();
@@ -43,7 +32,7 @@ export function triggerDownload(url: string | undefined | null, e?: MouseEvent, 
   const resolved = normalizeModelPath(url);
   if (!resolved) return;
   const fileName = typeof downloadName === 'string' && downloadName ? downloadName : extractFileName(resolved);
-  // No debug logging here in normal operation — caller should pass a clean basename.
+  
   const link = document.createElement('a');
   link.href = resolved;
   link.download = fileName;
@@ -52,51 +41,118 @@ export function triggerDownload(url: string | undefined | null, e?: MouseEvent, 
   document.body.removeChild(link);
 }
 
+// Fetch helper that handles the API we just added to server.js
+async function fetchFileBlob(path: string): Promise<Blob | null> {
+    try {
+        const encoded = encodeURIComponent(path);
+        const resp = await fetch(`/api/download?path=${encoded}`);
+        if (resp.ok) return await resp.blob();
+        console.warn(`Download API failed for ${path}: ${resp.status}`);
+    } catch (e) {
+        console.error("Fetch failed for", path, e);
+    }
+    return null;
+}
+
+// Fixed downloadAllFiles (Single Model, Multiple Files)
 export const downloadAllFiles = async (mainFilePath: string, relatedFiles: string[], baseName: string) => {
   const toastId = toast.loading("Preparing ZIP archive...");
   try {
     const zip = new JSZip();
     
-    // 1. Add Main File
-    // Uses your existing helper if available, otherwise falls back to split
-    const mainName = typeof extractFileName === 'function' ? extractFileName(mainFilePath) : mainFilePath.split(/[/\\]/).pop() || 'main_model';
-    
-    try {
-        const mainResp = await fetch(`/api/download?path=${encodeURIComponent(mainFilePath)}`);
-        if (mainResp.ok) {
-            zip.file(mainName, await mainResp.blob());
-        }
-    } catch (e) { console.error("Failed to add main file", e); }
+    // 1. Main File
+    const mainBlob = await fetchFileBlob(mainFilePath);
+    if (mainBlob) {
+        zip.file(extractFileName(mainFilePath) || 'model.file', mainBlob);
+    }
 
-    // 2. Add Related Files
+    // 2. Related Files
     if (relatedFiles && relatedFiles.length > 0) {
         await Promise.all(relatedFiles.map(async (rf) => {
-            const rfName = typeof extractFileName === 'function' ? extractFileName(rf) : rf.split(/[/\\]/).pop() || 'related_file';
-            try {
-                const rfResp = await fetch(`/api/download?path=${encodeURIComponent(rf)}`);
-                if (rfResp.ok) {
-                    zip.file(rfName, await rfResp.blob());
-                }
-            } catch (e) { console.error(`Failed to add ${rfName}`, e); }
+            const blob = await fetchFileBlob(rf);
+            if (blob) {
+                zip.file(extractFileName(rf), blob);
+            }
         }));
     }
 
-    // 3. Generate Zip
     const content = await zip.generateAsync({ type: "blob" });
+    if (content.size === 0) throw new Error("Zip is empty (files not found)");
+
     const url = window.URL.createObjectURL(content);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${baseName}_All_Files.zip`;
+    a.download = `${baseName}_Files.zip`;
     document.body.appendChild(a);
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
 
     toast.dismiss(toastId);
-    toast.success("All files downloaded!");
+    toast.success("Files downloaded!");
   } catch (error) {
     console.error("Zip download failed", error);
     toast.dismiss(toastId);
-    toast.error("Failed to create ZIP archive");
+    toast.error("Failed to create ZIP (check console)");
   }
+};
+
+// New: Download Multiple Models (Bulk)
+export const downloadMultipleModels = async (models: Model[]) => {
+    if (!models || models.length === 0) return;
+    const toastId = toast.loading(`Zipping ${models.length} models...`);
+
+    try {
+        const zip = new JSZip();
+        let count = 0;
+
+        await Promise.all(models.map(async (model) => {
+            const folderName = model.name.replace(/[^a-z0-9\-_ ]/gi, '').trim() || model.id;
+            const folder = zip.folder(folderName);
+            if (!folder) return;
+
+            // Main
+            const mainPath = normalizeModelPath(model.modelUrl || model.filePath);
+            if (mainPath) {
+                const blob = await fetchFileBlob(mainPath);
+                if (blob) {
+                    folder.file(extractFileName(mainPath), blob);
+                    count++;
+                }
+            }
+
+            // Related
+            if (model.related_files && model.related_files.length > 0) {
+                await Promise.all(model.related_files.map(async (rf) => {
+                    const rfPath = normalizeModelPath(rf);
+                    if (rfPath) {
+                        const blob = await fetchFileBlob(rfPath);
+                        if (blob) {
+                            folder.file(extractFileName(rfPath), blob);
+                            count++;
+                        }
+                    }
+                }));
+            }
+        }));
+
+        if (count === 0) throw new Error("No files could be downloaded");
+
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = window.URL.createObjectURL(content);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Bulk_Models_${new Date().toISOString().slice(0,10)}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        toast.dismiss(toastId);
+        toast.success("Bulk download complete!");
+    } catch (e) {
+        console.error(e);
+        toast.dismiss(toastId);
+        toast.error("Bulk download failed");
+    }
 };

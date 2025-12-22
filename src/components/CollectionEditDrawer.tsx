@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, List } from 'lucide-react';
+import { Plus, List, Loader2, LayoutGrid } from 'lucide-react'; // Added Loader2, LayoutGrid
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
 import { ScrollArea } from './ui/scroll-area';
 import { Input } from './ui/input';
@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import type { Collection } from '../types/collection';
 import type { Category } from '../types/category';
+
 
 interface CollectionEditDrawerProps {
   open: boolean;
@@ -52,6 +53,34 @@ export default function CollectionEditDrawer({
   const [selectedExistingId, setSelectedExistingId] = useState<string>('');
   const [createMode, setCreateMode] = useState<'new' | 'existing'>('new');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isGeneratingCover, setIsGeneratingCover] = useState(false);
+
+  const handleGenerateMosaic = async () => {
+    if (!collection?.id) return;
+    try {
+      setIsGeneratingCover(true);
+      const res = await fetch('/api/collections/generate-covers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ collectionIds: [collection.id], force: true })
+      });
+      const data = await res.json();
+      if (data.success && data.processed > 0) {
+          toast.success("Cover regenerated!");
+          // Close and refresh to see changes
+          onSaved?.(collection); 
+          onOpenChange(false); 
+      } else if (data.success) {
+          toast.warning("Could not generate cover (need 4+ models with thumbnails)");
+      } else {
+          toast.error(data.error || "Failed");
+      }
+    } catch(e) {
+        toast.error("Error generating cover");
+    } finally {
+        setIsGeneratingCover(false);
+    }
+  };
 
   // Filter out self to prevent circular parents
   const availableParents = collections.filter(c => 
@@ -395,6 +424,18 @@ export default function CollectionEditDrawer({
                       <Button variant="outline" onClick={(e) => { e.stopPropagation(); onPickImages(); }}>
                         {images.length > 0 ? "Change Photo" : "Set Cover Photo"}
                       </Button>
+                      {/* [NEW] Mosaic Button */}
+                      <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); handleGenerateMosaic(); }}
+                          disabled={isGeneratingCover}
+                          title="Generate 2x2 mosaic from first 4 models"
+                      >
+                          {isGeneratingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <LayoutGrid className="h-4 w-4 mr-2" />}
+                          {isGeneratingCover ? "Generating..." : "Generate Mosaic"}
+                      </Button>
+
                       {/* Removed 'multiple' to enforce single file selection */}
                       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFiles} />
                     </div>

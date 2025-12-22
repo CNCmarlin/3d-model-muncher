@@ -1,6 +1,6 @@
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { CheckSquare, Square, Edit, Trash2, X, List } from "lucide-react";
+import { CheckSquare, Square, Edit, Trash2, X, List, Download } from "lucide-react";
 
 interface SelectionModeControlsProps {
   isSelectionMode: boolean;
@@ -15,6 +15,7 @@ interface SelectionModeControlsProps {
   className?: string;
   selectLabel?: string;
   exitLabel?: string;
+  onBulkDownload?: () => void | Promise<void>;
 }
 
 export function SelectionModeControls({
@@ -27,6 +28,7 @@ export function SelectionModeControls({
   onBulkDelete,
   onSelectAll,
   onDeselectAll,
+  onBulkDownload,
   className,
   selectLabel = "Select",
   exitLabel = "Done",
@@ -83,6 +85,19 @@ export function SelectionModeControls({
             >
               <List className="h-4 w-4" />
               <span className="hidden sm:inline">Collection</span>
+            </Button>
+          )}
+
+          {onBulkDownload && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBulkDownload}
+              className="gap-2"
+              title="Download selected models"
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Download</span>
             </Button>
           )}
 

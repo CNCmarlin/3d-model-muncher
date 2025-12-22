@@ -473,6 +473,184 @@ app.post('/api/collections/auto-import', async (req, res) => {
   }
 });
 
+// --- API: Generate Collection Covers (Mosaic or Single Fallback) ---
+let activeCoverJob = null;
+
+app.post('/api/collections/generate-covers', async (req, res) => {
+  if (activeCoverJob) {
+    activeCoverJob.abort();
+  }
+  activeCoverJob = new AbortController();
+  const signal = activeCoverJob.signal;
+
+  try {
+    const { collectionIds, force = false } = req.body;
+    const modelsDir = getAbsoluteModelsPath();
+    const dataDir = path.join(process.cwd(), 'data');
+    const coversDir = path.join(dataDir, 'covers');
+    
+    let generateCover;
+    try {
+      generateCover = require('./server-utils/coverGenerator').generateCover;
+    } catch (e) {
+      return res.status(500).json({ success: false, error: 'Failed to load generator. Did you install "sharp"?' });
+    }
+
+    // 1. Build Index
+    console.log('[Covers] Building model index...');
+    const idToPathMap = {};
+    function scanIndex(dir) {
+      if (signal.aborted) return;
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) {}
+      
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          scanIndex(full);
+        } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
+          try {
+            const raw = fs.readFileSync(full, 'utf8');
+            const data = JSON.parse(raw);
+            if (data.id) idToPathMap[data.id] = full;
+          } catch(e) {}
+        }
+      }
+    }
+    scanIndex(modelsDir);
+    
+    // 2. Get Targets
+    let collections = loadCollections();
+    let targets = collections;
+    if (collectionIds && Array.isArray(collectionIds) && collectionIds.length > 0) {
+      targets = collections.filter(c => collectionIds.includes(c.id));
+    }
+
+    console.log(`[Covers] Processing ${targets.length} collections...`);
+    let processed = 0;
+    let skipped = 0;
+    let errors = [];
+
+    for (const col of targets) {
+      if (signal.aborted) break;
+
+      // Skip if cover exists and not forced (unless cover is missing entirely)
+      const existingPath = path.join(coversDir, `${col.id}.jpg`);
+      if (!force && col.coverImage && (fs.existsSync(existingPath) || !col.coverImage.includes('/data/covers/'))) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        // Attempt 1: Generate 2x2 Mosaic
+        const result = await generateCover(col, modelsDir, coversDir, idToPathMap);
+        
+        // Find fresh index in case array mutated (rare but safe)
+        const idx = collections.findIndex(c => c.id === col.id);
+        if (idx === -1) continue;
+
+        if (result.success) {
+          // --- Success: Mosaic Created ---
+          collections[idx].coverImage = result.path;
+          collections[idx].lastModified = new Date().toISOString();
+          processed++;
+        } else {
+          // --- Fallback: Select Single Image ---
+          // If < 4 models, pick the first available thumbnail from the member models
+          let singleImage = null;
+          const candidates = col.modelIds || [];
+          
+          for (const mid of candidates) {
+             const jsonPath = idToPathMap[mid];
+             if (!jsonPath || !fs.existsSync(jsonPath)) continue;
+             try {
+                const mData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+                // Check standard image fields
+                const img = (mData.parsedImages && mData.parsedImages[0]) || 
+                            (mData.images && mData.images[0]) || 
+                            mData.thumbnail;
+                
+                // Use if it's a valid path (skip heavy data URIs for covers if possible)
+                if (img && typeof img === 'string' && !img.startsWith('data:')) {
+                   singleImage = img;
+                   break; // Found one!
+                }
+             } catch(e) {}
+          }
+
+          if (singleImage) {
+             collections[idx].coverImage = singleImage;
+             collections[idx].lastModified = new Date().toISOString();
+             processed++;
+          } else {
+             skipped++; // Collection is truly empty or has no images
+          }
+        }
+      } catch (err) {
+        console.error(`[Covers] Failed ${col.name}:`, err.message);
+        errors.push({ id: col.id, name: col.name, error: err.message });
+      }
+    }
+
+    // 3. Save
+    saveCollections(collections);
+    
+    activeCoverJob = null;
+    res.json({ success: true, processed, skipped, errors, aborted: signal.aborted });
+
+  } catch (e) {
+    activeCoverJob = null;
+    console.error('[Covers] Fatal error:', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// --- API: Secure File Download (Fixes Bulk/Zip Issues) ---
+app.get('/api/download', async (req, res) => {
+  try {
+    const { path: targetPath } = req.query;
+    if (!targetPath || typeof targetPath !== 'string') {
+      return res.status(400).send('Missing path');
+    }
+
+    // Handle Remote URLs (Proxy)
+    if (targetPath.startsWith('http://') || targetPath.startsWith('https://')) {
+      try {
+        const fetch = (await import('node-fetch')).default; // Dynamic import if using ESM or native fetch in Node 18+
+        const response = await fetch(targetPath);
+        if (!response.ok) throw new Error(`Remote fetch failed: ${response.status}`);
+        
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(targetPath)}"`);
+        return response.body.pipe(res);
+      } catch (e) {
+        // Fallback for Node without native fetch or if fetch fails
+        return res.status(502).send('Failed to fetch remote file');
+      }
+    }
+
+    // Handle Local Files
+    // Normalize: remove /models/ prefix if present to get filesystem path
+    let relPath = targetPath;
+    if (relPath.startsWith('/models/')) relPath = relPath.substring(8);
+    if (relPath.startsWith('models/')) relPath = relPath.substring(7);
+    
+    // Security: Prevent traversal
+    if (relPath.includes('..')) return res.status(403).send('Access denied');
+
+    const modelsDir = getAbsoluteModelsPath();
+    const absPath = path.join(modelsDir, relPath);
+
+    if (!fs.existsSync(absPath)) {
+      return res.status(404).send('File not found');
+    }
+
+    res.download(absPath); 
+  } catch (e) {
+    console.error('Download error:', e);
+    if (!res.headersSent) res.status(500).send('Server error');
+  }
+});
+
 // Serve model files from the models directory. The configured directory can be
 // updated at runtime by saving `data/config.json`. We create a small wrapper
 // that ensures the static handler points at the current configured directory.
@@ -3504,6 +3682,7 @@ app.get('/capture.html', (req, res) => {
 
 // Serve static files from the build directory
 app.use(express.static(path.join(__dirname, 'build')));
+app.use('/data/covers', express.static(path.join(process.cwd(), 'data', 'covers')));
 
 // Error handler for multipart/form-data upload errors (Multer)
 // This ensures clients receive JSON errors (e.g., file too large) instead of an HTML error page.

@@ -18,6 +18,7 @@ import { CollectionCard } from './CollectionCard';
 import { CollectionListRow } from './CollectionListRow';
 import { useLayoutSettings } from "./LayoutSettingsContext";
 import { LayoutControls } from "./LayoutControls";
+import { downloadMultipleModels } from "../utils/downloadUtils";
 
 interface CollectionGridProps {
   name: string;
@@ -139,6 +140,12 @@ export default function CollectionGrid({
     }
   };
 
+  const handleBulkDownload = async () => {
+    if (selectedModelIds.length === 0) return;
+    const targets = models.filter(m => selectedModelIds.includes(m.id));
+    await downloadMultipleModels(targets);
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 lg:p-6 border-b bg-card shadow-sm shrink-0 flex flex-wrap items-center justify-between gap-4">
@@ -171,6 +178,7 @@ export default function CollectionGrid({
         onBulkEdit={onBulkEdit}
         onCreateCollection={selectedCount > 0 ? () => setIsCreateCollectionOpen(true) : undefined}
         onBulkDelete={onBulkDelete ? handleBulkDeleteClick : undefined}
+        onBulkDownload={handleBulkDownload}
         onSelectAll={onSelectAll}
         onDeselectAll={onDeselectAll}
       />

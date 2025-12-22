@@ -26,9 +26,11 @@ export function CollectionCard({ collection, categories, onOpen, onChanged, onDe
 
   if (fallbackImage) console.log(`[CardRender] '${collection.name}' received fallback:`, fallbackImage);
 
-  const displayImage = (collection.images && collection.images.length > 0)
-    ? collection.images[0]
-    : fallbackImage || null;
+  const coverSrc = collection.coverImage
+    ? `${collection.coverImage}?t=${new Date(collection.lastModified || '').getTime()}` // Cache busting
+    : (collection.images && collection.images.length > 0)
+      ? collection.images[0]
+      : fallbackImage || null;
 
   const handleSaved = (_updated: any) => {
     // Ask parent to refresh collections list
@@ -63,10 +65,10 @@ export function CollectionCard({ collection, categories, onOpen, onChanged, onDe
       }}
     >
       <CardHeader className="p-0">
-        <div className="relative aspect-[4/3] overflow-hidden rounded-t-lg bg-muted/40 flex items-center justify-center">
-          {displayImage ? (
+        <div className="relative aspect-square overflow-hidden rounded-t-lg bg-muted/40 flex items-center justify-center">
+          {coverSrc ? (
             <img
-              src={displayImage}
+              src={coverSrc}
               alt={collection?.name || 'Collection cover'}
               className="absolute inset-0 w-full h-full object-cover"
               draggable={false}

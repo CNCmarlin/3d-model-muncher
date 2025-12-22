@@ -19,6 +19,7 @@ import { SelectionModeControls } from "./SelectionModeControls";
 import { ThingiverseImportDialog } from './ThingiverseImportDialog';
 import { useLayoutSettings } from "./LayoutSettingsContext";
 import { LayoutControls } from "./LayoutControls";
+import { downloadMultipleModels } from "../utils/downloadUtils";
 
 interface ModelGridProps {
   models: Model[];
@@ -85,6 +86,12 @@ export function ModelGrid({
         onToggleSelectionMode?.();
       }
     }
+  };
+
+  const handleBulkDownload = async () => {
+    if (selectedModelIds.length === 0) return;
+    const targets = models.filter(m => selectedModelIds.includes(m.id));
+    await downloadMultipleModels(targets);
   };
 
   const handleCheckboxClick = (e: React.MouseEvent<HTMLButtonElement>, modelId: string, index: number) => {
@@ -156,6 +163,7 @@ export function ModelGrid({
               onBulkEdit={onBulkEdit}
               onCreateCollection={() => setIsCreateCollectionOpen(true)}
               onBulkDelete={onBulkDelete ? handleBulkDeleteClick : undefined}
+              onBulkDownload={handleBulkDownload}
               onSelectAll={onSelectAll}
               onDeselectAll={onDeselectAll}
             />

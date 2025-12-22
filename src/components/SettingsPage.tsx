@@ -19,8 +19,9 @@ import { CollectionEditorDialog } from "./CollectionEditorDialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Progress } from "./ui/progress";
-import { AutoImportDialog } from "./AutoImportDialog"; // Ensure this import exists
+import { AutoImportDialog } from "./AutoImportDialog";
 import * as LucideIcons from 'lucide-react';
+
 
 import {
   ArrowLeft, GripVertical, Download, Upload, RefreshCw, Save,

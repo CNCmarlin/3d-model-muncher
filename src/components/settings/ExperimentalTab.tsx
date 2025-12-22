@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { Separator } from "../ui/separator";
 import TagsInput from "../TagsInput";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Loader2, Images as ImagesIcon } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 
 type ModelEntry = {
   id?: string;
@@ -43,6 +45,31 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<ModelEntry | null>(null);
+  const [isGeneratingCovers, setIsGeneratingCovers] = useState(false);
+
+  const handleGenerateCovers = async () => {
+    try {
+      setIsGeneratingCovers(true);
+      toast.info("Starting mosaic generation...");
+      
+      const res = await fetch('/api/collections/generate-covers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}) // Empty body = Process All
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Generated ${data.processed} covers (Skipped ${data.skipped})`);
+      } else {
+        toast.error("Failed: " + data.error);
+      }
+    } catch (e) {
+      toast.error("Network error");
+    } finally {
+      setIsGeneratingCovers(false);
+    }
+  };
 
   useEffect(() => {
     // Fetch models from backend API. Expecting `/api/models` to return an array of model metadata objects.
@@ -502,6 +529,34 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
       </div>
 
       <Separator />
+
+      {/* [NEW] Collection Mosaic Generator */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ImagesIcon className="h-5 w-5" />
+            Collection Mosaic Generator
+          </CardTitle>
+          <CardDescription>
+            Automatically generate 2x2 mosaic cover images for all collections that have at least 4 models.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <Button 
+              onClick={handleGenerateCovers} 
+              disabled={isGeneratingCovers}
+              variant="outline"
+            >
+              {isGeneratingCovers && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isGeneratingCovers ? "Generating..." : "Generate All Covers"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Requires 'sharp' library on server. Skips collections with &lt; 4 models.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* API key management area */}
 

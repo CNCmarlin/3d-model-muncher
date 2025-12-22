@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Model } from "../types/model";
 import { Category } from "../types/category";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "./ui/sheet";
@@ -19,13 +19,15 @@ import { ModelViewer3D } from "./ModelViewer3D";
 import { ModelViewerErrorBoundary } from "./ErrorBoundary";
 import { compressImageFile } from "../utils/imageUtils";
 import { ImageWithFallback } from "./ImageWithFallback";
-import { Clock, Weight, HardDrive, Layers, Droplet, Diameter, Edit3, Save, X, FileText, Tag, Box, Images, ChevronLeft, ChevronRight, Maximize2, StickyNote, ExternalLink, Globe, DollarSign, Store, CheckCircle, Ban, User, RefreshCw, Plus, List, MinusCircle, Upload, ChevronDown, ChevronUp, Codesandbox, Trash2 } from "lucide-react";import TagsInput from "./TagsInput";
+import { Clock, Weight, HardDrive, Layers, Droplet, Diameter, Edit3, Save, X, FileText, Tag, Box, Images, ChevronLeft, ChevronRight, Maximize2, StickyNote, ExternalLink, Globe, DollarSign, Store, CheckCircle, Ban, User, RefreshCw, Plus, List, MinusCircle, Upload, ChevronDown, ChevronUp, Codesandbox, Trash2 } from "lucide-react"; import TagsInput from "./TagsInput";
 import { Download } from "lucide-react";
 import { toast } from 'sonner';
 import type { Collection } from "../types/collection";
 import { triggerDownload, normalizeModelPath } from "../utils/downloadUtils";
 import { Package, Eye } from 'lucide-react';
 import { downloadAllFiles } from '../utils/downloadUtils';
+import { ScrollBar } from "./ui/scroll-area";
+import { resolveModelThumbnail } from "@/utils/thumbnailUtils";
 
 
 interface ModelDetailsDrawerProps {
@@ -76,6 +78,9 @@ export function ModelDetailsDrawer({
   const [removeTargetCollectionId, setRemoveTargetCollectionId] = useState<string | null>(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
+  // [NEW] State for siblings logic
+  const [allModelsForSiblings, setAllModelsForSiblings] = useState<Model[]>([]);
+
   // G-code upload state
   const gcodeInputRef = useRef<HTMLInputElement>(null);
   const [isGcodeExpanded, setIsGcodeExpanded] = useState(false);
@@ -89,27 +94,11 @@ export function ModelDetailsDrawer({
   // Track which file is being viewed in 3D (Main vs Related)
   const [active3DFile, setActive3DFile] = useState<string | null>(null);
 
+  const currentModel = editedModel || model;
+
   const isViewable3D = (path: string) => {
     const ext = path.split('.').pop()?.toLowerCase();
     return ['stl', '3mf', 'obj', 'gcode'].includes(ext || '');
-  };
-
-  const handleDownloadAll = () => {
-    if (currentModel) {
-      // Helper to strip '/models/' prefix for the API
-      const toRelative = (p: string) => p ? p.replace(/^(\/)?models\//, '') : '';
-      
-      // Prefer modelUrl (the actual binary) over filePath (often the json)
-      const mainPath = toRelative(currentModel.modelUrl || currentModel.filePath || '');
-      const relatedPaths = (currentModel.related_files || []).map(p => toRelative(p));
-      
-      if (!mainPath) {
-          toast.error("Could not determine main file path.");
-          return;
-      }
-
-      downloadAllFiles(mainPath, relatedPaths, currentModel.name);
-    }
   };
 
   useEffect(() => {
@@ -125,6 +114,56 @@ export function ModelDetailsDrawer({
       } catch {/* ignore */ }
     })();
   }, [isOpen]);
+
+  // [NEW] Fetch all models once on mount to calculate siblings (lightweight if cached)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (allModelsForSiblings.length > 0) return; // already loaded
+    fetch('/api/models')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) setAllModelsForSiblings(data);
+      })
+      .catch(err => console.warn("Failed to load models for siblings", err));
+  }, [isOpen]);
+
+  // [NEW] Compute Siblings
+  const siblings = useMemo(() => {
+    if (!currentModel || !collections || collections.length === 0 || allModelsForSiblings.length === 0) return [];
+
+    // Find collections this model is in
+    const parentCollections = collections.filter(c => Array.isArray(c.modelIds) && c.modelIds.includes(currentModel.id));
+    if (parentCollections.length === 0) return [];
+
+    // Get all model IDs from these collections (exclude current model)
+    const siblingIds = new Set<string>();
+    parentCollections.forEach(c => {
+      c.modelIds.forEach(id => {
+        if (id !== currentModel.id) siblingIds.add(id);
+      });
+    });
+
+    // Map IDs to actual Model objects
+    return allModelsForSiblings.filter(m => siblingIds.has(m.id));
+  }, [currentModel, collections, allModelsForSiblings]);
+
+  const handleDownloadAll = () => {
+    if (currentModel) {
+      // Helper to strip '/models/' prefix for the API
+      const toRelative = (p: string) => p ? p.replace(/^(\/)?models\//, '') : '';
+
+      // Prefer modelUrl (the actual binary) over filePath (often the json)
+      const mainPath = toRelative(currentModel.modelUrl || currentModel.filePath || '');
+      const relatedPaths = (currentModel.related_files || []).map(p => toRelative(p));
+
+      if (!mainPath) {
+        toast.error("Could not determine main file path.");
+        return;
+      }
+
+      downloadAllFiles(mainPath, relatedPaths, currentModel.name);
+    }
+  };
 
 
   // Suggested tags for each category - now dynamically based on current categories
@@ -779,8 +818,6 @@ export function ModelDetailsDrawer({
       container.scrollLeft = final;
     }
   }, [selectedImageIndex, isWindowFullscreen]);
-
-  const currentModel = editedModel || model;
 
   // G-code upload handler
   const handleGcodeUpload = async (file: File, forceOverwrite = false) => {
@@ -2256,7 +2293,7 @@ export function ModelDetailsDrawer({
                     {/* Subtle fade at right edge to indicate more content */}
                     <div className="absolute top-0 right-0 h-8 w-8 pointer-events-none bg-gradient-to-l from-background/80 to-transparent" aria-hidden />
                   </div>
-                  
+
                   {/* Button in the auto-width column so it never gets pushed offscreen */}
                   {/* [FIX] Added 'flex gap-2' to prevent buttons from touching */}
                   <div className="shrink-0 flex gap-2">
@@ -2272,16 +2309,16 @@ export function ModelDetailsDrawer({
                       Download
                     </Button>
                     {/* [UPDATE] Themed Delete Button (Ghost style, turns red on hover) */}
-                    <Button 
-                      onClick={() => setIsDeleteConfirmOpen(true)} 
-                      size="icon" 
-                      variant="ghost" 
-                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10" 
+                    <Button
+                      onClick={() => setIsDeleteConfirmOpen(true)}
+                      size="icon"
+                      variant="ghost"
+                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       title="Delete Model"
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
-                  
+
                   </div>
                 </div>
               </div>
@@ -3184,126 +3221,168 @@ export function ModelDetailsDrawer({
               </>
             )}
 
-           {/* Related files (view mode) */}
+            {/* Files Carousel (Main + Related) */}
           {(!isEditing && (
              (Array.isArray(currentModel.related_files) && currentModel.related_files.length > 0) || 
-             (currentModel.modelUrl || currentModel.filePath) // Always show if we have a main file
+             (currentModel.modelUrl || currentModel.filePath)
           )) && (
             <>
               <Separator />
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg text-card-foreground">Model Files</h3>
+                  <h3 className="font-semibold text-lg text-card-foreground">Files</h3>
                 </div>
-                <div className="space-y-2">
-                  
-                  {/* 1. Main Model Row */}
-                  {(() => {
-                     const mainPath = normalizeModelPath(currentModel.modelUrl || currentModel.filePath);
-                     const mainDisplay = mainPath ? mainPath.split(/[/\\]/).pop() : currentModel.name;
-                     const isMainActive = active3DFile === mainPath;
-                     
-                     if (!mainPath) return null;
+                
+                {/* Horizontal Carousel for Files */}
+                <ScrollArea className="w-full whitespace-nowrap rounded-md border bg-muted/10">
+                  <div className="flex w-max space-x-3 p-4">
+                    
+                    {/* 1. Main File Card */}
+                    {(() => {
+                       const mainPath = normalizeModelPath(currentModel.modelUrl || currentModel.filePath);
+                       const mainDisplay = mainPath ? mainPath.split(/[/\\]/).pop() : currentModel.name;
+                       const isMainActive = active3DFile === mainPath;
+                       
+                       if (!mainPath) return null;
 
-                     return (
-                      <div className={`flex items-center justify-between gap-2 p-3 rounded-lg border transition-colors ${isMainActive ? 'bg-primary/10 border-primary' : 'bg-muted/30 hover:bg-muted/50'}`}>
-                        <div className="min-w-0 flex items-center gap-2">
-                           <Badge variant={isMainActive ? "default" : "outline"} className="text-[10px] h-5 px-1.5 uppercase tracking-wider">Main</Badge>
-                           <p className={`font-medium break-all ${isMainActive ? 'text-primary' : ''}`}>{mainDisplay}</p>
+                       return (
+                        <div 
+                          className={`w-[140px] group relative flex flex-col gap-2 cursor-pointer`}
+                          onClick={(e) => {
+                             e.stopPropagation();
+                             setViewMode('3d');
+                             setActive3DFile(mainPath);
+                             detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        >
+                          {/* Thumbnail / Preview Area */}
+                          <div className={`aspect-square rounded-md border overflow-hidden relative ${isMainActive ? 'ring-2 ring-primary' : 'bg-muted'}`}>
+                             <ImageWithFallback
+                               src={resolveModelThumbnail(currentModel)}
+                               alt="Main Model"
+                               className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                             />
+                             <div className="absolute top-1 left-1">
+                               <Badge variant={isMainActive ? "default" : "secondary"} className="text-[10px] h-5 px-1.5 shadow-sm">
+                                 MAIN
+                               </Badge>
+                             </div>
+                             {/* Hover Overlay with Download */}
+                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full" title="View 3D">
+                                   <Eye className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  size="icon" 
+                                  variant="secondary" 
+                                  className="h-8 w-8 rounded-full" 
+                                  title="Download"
+                                  onClick={handleDownloadClick}
+                                >
+                                   <Download className="h-4 w-4" />
+                                </Button>
+                             </div>
+                          </div>
+
+                          {/* Filename Footer */}
+                          <div className="space-y-0.5">
+                             <p className={`text-sm font-medium truncate ${isMainActive ? 'text-primary' : 'text-foreground'}`} title={mainDisplay}>
+                               {mainDisplay}
+                             </p>
+                             <p className="text-xs text-muted-foreground">Model File</p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                           <Button
-                             size="sm"
-                             variant={isMainActive ? "default" : "ghost"}
-                             onClick={(e) => {
-                               e.stopPropagation();
+                       );
+                    })()}
+
+                    {/* 2. Related File Cards */}
+                    {currentModel.related_files && currentModel.related_files.map((path, idx) => {
+                      const normPath = normalizeModelPath(path) || path;
+                      const isViewable = isViewable3D(path);
+                      const isActive = active3DFile === normPath;
+                      const fileName = path.split(/[/\\]/).pop() || 'File';
+                      
+                      // Determine icon based on extension
+                      const ext = fileName.split('.').pop()?.toLowerCase();
+                      const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '');
+                      const isArchive = ['zip', 'rar', '7z'].includes(ext || '');
+                      const isDoc = ['pdf', 'txt', 'md'].includes(ext || '');
+
+                      return (
+                        <div 
+                          key={`file-${idx}`} 
+                          className={`w-[140px] group relative flex flex-col gap-2 cursor-pointer`}
+                          onClick={(e) => {
+                             e.stopPropagation();
+                             if (isViewable) {
                                setViewMode('3d');
-                               setActive3DFile(mainPath);
+                               setActive3DFile(normPath);
                                detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                             }}
-                             title="View Main Model"
-                           >
-                              <Eye className="h-4 w-4" />
-                           </Button>
-                           <Button size="sm" variant="ghost" onClick={handleDownloadClick} title="Download Main Model">
-                              <Download className="h-4 w-4" />
-                           </Button>
-                        </div>
-                      </div>
-                     );
-                  })()}
+                             } else {
+                               // If not viewable in 3D, trigger download on card click
+                               const safeName = path.replace(/^\/+/, '').split('/').pop() || '';
+                               const normalizedPath = path.replace(/\\/g, '/');
+                               triggerDownload(normalizedPath, e.nativeEvent as any as MouseEvent, safeName);
+                             }
+                          }}
+                        >
+                           {/* Thumbnail Area */}
+                           <div className={`aspect-square rounded-md border overflow-hidden relative flex items-center justify-center bg-muted/30 ${isActive ? 'ring-2 ring-primary' : ''}`}>
+                              {isImage ? (
+                                 // If it's an image file, show it
+                                 <img src={`/models/${path}`} alt={fileName} className="h-full w-full object-cover" />
+                              ) : (
+                                 // Otherwise show a nice icon
+                                 <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                    {isViewable ? <Box className="h-8 w-8" /> : 
+                                     isArchive ? <Package className="h-8 w-8" /> :
+                                     isDoc ? <FileText className="h-8 w-8" /> :
+                                     <FileText className="h-8 w-8" />
+                                    }
+                                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-50">{ext}</span>
+                                 </div>
+                              )}
 
-                  {/* 2. Related Files Rows */}
-                  {currentModel.related_files && currentModel.related_files.map((path, idx) => {
-                    const normPath = normalizeModelPath(path) || path;
-                    const isViewable = isViewable3D(path);
-                    const isActive = active3DFile === normPath;
-                    // [FIX] Extract filename for cleaner display
-                    const fileName = path.split(/[/\\]/).pop();
+                              {/* Hover Overlay */}
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                {isViewable && (
+                                  <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full" title="View 3D">
+                                     <Eye className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                <Button 
+                                  size="icon" 
+                                  variant="secondary" 
+                                  className="h-8 w-8 rounded-full" 
+                                  title="Download"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const safeName = path.replace(/^\/+/, '').split('/').pop() || '';
+                                    const normalizedPath = path.replace(/\\/g, '/');
+                                    triggerDownload(normalizedPath, e.nativeEvent as any as MouseEvent, safeName);
+                                  }}
+                                >
+                                   <Download className="h-4 w-4" />
+                                </Button>
+                              </div>
+                           </div>
 
-                    return (
-                      <div key={`view-related-${idx}`} className={`flex items-center justify-between gap-2 p-3 rounded-lg border transition-colors ${isActive ? 'bg-primary/10 border-primary' : 'bg-muted/30 hover:bg-muted/50'}`}>
-                        <div className="min-w-0 pl-1">
-                          {/* [FIX] Show fileName, but keep full path in title tooltip */}
-                          <p className={`font-medium break-all text-sm ${isActive ? 'text-primary' : 'text-muted-foreground'}`} title={path}>
-                            {fileName}
-                          </p>
+                           {/* Filename Footer */}
+                           <div className="space-y-0.5">
+                             <p className={`text-sm font-medium truncate ${isActive ? 'text-primary' : 'text-foreground'}`} title={path}>
+                               {fileName}
+                             </p>
+                             <p className="text-xs text-muted-foreground">
+                               {isViewable ? '3D Object' : (isImage ? 'Image' : 'File')}
+                             </p>
+                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {isViewable && (
-                            <Button
-                              size="sm"
-                              variant={isActive ? "default" : "ghost"}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setViewMode('3d');
-                                setActive3DFile(normPath);
-                                detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                              }}
-                              title="View in 3D"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          )}
-                          
-                          {/* Munchie View Button */}
-                          {availableRelatedMunchie[idx] ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                try {
-                                  let candidate = deriveMunchieCandidate(path);
-                                  if (!candidate) return;
-                                  const url = `/models/${candidate}`;
-                                  const resp = await fetch(url, { cache: 'no-store' });
-                                  if (!resp.ok) return;
-                                  const parsed = await resp.json();
-                                  try { if (typeof onModelUpdate === 'function') onModelUpdate(parsed as Model); } catch (e) {}
-                                  try { detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
-                                } catch (err) { console.error(err); }
-                              }}
-                            >
-                              View Info
-                            </Button>
-                          ) : null}
-
-                          <Button size="sm" variant="ghost" onClick={async (e) => {
-                            e.stopPropagation();
-                            // [FIX] Ensure we clean the path for download
-                            const safeName = path ? path.replace(/^\/+/, '').split('/').pop() || '' : '';
-                            const normalizedPath = path ? path.replace(/\\/g, '/') : path;
-                            triggerDownload(normalizedPath, e.nativeEvent as any as MouseEvent, safeName);
-                          }}>
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                  <ScrollBar orientation="horizontal" />
+                </ScrollArea>
               </div>
             </>
           )}
@@ -3499,6 +3578,53 @@ export function ModelDetailsDrawer({
                 </div>
               </>
             )}
+            
+                {/* [NEW] In This Collection Carousel */}
+                {siblings.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <List className="h-5 w-5 text-muted-foreground" />
+                        <h3 className="font-semibold text-lg text-card-foreground">In this Collection <span className="text-sm font-normal text-muted-foreground ml-1">({siblings.length})</span></h3>
+                      </div>
+
+                      <ScrollArea className="w-full whitespace-nowrap rounded-md border bg-muted/10">
+                        <div className="flex w-max space-x-4 p-4">
+                          {siblings.map((sibling) => (
+                            <div
+                              key={sibling.id}
+                              className="w-[120px] space-y-2 cursor-pointer group"
+                              onClick={() => {
+                                // Switch model in drawer
+                                if (onModelUpdate) onModelUpdate(sibling);
+                                // Scroll to top
+                                detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                            >
+                              <div className="overflow-hidden rounded-md border bg-muted aspect-square relative">
+                                <ImageWithFallback
+                                  src={resolveModelThumbnail(sibling)}
+                                  alt={sibling.name}
+                                  className="h-full w-full object-cover transition-all group-hover:scale-105"
+                                />
+                                {sibling.isPrinted && (
+                                  <div className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full border border-white" />
+                                )}
+                              </div>
+                              <div className="space-y-1 text-sm">
+                                <h4 className="font-medium leading-tight truncate" title={sibling.name}>
+                                  {sibling.name}
+                                </h4>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <ScrollBar orientation="horizontal" />
+                      </ScrollArea>
+                    </div>
+                  </>
+                )}
           </div>
         </ScrollArea>
 
@@ -3647,10 +3773,10 @@ export function ModelDetailsDrawer({
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction 
+              <AlertDialogAction
                 onClick={() => {
-                   if (onDelete) onDelete(currentModel);
-                   setIsDeleteConfirmOpen(false);
+                  if (onDelete) onDelete(currentModel);
+                  setIsDeleteConfirmOpen(false);
                 }}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
