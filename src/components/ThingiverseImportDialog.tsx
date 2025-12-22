@@ -15,6 +15,14 @@ interface ThingiverseImportDialogProps {
   defaultCollectionId?: string;
 }
 
+// [NEW] Helper to truncate middle of long paths
+function truncateMiddle(text: string, maxLength: number) {
+  if (!text || text.length <= maxLength) return text;
+  const startChars = Math.ceil(maxLength / 2) - 2;
+  const endChars = Math.floor(maxLength / 2) - 1;
+  return `${text.substring(0, startChars)}...${text.substring(text.length - endChars)}`;
+}
+
 export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, defaultFolder, defaultCollectionId }: ThingiverseImportDialogProps) {
   const [inputUrl, setInputUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,37 +37,36 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
   const [categories, setCategories] = useState<string[]>(['Uncategorized']);
   const [selectedCategory, setSelectedCategory] = useState<string>('Uncategorized');
 
- // Load options on open
- useEffect(() => {
-  if (!isOpen) return;
-  setErrorMessage(null);
-  setInputUrl(''); // Reset input
-  
-  // Defaults
-  if (defaultFolder) setSelectedFolder(defaultFolder);
-  
-  // Reset or set collection based on prop
-  if (defaultCollectionId) {
-    setSelectedCollection(defaultCollectionId);
-  } else {
-    setSelectedCollection('none');
-  }
+  // Load options on open
+  useEffect(() => {
+    if (!isOpen) return;
+    setErrorMessage(null);
+    setInputUrl(''); // Reset input
+    
+    // Defaults
+    if (defaultFolder) setSelectedFolder(defaultFolder);
+    
+    // Reset or set collection based on prop
+    if (defaultCollectionId) {
+      setSelectedCollection(defaultCollectionId);
+    } else {
+      setSelectedCollection('none');
+    }
 
-  const loadData = async () => {
-      // 1. Folders
-      try {
-          const resp = await fetch('/api/model-folders');
-          if (resp.ok) {
-              const data = await resp.json();
-              // [FIX] Include the defaultFolder in the list if it's not already there
-              const apiFolders = data.folders || [];
-              const allFolders = ['imported', 'uploads', ...apiFolders];
-              if (defaultFolder) allFolders.push(defaultFolder);
-              
-              const loadedFolders = Array.from(new Set(allFolders)); // Deduplicate
-              setFolders(loadedFolders);
-          }
-      } catch (e) { console.error('Failed to load folders', e); }
+    const loadData = async () => {
+        // 1. Folders
+        try {
+            const resp = await fetch('/api/model-folders');
+            if (resp.ok) {
+                const data = await resp.json();
+                const apiFolders = data.folders || [];
+                const allFolders = ['imported', 'uploads', ...apiFolders];
+                if (defaultFolder) allFolders.push(defaultFolder);
+                
+                const loadedFolders = Array.from(new Set(allFolders));
+                setFolders(loadedFolders);
+            }
+        } catch (e) { console.error('Failed to load folders', e); }
 
         // 2. Collections
         try {
@@ -77,7 +84,6 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
                  const d = await resp.json();
                  const cats = d.config?.categories?.map((c: any) => c.label) || [];
                  if (cats.length > 0) {
-                    // [FIX] Deduplicate categories using Set to prevent "Encountered two children with the same key" error
                     const uniqueCats = Array.from(new Set(['Uncategorized', ...cats]));
                     setCategories(uniqueCats);
                  }
@@ -115,7 +121,7 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
 
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-          throw new Error(`Server returned ${res.status} ${res.statusText}.`);
+         throw new Error(`Server returned ${res.status} ${res.statusText}.`);
       }
 
       const data = await res.json();
@@ -179,9 +185,18 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
             <div className="grid gap-2">
                 <Label>Destination Folder</Label>
                 <Select value={selectedFolder} onValueChange={setSelectedFolder} disabled={isLoading}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    {/* [FIX] Use custom display with truncation instead of generic SelectValue */}
+                    <SelectTrigger title={selectedFolder}>
+                        <span className="truncate block text-left">
+                            {truncateMiddle(selectedFolder, 35)}
+                        </span>
+                    </SelectTrigger>
                     <SelectContent>
-                        {folders.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                        {folders.map(f => (
+                            <SelectItem key={f} value={f} title={f}>
+                                {f}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
