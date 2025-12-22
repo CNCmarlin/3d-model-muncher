@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Label } from "./ui/label";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Checkbox } from "./ui/checkbox";
-import { Loader2, FolderOpen, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, FolderOpen, CheckCircle2, AlertTriangle, Layers, GitFork, Package } from "lucide-react";
 import { toast } from "sonner";
 
 interface AutoImportDialogProps {
@@ -17,8 +17,8 @@ interface AutoImportDialogProps {
 
 export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoImportDialogProps) {
   const [folders, setFolders] = useState<string[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string>("(Root)"); // Default to Root
-  const [strategy, setStrategy] = useState<"smart" | "strict">("smart");
+  const [selectedFolder, setSelectedFolder] = useState<string>("(Root)");
+  const [strategy, setStrategy] = useState<"smart" | "strict" | "top-level">("smart");
   const [clearPrevious, setClearPrevious] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
@@ -78,11 +78,11 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>Auto-Import Collections</DialogTitle>
             <DialogDescription>
-              Generate collections from your folder structure.
+              Scan your folder structure to automatically generate collections.
             </DialogDescription>
           </DialogHeader>
 
@@ -100,22 +100,61 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
               </div>
 
               <div className="grid gap-3">
-                <Label>Strategy</Label>
-                <RadioGroup value={strategy} onValueChange={(v) => setStrategy(v as any)} className="gap-4">
-                  <div className="flex items-start space-x-3 border p-3 rounded-md hover:bg-accent/50 cursor-pointer" onClick={() => setStrategy('smart')}>
+                <Label className="text-base">Organization Strategy</Label>
+                <RadioGroup value={strategy} onValueChange={(v) => setStrategy(v as any)} className="grid gap-3">
+                  
+                  {/* Option 1: Smart Grouping */}
+                  <div className={`flex items-start space-x-3 border p-3 rounded-md cursor-pointer transition-colors ${strategy === 'smart' ? 'bg-accent/50 border-primary' : 'hover:bg-accent/20'}`} onClick={() => setStrategy('smart')}>
                     <RadioGroupItem value="smart" id="smart" className="mt-1" />
-                    <div className="cursor-pointer">
-                      <Label htmlFor="smart" className="cursor-pointer font-medium">Smart Grouping (Top-Level)</Label>
-                      <p className="text-xs text-muted-foreground">Aggregates subfolders into parent collection. Best for clean, project-based views.</p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-4 w-4 text-blue-500" />
+                        <Label htmlFor="smart" className="cursor-pointer font-medium text-base">Smart Grouping (Flattened)</Label>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Ignores intermediate folders. Creates a collection for any folder that <strong>directly contains</strong> models.
+                      </p>
+                      <div className="text-xs bg-muted p-2 rounded text-foreground/80 mt-2 font-mono">
+                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> Collection: <strong>"SportsCar"</strong>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-start space-x-3 border p-3 rounded-md hover:bg-accent/50 cursor-pointer" onClick={() => setStrategy('strict')}>
+
+                  {/* Option 2: Strict Mirroring */}
+                  <div className={`flex items-start space-x-3 border p-3 rounded-md cursor-pointer transition-colors ${strategy === 'strict' ? 'bg-accent/50 border-primary' : 'hover:bg-accent/20'}`} onClick={() => setStrategy('strict')}>
                     <RadioGroupItem value="strict" id="strict" className="mt-1" />
-                    <div className="cursor-pointer">
-                      <Label htmlFor="strict" className="cursor-pointer font-medium">Strict Mirroring</Label>
-                      <p className="text-xs text-muted-foreground">Creates a separate collection for every subfolder found.</p>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <GitFork className="h-4 w-4 text-purple-500" />
+                        <Label htmlFor="strict" className="cursor-pointer font-medium text-base">Strict Mirroring (Nested)</Label>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Recreates your exact folder hierarchy. Empty folders are preserved if they contain other collections.
+                      </p>
+                      <div className="text-xs bg-muted p-2 rounded text-foreground/80 mt-2 font-mono">
+                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> <br/>
+                        Collection: <strong>"3D Prints"</strong> → <strong>"Cars"</strong> → <strong>"SportsCar"</strong>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Option 3: Top-Level */}
+                  <div className={`flex items-start space-x-3 border p-3 rounded-md cursor-pointer transition-colors ${strategy === 'top-level' ? 'bg-accent/50 border-primary' : 'hover:bg-accent/20'}`} onClick={() => setStrategy('top-level')}>
+                    <RadioGroupItem value="top-level" id="top-level" className="mt-1" />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 text-orange-500" />
+                        <Label htmlFor="top-level" className="cursor-pointer font-medium text-base">Top-Level Aggregation</Label>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Creates one collection per top-level folder, aggregating <strong>everything</strong> inside it.
+                      </p>
+                      <div className="text-xs bg-muted p-2 rounded text-foreground/80 mt-2 font-mono">
+                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> Collection: <strong>"3D Prints"</strong>
+                      </div>
+                    </div>
+                  </div>
+
                 </RadioGroup>
               </div>
 

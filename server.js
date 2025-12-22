@@ -393,9 +393,6 @@ app.delete('/api/collections/:id', async (req, res) => {
 });
 
 // API: Auto-Import Collections from Directory
-// [SEARCH FOR app.post('/api/collections/auto-import', ...) AND REPLACE BLOCK]
-
-// API: Auto-Import Collections from Directory
 app.post('/api/collections/auto-import', async (req, res) => {
   try {
     const { targetFolder, strategy = 'smart', clearPrevious = false } = req.body;
@@ -415,6 +412,10 @@ app.post('/api/collections/auto-import', async (req, res) => {
     console.log(`[Auto-Import] Scanning ${scanRoot} (Strategy: ${strategy}, ClearPrevious: ${clearPrevious})`);
 
     // 2. Run the Scanner
+    // Dynamic require to ensure we get the latest version if files changed
+    delete require.cache[require.resolve('./server-utils/collectionScanner')];
+    const { scanDirectory: scanCollections } = require('./server-utils/collectionScanner');
+    
     const discoveredCollections = scanCollections(scanRoot, modelsDir, { strategy });
 
     // 3. Queue the Merge Logic
@@ -424,8 +425,20 @@ app.post('/api/collections/auto-import', async (req, res) => {
       // Step A: If requested, prune old auto-collections
       if (clearPrevious) {
         const beforeCount = updatedCols.length;
-        // Delete ALL 'Auto-Imported' category collections to ensure a clean slate
-        updatedCols = updatedCols.filter(c => c.category !== 'Auto-Imported');
+        updatedCols = updatedCols.filter(c => {
+            // Check 1: Explicit Category match (case-insensitive)
+            const isAutoCategory = (c.category || '').trim().toLowerCase() === 'auto-imported';
+            
+            // Check 2: ID Pattern match
+            // Manual collections use "col-timestamp-random" (hyphens).
+            // Auto scanner uses "col_base64" (underscore).
+            // This catches legacy auto-collections that might be missing the category.
+            const isAutoId = c.id && typeof c.id === 'string' && c.id.startsWith('col_');
+
+            // If it matches either criteria, it is an auto-collection.
+            // We KEEP it only if it is NOT an auto-collection.
+            return !isAutoCategory && !isAutoId;
+        });
         console.log(`[Auto-Import] Pruned ${beforeCount - updatedCols.length} old auto-collections.`);
       }
 
@@ -438,13 +451,14 @@ app.post('/api/collections/auto-import', async (req, res) => {
         if (existingIdx !== -1) {
           // UPDATE existing
           const existing = updatedCols[existingIdx];
-          // Merge modelIds
+          // Merge modelIds (keep existing ones plus new ones)
           const mergedIds = [...new Set([...existing.modelIds, ...importCol.modelIds])];
 
           updatedCols[existingIdx] = {
             ...existing,
             modelIds: mergedIds,
-            category: existing.category || 'Auto-Imported',
+            // Force category to Auto-Imported so it can be cleaned up next time
+            category: 'Auto-Imported', 
             parentId: existing.parentId || importCol.parentId,
             lastModified: new Date().toISOString()
           };
@@ -460,11 +474,13 @@ app.post('/api/collections/auto-import', async (req, res) => {
     };
 
     await collectionQueue.add(mergeTask);
+    
+    try { reconcileHiddenFlags(); } catch (e) { console.warn('Auto-import reconcile failed', e); }
 
     res.json({
       success: true,
       count: discoveredCollections.length,
-      message: `Import complete. ${clearPrevious ? 'Cleaned old maps. ' : ''}Processed ${discoveredCollections.length} collections.`
+      message: `Import complete. ${clearPrevious ? 'Reset performed. ' : ''}Processed ${discoveredCollections.length} collections.`
     });
 
   } catch (e) {

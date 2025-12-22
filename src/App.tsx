@@ -711,13 +711,19 @@ function AppContent() {
         const firstModelId = col.modelIds[0];
         const representativeModel = models.find(m => m.id === firstModelId);
 
-        // [FIX] Use 'filePath' instead of 'fileName'
         if (representativeModel && representativeModel.filePath) {
-          // Split "folder/subfolder/file.stl" -> ["folder", "subfolder", "file.stl"]
-          const parts = representativeModel.filePath.split(/[/\\]/);
-          if (parts.length > 1) {
-            // The first part is the root folder (e.g. 'imported' or 'uploads')
-            inferredFolder = parts[0];
+          // Grab the full directory path (everything before the last slash)
+          // e.g. "3d prints/cars/porsche/file.json" -> "3d prints/cars/porsche"
+          const lastSlash = Math.max(
+            representativeModel.filePath.lastIndexOf('/'),
+            representativeModel.filePath.lastIndexOf('\\')
+          );
+          
+          if (lastSlash > 0) {
+             inferredFolder = representativeModel.filePath.substring(0, lastSlash);
+          } else {
+             // File is likely at root or has no path structure; fallback to 'imported' logic or leave undefined
+             inferredFolder = 'imported'; 
           }
         }
       }

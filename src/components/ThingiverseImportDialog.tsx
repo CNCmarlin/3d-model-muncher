@@ -29,32 +29,37 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
   const [categories, setCategories] = useState<string[]>(['Uncategorized']);
   const [selectedCategory, setSelectedCategory] = useState<string>('Uncategorized');
 
-  // Load options on open
-  useEffect(() => {
-    if (!isOpen) return;
-    setErrorMessage(null);
-    setInputUrl(''); // Reset input
-    
-    // Defaults
-    if (defaultFolder) setSelectedFolder(defaultFolder);
-    
-    // Reset or set collection based on prop
-    if (defaultCollectionId) {
-      setSelectedCollection(defaultCollectionId);
-    } else {
-      setSelectedCollection('none');
-    }
+ // Load options on open
+ useEffect(() => {
+  if (!isOpen) return;
+  setErrorMessage(null);
+  setInputUrl(''); // Reset input
+  
+  // Defaults
+  if (defaultFolder) setSelectedFolder(defaultFolder);
+  
+  // Reset or set collection based on prop
+  if (defaultCollectionId) {
+    setSelectedCollection(defaultCollectionId);
+  } else {
+    setSelectedCollection('none');
+  }
 
-    const loadData = async () => {
-        // 1. Folders
-        try {
-            const resp = await fetch('/api/model-folders');
-            if (resp.ok) {
-                const data = await resp.json();
-                const loadedFolders = Array.from(new Set(['imported', 'uploads', ...(data.folders || [])]));
-                setFolders(loadedFolders);
-            }
-        } catch (e) { console.error('Failed to load folders', e); }
+  const loadData = async () => {
+      // 1. Folders
+      try {
+          const resp = await fetch('/api/model-folders');
+          if (resp.ok) {
+              const data = await resp.json();
+              // [FIX] Include the defaultFolder in the list if it's not already there
+              const apiFolders = data.folders || [];
+              const allFolders = ['imported', 'uploads', ...apiFolders];
+              if (defaultFolder) allFolders.push(defaultFolder);
+              
+              const loadedFolders = Array.from(new Set(allFolders)); // Deduplicate
+              setFolders(loadedFolders);
+          }
+      } catch (e) { console.error('Failed to load folders', e); }
 
         // 2. Collections
         try {

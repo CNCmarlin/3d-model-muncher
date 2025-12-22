@@ -97,62 +97,66 @@ export const downloadAllFiles = async (mainFilePath: string, relatedFiles: strin
   }
 };
 
-// New: Download Multiple Models (Bulk)
 export const downloadMultipleModels = async (models: Model[]) => {
-    if (!models || models.length === 0) return;
-    const toastId = toast.loading(`Zipping ${models.length} models...`);
+  if (!models || models.length === 0) return;
+  const toastId = toast.loading(`Zipping ${models.length} models...`);
 
-    try {
-        const zip = new JSZip();
-        let count = 0;
+  try {
+      const zip = new JSZip();
+      let count = 0;
 
-        await Promise.all(models.map(async (model) => {
-            const folderName = model.name.replace(/[^a-z0-9\-_ ]/gi, '').trim() || model.id;
-            const folder = zip.folder(folderName);
-            if (!folder) return;
+      await Promise.all(models.map(async (model) => {
+          // Sanitize model name for filename prefix
+          const safeModelName = model.name.replace(/[^a-z0-9\-_ ]/gi, '').trim() || model.id;
 
-            // Main
-            const mainPath = normalizeModelPath(model.modelUrl || model.filePath);
-            if (mainPath) {
-                const blob = await fetchFileBlob(mainPath);
-                if (blob) {
-                    folder.file(extractFileName(mainPath), blob);
-                    count++;
-                }
-            }
+          // 1. Add Main File (Root)
+          const mainPath = normalizeModelPath(model.modelUrl || model.filePath);
+          if (mainPath) {
+              const blob = await fetchFileBlob(mainPath);
+              if (blob) {
+                  const originalName = extractFileName(mainPath);
+                  // Format: "Charizard - main.stl"
+                  const zipName = `${safeModelName} - ${originalName}`;
+                  zip.file(zipName, blob);
+                  count++;
+              }
+          }
 
-            // Related
-            if (model.related_files && model.related_files.length > 0) {
-                await Promise.all(model.related_files.map(async (rf) => {
-                    const rfPath = normalizeModelPath(rf);
-                    if (rfPath) {
-                        const blob = await fetchFileBlob(rfPath);
-                        if (blob) {
-                            folder.file(extractFileName(rfPath), blob);
-                            count++;
-                        }
-                    }
-                }));
-            }
-        }));
+          // 2. Add Related Files (Root)
+          if (model.related_files && model.related_files.length > 0) {
+              await Promise.all(model.related_files.map(async (rf) => {
+                  const rfPath = normalizeModelPath(rf);
+                  if (rfPath) {
+                      const blob = await fetchFileBlob(rfPath);
+                      if (blob) {
+                          const originalName = extractFileName(rfPath);
+                          // Format: "Charizard - readme.txt"
+                          const zipName = `${safeModelName} - ${originalName}`;
+                          zip.file(zipName, blob);
+                          count++;
+                      }
+                  }
+              }));
+          }
+      }));
 
-        if (count === 0) throw new Error("No files could be downloaded");
+      if (count === 0) throw new Error("No files could be downloaded");
 
-        const content = await zip.generateAsync({ type: "blob" });
-        const url = window.URL.createObjectURL(content);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Bulk_Models_${new Date().toISOString().slice(0,10)}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = window.URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Bulk_Models_${new Date().toISOString().slice(0,10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
 
-        toast.dismiss(toastId);
-        toast.success("Bulk download complete!");
-    } catch (e) {
-        console.error(e);
-        toast.dismiss(toastId);
-        toast.error("Bulk download failed");
-    }
+      toast.dismiss(toastId);
+      toast.success("Bulk download complete!");
+  } catch (e) {
+      console.error(e);
+      toast.dismiss(toastId);
+      toast.error("Bulk download failed");
+  }
 };
