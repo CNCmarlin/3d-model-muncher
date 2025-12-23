@@ -27,7 +27,7 @@ import {
   ArrowLeft, GripVertical, Download, Upload, RefreshCw, Save,
   Settings as SettingsIcon, AlertCircle, Tag, Edit2, Trash2, Eye,
   BarChart3, Search, AlertTriangle, FileCheck, Files, Heart, Star,
-  Github, Box, Images, Archive, Plus, FileText, Clock, HardDrive,
+  Github, Box, Images, Archive, Plus, FolderPlus, FileText, Clock, HardDrive,
   RotateCcw, X, Library, FolderOpen
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -109,6 +109,7 @@ export function SettingsPage({
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editorCollection, setEditorCollection] = useState<Collection | null>(null);
+  const [createMode, setCreateMode] = useState<'manual' | 'folder'>('manual');
   const [localCategories, setLocalCategories] = useState<Category[]>(categories);
   const [collectionsList, setCollectionsList] = useState<Collection[]>([]);
   // Start with the prop config if provided, otherwise fall back to ConfigManager (localStorage/defaults).
@@ -1720,10 +1721,9 @@ export function SettingsPage({
     window.dispatchEvent(new Event('collection-updated'));
   };
 
-  const handleCreateCollection = () => {
-    // Set the editor collection to null to signal to the dialog that this is a NEW item
-    setEditorCollection(null);
-    // Open the dialog
+  const handleCreateCollection = (mode: 'manual' | 'folder' = 'manual') => {
+    setCreateMode(mode);
+    setEditorCollection(null); // Clear for new
     setIsEditorOpen(true);
   };
 
@@ -2509,10 +2509,14 @@ export function SettingsPage({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <Button onClick={handleCreateCollection}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create New
+              <div className="flex flex-wrap gap-2 mb-4">
+                  <Button onClick={() => handleCreateCollection('folder')} variant="outline" className="gap-2">
+                    <FolderPlus className="h-4 w-4" />
+                    New Collection
+                  </Button>
+                  <Button onClick={() => handleCreateCollection('manual')} className="gap-2">
+                    <Plus className="h-4 w-4" />
+                    Manual Import
                   </Button>
                   <Button variant="outline" onClick={() => setShowImportDialog(true)}>
                     <FolderOpen className="mr-2 h-4 w-4" />
@@ -3825,6 +3829,7 @@ export function SettingsPage({
         onDelete={handleDeleteCollection}
         open={isEditorOpen}
         onOpenChange={setIsEditorOpen}
+        initialMode={createMode}
       />
     </div>
   );

@@ -1,13 +1,12 @@
 import { Canvas, useThree, useLoader } from "@react-three/fiber";
-import { Center, OrbitControls, PerspectiveCamera, Environment } from "@react-three/drei";
+import { Center, OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader';
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls';
 
-// --- Helper: Model Geometry Fixes (Unchanged) ---
-// (Your existing ModelContent logic, renamed for clarity)
+// --- Helper: Model Geometry Fixes ---
 function ModelGeometryFix({ url, color }: { url: string; color: string }) {
   const isStl = url.toLowerCase().endsWith(".stl");
   
@@ -32,6 +31,11 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
 
     const handleGeometryFix = (geometry: THREE.BufferGeometry) => {
         if (geometry.attributes.position) {
+            // [FIX] Compute Normals if missing. 
+            // 3MFs often lack normals, causing them to appear black/dark under light.
+            if (!geometry.attributes.normal) {
+                geometry.computeVertexNormals();
+            }
             if (!geometry.boundingSphere) geometry.computeBoundingSphere();
             if (!geometry.boundingBox) geometry.computeBoundingBox();
         }
@@ -46,10 +50,11 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
                 child.castShadow = true;
                 child.receiveShadow = true;
 
+                // Apply a bright standard material
                 child.material = new THREE.MeshStandardMaterial({
                     color: new THREE.Color(color),
-                    roughness: 0.5,
-                    metalness: 0.1,
+                    roughness: 0.4, // Lower roughness = slightly shinier/brighter
+                    metalness: 0.0, // No metalness avoids "black reflection" issues without HDRI
                     side: THREE.DoubleSide, 
                 });
             }
@@ -63,6 +68,8 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
     const geom = object as THREE.BufferGeometry;
     if (geom.attributes.position && !geom.boundingSphere) {
         geom.computeBoundingSphere();
+        // Also ensure normals for STLs just in case
+        if (!geom.attributes.normal) geom.computeVertexNormals();
     }
     
     return (
@@ -74,8 +81,8 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
       >
         <meshStandardMaterial 
           color={color} 
-          roughness={0.5} 
-          metalness={0.1} 
+          roughness={0.4} 
+          metalness={0.0} 
           side={THREE.DoubleSide} 
         />
       </mesh>
@@ -86,13 +93,11 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
   return <primitive object={object} rotation={[-Math.PI / 2, 0, 0]} />;
 }
 
-// --- Helper: Custom Camera Fitter (THE CRASH & ZOOM FIX) ---
+// --- Helper: Custom Camera Fitter (Preserved) ---
 function CameraFitter({ url }: { url: string }) { 
-  // We rename the variable to `controlsAny` and then assert its type inside the useEffect.
   const { camera, scene, controls: controlsAny } = useThree();
   const fitted = useRef(false);
 
-  // Reset state when model URL changes
   useEffect(() => {
     fitted.current = false;
   }, [url]); 
@@ -100,10 +105,7 @@ function CameraFitter({ url }: { url: string }) {
   useEffect(() => {
     if (fitted.current) return;
     
-    // Type assertion to let TypeScript know what controlsAny really is.
     const controls = controlsAny as OrbitControlsImpl; 
-    
-    // Safety check: ensure controls is available and is the correct type before accessing properties
     if (!controls || !controls.target) return;
 
     scene.updateMatrixWorld(true);
@@ -128,18 +130,14 @@ function CameraFitter({ url }: { url: string }) {
     camera.lookAt(center);
     camera.updateProjectionMatrix();
     
-    // --- ZOOM FIX IMPLEMENTATION ---
-    // Now that 'controls' is typed correctly, these errors are resolved:
-    controls.target.copy(center); // Property 'target' exists on OrbitControlsImpl
-    
+    controls.target.copy(center); 
     const initialDistance = camera.position.distanceTo(controls.target);
-    controls.minDistance = initialDistance * 0.5; // Property 'minDistance' exists
-    controls.maxDistance = initialDistance * 3.0; // Property 'maxDistance' exists
-    controls.update(); // Property 'update' exists
-    // --- END ZOOM FIX IMPLEMENTATION ---
+    controls.minDistance = initialDistance * 0.5;
+    controls.maxDistance = initialDistance * 3.0;
+    controls.update();
 
     fitted.current = true;
-  }, [camera, scene, url, controlsAny]); // Depend on controlsAny
+  }, [camera, scene, url, controlsAny]);
 
   return null;
 }
@@ -153,37 +151,37 @@ export function Grid3DViewer({ url, color = "#6366f1" }: { url: string; color?: 
         dpr={[1, 1.5]} 
         gl={{ preserveDrawingBuffer: true }} 
       >
-        {/* We keep this default setup */}
         <PerspectiveCamera makeDefault position={[-10, 10, 10]} fov={20} />
 
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[5, 5, 5]} intensity={1} castShadow />
-        <directionalLight position={[-5, 3, -5]} intensity={0.5} />
-        <Environment preset="studio" />
+        {/* [FIX] Manual Studio Lighting 
+            Replacing external Environment map with strong local lights 
+            so models are visible even without internet/HDRI.
+        */}
+        <ambientLight intensity={1.5} />
+        <hemisphereLight args={["#ffffff", "#444444", 2.0]} />
+        
+        <directionalLight position={[5, 10, 5]} intensity={2.0} castShadow />
+        <directionalLight position={[-5, 5, -5]} intensity={1.5} />
+        <directionalLight position={[0, -5, 5]} intensity={0.5} />
         
         <Suspense fallback={null}>
-        <Center>
-  {/* The component where you were using null: */}
-  {url.toLowerCase().endsWith(".3mf") ? (
-    <group 
-      // FIX: Replace null with undefined
-      onPointerOver={undefined} 
-      onPointerOut={undefined}
-    > 
-      <ModelGeometryFix url={url} color={color} />
-    </group>
-  ) : (
-    <ModelGeometryFix url={url} color={color} />
-  )}
-</Center>
+          <Center>
+            {url.toLowerCase().endsWith(".3mf") ? (
+              <group onPointerOver={undefined} onPointerOut={undefined}> 
+                <ModelGeometryFix url={url} color={color} />
+              </group>
+            ) : (
+              <ModelGeometryFix url={url} color={color} />
+            )}
+          </Center>
           
-          <CameraFitter url={url} /> {/* <--- NEW HELPER */}
+          <CameraFitter url={url} />
           
           <OrbitControls 
             enableZoom={true} 
             enablePan={false}
             autoRotate={false} 
-            target={[0, 0, 0]} // Initial default target
+            target={[0, 0, 0]} 
             makeDefault 
           />
         </Suspense>

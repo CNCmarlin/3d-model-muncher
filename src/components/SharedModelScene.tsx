@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Suspense, memo } from "react";
-import { PerspectiveCamera, OrbitControls, Environment, Center, Bounds } from "@react-three/drei";
+import { PerspectiveCamera, OrbitControls, Center, Bounds } from "@react-three/drei";
 import { ModelMesh } from "./ModelMesh";
 
 interface SharedModelSceneProps {
@@ -30,13 +30,25 @@ export const SharedModelScene = memo(({
         autoRotate={autoRotate}
         autoRotateSpeed={2.0}
       />
-  {/* @ts-ignore: react-three/fiber JSX intrinsic types */}
-  <ambientLight intensity={0.4} />
-  {/* @ts-ignore: react-three/fiber JSX intrinsic types */}
-  <directionalLight position={[5, 5, 5]} intensity={1} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
-  {/* @ts-ignore: react-three/fiber JSX intrinsic types */}
-  <directionalLight position={[-5, 3, -5]} intensity={0.5} />
-      <Environment preset="studio" />
+      
+      {/* --- [FIX] Manual "Studio" Lighting (Brighter & Offline) --- */}
+      
+      {/* 1. Global Ambience: Raises the brightness floor so nothing is pitch black */}
+      {/* @ts-ignore: react-three/fiber JSX intrinsic types */}
+      <ambientLight intensity={1.5} />
+
+      {/* 2. Sky/Ground Fill: Crucial for 3MFs to show shape/depth without an HDRI */}
+      {/* @ts-ignore: react-three/fiber JSX intrinsic types */}
+      <hemisphereLight args={["#ffffff", "#444444", 2.0]} />
+
+      {/* 3. Main Key Light: Creates the primary shadows */}
+      {/* @ts-ignore: react-three/fiber JSX intrinsic types */}
+      <directionalLight position={[5, 5, 5]} intensity={2.5} castShadow shadow-mapSize-width={2048} shadow-mapSize-height={2048} />
+      
+      {/* 4. Rim Light: Highlights edges from behind */}
+      {/* @ts-ignore: react-three/fiber JSX intrinsic types */}
+      <directionalLight position={[-5, 3, -5]} intensity={1.5} />
+
       <Suspense fallback={null}>
         {modelUrl ? (
           <Bounds fit clip observe margin={1.2}>

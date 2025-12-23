@@ -6,13 +6,14 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-import { Loader2, Save, Trash2, Folder, FolderOpen, ChevronRight, ChevronDown } from "lucide-react";
+import { Loader2, Save, Trash2, Folder, FolderOpen, FolderPlus, ChevronRight, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Collection } from "../types/collection";
 import { Category } from "../types/category";
 import { Model } from "../types/model";
 import { ScrollArea } from "./ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { Checkbox } from "./ui/checkbox";
 
 interface CollectionEditorDialogProps {
   collection: Collection | null;
@@ -22,6 +23,8 @@ interface CollectionEditorDialogProps {
   onDelete: (id: string) => Promise<void>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialMode?: 'manual' | 'folder';
+  defaultParentId?: string;
 }
 
 const defaultCollectionState: Collection = {
@@ -36,6 +39,14 @@ const defaultCollectionState: Collection = {
   created: new Date().toISOString(),
   lastModified: new Date().toISOString(),
 };
+
+// Helper to truncate middle of long paths
+function truncateMiddle(text: string, maxLength: number) {
+  if (!text || text.length <= maxLength) return text;
+  const startChars = Math.ceil(maxLength / 2) - 2;
+  const endChars = Math.floor(maxLength / 2) - 1;
+  return `${text.substring(0, startChars)}...${text.substring(text.length - endChars)}`;
+}
 
 // --- Folder Tree Helpers ---
 interface FolderNode {
@@ -128,16 +139,73 @@ export function CollectionEditorDialog({
   onDelete,
   open,
   onOpenChange,
+  initialMode = 'manual',
+  defaultParentId
 }: CollectionEditorDialogProps) {
   const [localCollection, setLocalCollection] = useState<Collection>(
     collection || defaultCollectionState
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [createOnDisk, setCreateOnDisk] = useState(false);
+  const [availableFolders, setAvailableFolders] = useState<string[]>(['(Root)']);
+  const [targetFolder, setTargetFolder] = useState<string>('(Root)');
 
   // Sync external prop changes
+  // Sync external prop changes & Initialize Mode
   useEffect(() => {
+    // 1. Reset form data
     setLocalCollection(collection || { ...defaultCollectionState, id: '' });
-  }, [collection]);
+
+    // 2. Set "Create on Disk" default based on button clicked
+    if (!collection) {
+      // Creating NEW
+      if (initialMode === 'folder') {
+        setCreateOnDisk(true);
+      } else {
+        setCreateOnDisk(false);
+      }
+    } else {
+      // Editing existing (never creating folder)
+      setCreateOnDisk(false);
+    }
+  }, [collection, initialMode]);
+  
+  useEffect(() => {
+    if (open) {
+        fetch('/api/model-folders')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && Array.isArray(data.folders)) {
+                    // Filter out hidden folders if needed
+                    const folders = ['(Root)', ...data.folders];
+                    setAvailableFolders(folders);
+                }
+            })
+            .catch(console.error);
+    }
+  }, [open]);
+
+  // [NEW] Context-Aware Default Folder
+  // If a parentId is provided (e.g. from context), try to find its matching physical folder
+  useEffect(() => {
+    if (!collection && open && defaultParentId && defaultParentId !== 'root') {
+        // Try to decode the path from the ID (if it's an auto-collection)
+        if (defaultParentId.startsWith('col_')) {
+            try {
+                // Decode base64 ID to get path
+                const b64 = defaultParentId.substring(4);
+                const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+                // normalize
+                const normalized = relPath.replace(/\\/g, '/');
+                setTargetFolder(normalized);
+            } catch (e) {
+                console.log("Could not decode parent path", e);
+            }
+        }
+    } else {
+        setTargetFolder('(Root)');
+    }
+  }, [defaultParentId, open, collection]);
 
   const isEditing = !!collection;
   const folderTree = useMemo(() => buildFolderTree(models), [models]);
@@ -153,25 +221,14 @@ export function CollectionEditorDialog({
   };
 
   const handleFolderSelect = (node: FolderNode) => {
-    // 1. Find all models in this folder path
     const folderPrefix = node.fullPath + '/';
     const modelsInFolder = models.filter(m => {
         let path = m.modelUrl || m.filePath || '';
         path = path.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
-        // Match exact folder path or recursive children
         return path.startsWith(folderPrefix) || path === node.fullPath;
     });
-
     const ids = modelsInFolder.map(m => m.id);
-
-    // 2. Update state
-    setLocalCollection(prev => ({
-        ...prev,
-        // [FIX] Always update the name to match the selected folder
-        name: node.name, 
-        modelIds: ids
-    }));
-
+    setLocalCollection(prev => ({ ...prev, name: node.name, modelIds: ids }));
     toast.info(`Selected ${ids.length} models from "${node.name}"`);
   };
 
@@ -184,13 +241,15 @@ export function CollectionEditorDialog({
 
     const dataToSave = {
         ...localCollection,
-        id: localCollection.id || crypto.randomUUID(), 
+        id: (createOnDisk && !isEditing) ? "" : (localCollection.id || crypto.randomUUID()), 
         modelIds: localCollection.modelIds || [],
         tags: localCollection.tags || [],
+        createOnDisk: !isEditing && createOnDisk,
+        targetFolderPath: (createOnDisk && targetFolder !== '(Root)') ? targetFolder : undefined
     };
     
     try {
-        await onSave(dataToSave);
+        await onSave(dataToSave as Collection); // [FIX] Cast to Collection to bypass strict type check on extra props
         toast.success(`${isEditing ? 'Updated' : 'Created'} collection: ${dataToSave.name}`);
         onOpenChange(false);
     } catch (e: any) {
@@ -202,10 +261,8 @@ export function CollectionEditorDialog({
   
   const handleDelete = async () => {
     if (!isEditing || !localCollection.id) return;
-    
     const confirmDelete = window.confirm(`Are you sure you want to delete the collection "${localCollection.name}"? This cannot be undone.`);
     if (!confirmDelete) return;
-
     setIsLoading(true);
     try {
         await onDelete(localCollection.id);
@@ -241,21 +298,62 @@ export function CollectionEditorDialog({
                 placeholder="My Collection"
                 />
             </div>
-            
-            {/* Folder Import Section - Only show when creating or if model list is empty */}
-            {(!isEditing || (localCollection.modelIds?.length === 0)) && (
+
+            {!isEditing && initialMode === 'folder' && (
+                <div className="rounded-md border p-3 bg-muted/20 space-y-3">
+                    <div className="flex items-start space-x-2">
+                        <Checkbox 
+                            id="create-disk" 
+                            checked={createOnDisk} 
+                            onCheckedChange={(c) => setCreateOnDisk(!!c)} 
+                        />
+                        <div className="grid gap-1.5 leading-none">
+                            <Label htmlFor="create-disk" className="text-sm font-medium leading-none flex items-center gap-2 cursor-pointer">
+                                <FolderPlus className="h-3.5 w-3.5 text-primary" />
+                                Create Physical Folder
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                                Creates a directory on your disk.
+                            </p>
+                        </div>
+                    </div>
+
+                    {createOnDisk && (
+                        <div className="space-y-2 pl-6 animate-in slide-in-from-top-1 fade-in-0 duration-200">
+                            <Label className="text-xs">Location (Parent Folder)</Label>
+                            <Select value={targetFolder} onValueChange={setTargetFolder}>
+                                <SelectTrigger>
+                                    <span className="truncate block text-left">
+                                        {targetFolder === '(Root)' ? 'Root Directory' : truncateMiddle(targetFolder, 35)}
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[200px]">
+                                    <SelectItem value="(Root)">
+                                        <span className="font-semibold">Root Directory</span> (./models)
+                                    </SelectItem>
+                                    {availableFolders.map(f => (
+                                        <SelectItem key={f} value={f} title={f}>
+                                            {truncateMiddle(f, 40)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Folder Import (Manual Mode Only) */}
+            {(!isEditing && initialMode === 'manual') && (
                 <Accordion type="single" collapsible className="w-full border rounded-md px-2">
                     <AccordionItem value="folder-import" className="border-0">
                         <AccordionTrigger className="hover:no-underline py-2">
                             <div className="flex items-center gap-2 text-sm font-medium">
                                 <Folder className="h-4 w-4 text-blue-500" />
-                                Import from Folder
+                                Select from Existing Folder
                             </div>
                         </AccordionTrigger>
                         <AccordionContent>
-                            <div className="text-xs text-muted-foreground mb-2">
-                                Click a folder to auto-fill the name and add all models inside it.
-                            </div>
                             <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
                                 {Object.values(folderTree.children).map(node => (
                                     <FolderTreeItem key={node.fullPath} node={node} level={0} onSelect={handleFolderSelect} />
