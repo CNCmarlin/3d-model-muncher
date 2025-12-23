@@ -301,35 +301,92 @@ app.get('/api/collections', (req, res) => {
   }
 });
 
-// Create or update a collection (Refactored to use Queue)
+// Create or update a collection
 app.post('/api/collections', async (req, res) => {
   try {
-    const { id, name, description = '', modelIds = [], childCollectionIds = [], parentId = null, coverModelId, category = '', tags = [], images = [] } = req.body || {};
+    const { id, name, description = '', modelIds = [], childCollectionIds = [], parentId = null, coverModelId, category = '', tags = [], images = [], createOnDisk } = req.body || {};
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ success: false, error: 'Name is required' });
     }
 
-    // We wrap the logic in a Task function for the Queue
+    // [NEW] Setup variables for Folder Creation
+    let finalId = id;
+    let finalCategory = category;
+
+    // [NEW] Logic for creating physical folder (Only if requested AND it's a new collection)
+    if ((!finalId || finalId === '') && createOnDisk) {
+        const modelsDir = getAbsoluteModelsPath();
+        let parentDir = modelsDir;
+
+        // 1. Resolve Parent Path
+        if (parentId && parentId !== 'root') {
+            const currentCols = loadCollections();
+            const parentCol = currentCols.find(c => c.id === parentId);
+            if (parentCol) {
+                // Try to decode path from ID if it's an auto-collection (col_...)
+                if (parentCol.id.startsWith('col_')) {
+                    try {
+                        const b64 = parentCol.id.substring(4);
+                        // Decode base64 to get relative path
+                        const relPath = Buffer.from(b64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+                        parentDir = path.join(modelsDir, relPath);
+                    } catch (e) {
+                        console.warn("Could not decode parent path from ID, defaulting to root");
+                    }
+                } else {
+                    // Manual collection parent: we can't physically nest inside a virtual collection
+                    console.log("Parent is manual collection, creating folder at root models dir.");
+                }
+            }
+        }
+
+        // 2. Create the Directory on Disk
+        // Sanitize name for filesystem safety
+        const safeName = name.replace(/[^a-zA-Z0-9_\- ]/g, '').trim(); 
+        const newDirPath = path.join(parentDir, safeName);
+        
+        if (!fs.existsSync(newDirPath)) {
+            fs.mkdirSync(newDirPath, { recursive: true });
+            console.log(`[Collection] Created physical folder: ${newDirPath}`);
+        }
+
+        // 3. Generate ID consistent with Auto-Import Scanner
+        // This ensures that if the auto-scanner runs later, it will generate the SAME ID and match this collection.
+        const rel = path.relative(modelsDir, newDirPath);
+        const normalized = rel.replace(/\\/g, '/');
+        // 'col_' + base64(path)
+        finalId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
+        
+        // Force category to 'Auto-Imported' so it behaves like a system collection
+        finalCategory = 'Auto-Imported';
+    } else if (!finalId) {
+        // Fallback for standard manual collections
+        finalId = makeId();
+    }
+
+    // [EXISTING] The safe update task
     const updateTask = (currentCols) => {
       const now = new Date().toISOString();
       const normalizedIds = Array.from(new Set(modelIds.filter(x => typeof x === 'string' && x.trim() !== '')));
       const normalizedChildren = Array.isArray(childCollectionIds) ? childCollectionIds.filter(x => typeof x === 'string') : [];
 
-      let updatedCols = [...currentCols]; // Work on a copy
+      let updatedCols = [...currentCols];
 
-      if (id) {
+      // Check if ID exists (using our calculated finalId)
+      const idx = updatedCols.findIndex(c => c.id === finalId);
+
+      if (idx !== -1) {
         // UPDATE Existing
-        const idx = updatedCols.findIndex(c => c.id === id);
-        if (idx === -1) throw new Error('Collection not found');
-
         const prev = updatedCols[idx];
         const updated = {
           ...prev,
           name, description, modelIds: normalizedIds, childCollectionIds: normalizedChildren,
-          parentId, coverModelId, lastModified: now
+          parentId: (parentId === 'root' ? null : parentId), // Ensure 'root' becomes null
+          coverModelId, lastModified: now
         };
-        if (category) updated.category = category;
+        // Only update these if provided (or if forced by folder creation)
+        if (finalCategory) updated.category = finalCategory;
         if (tags) updated.tags = tags;
         if (images) updated.images = images;
 
@@ -337,9 +394,12 @@ app.post('/api/collections', async (req, res) => {
       } else {
         // CREATE New
         const newCol = {
-          id: makeId(),
+          id: finalId, // Use the ID we determined above
           name, description, modelIds: normalizedIds, childCollectionIds: normalizedChildren,
-          parentId, coverModelId, category, tags, images,
+          parentId: (parentId === 'root' ? null : parentId),
+          coverModelId, 
+          category: finalCategory,
+          tags, images,
           created: now, lastModified: now
         };
         updatedCols.push(newCol);
@@ -351,12 +411,10 @@ app.post('/api/collections', async (req, res) => {
     // Execute via Queue
     await collectionQueue.add(updateTask);
 
-    // Fetch result to return to client
+    // Fetch result
     const freshCols = loadCollections();
-    const savedItem = id ? freshCols.find(c => c.id === id) : freshCols[freshCols.length - 1];
+    const savedItem = freshCols.find(c => c.id === finalId);
 
-    // Note: Reconcile logic (unhiding models) is kept separate/async to avoid blocking response too long,
-    // or you can add it here if strict consistency is needed.
     setTimeout(() => { try { reconcileHiddenFlags(); } catch { } }, 10);
 
     res.json({ success: true, collection: savedItem });
