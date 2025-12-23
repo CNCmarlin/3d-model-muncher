@@ -41,6 +41,14 @@ const defaultCollectionState: Collection = {
   lastModified: new Date().toISOString(),
 };
 
+// Helper to shorten long paths for UI
+function truncateMiddle(text: string, maxLength: number) {
+  if (!text || text.length <= maxLength) return text;
+  const startChars = Math.ceil(maxLength / 2) - 2;
+  const endChars = Math.floor(maxLength / 2) - 1;
+  return `${text.substring(0, startChars)}...${text.substring(text.length - endChars)}`;
+}
+
 // --- Folder Tree Helpers (Keep existing implementation) ---
 interface FolderNode {
   name: string;
@@ -121,6 +129,35 @@ export function CollectionEditorDialog({
   const [createOnDisk, setCreateOnDisk] = useState(false);
   const [parentId, setParentId] = useState<string>("root");
 
+  // [NEW] Smart List: Decode IDs to show full paths
+  // This solves the "Which 'Test' folder is this?" problem
+  const formattedCollections = useMemo(() => {
+    return collections
+        .filter(c => !collection || c.id !== collection.id) // Exclude self
+        .map(c => {
+            let displayName = c.name;
+            let path = c.name;
+            
+            // Try to decode physical path from ID (col_...)
+            if (c.id && c.id.startsWith('col_')) {
+                try {
+                    const b64 = c.id.substring(4);
+                    // Standard base64url decoding
+                    path = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+                    displayName = path.replace(/\//g, ' / '); 
+                } catch (e) { /* ignore */ }
+            }
+            
+            return {
+                id: c.id,
+                name: c.name,
+                displayName: displayName,
+                path: path
+            };
+        })
+        .sort((a, b) => a.path.localeCompare(b.path));
+  }, [collections, collection]);
+
   // Sync external prop changes & Initialize
   useEffect(() => {
     setLocalCollection(collection || { ...defaultCollectionState, id: '' });
@@ -144,7 +181,6 @@ export function CollectionEditorDialog({
   const folderTree = useMemo(() => buildFolderTree(models), [models]);
   
   // Filter out self to avoid circular parents
-  const availableParents = collections.filter(c => !collection || c.id !== collection.id);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -238,19 +274,21 @@ export function CollectionEditorDialog({
                 />
             </div>
 
-            {/* [NEW] Parent Collection Selector */}
+            {/* [NEW] Smart Parent Selector */}
             <div className="space-y-2">
                 <Label>Parent Collection</Label>
                 <Select value={parentId} onValueChange={setParentId} disabled={isLoading}>
                     <SelectTrigger>
                         <SelectValue placeholder="Select parent..." />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[250px]">
                         <SelectItem value="root">
-                            <span className="text-muted-foreground italic">No Parent (Root Level)</span>
+                            <span className="text-muted-foreground italic font-medium">Root Directory (No Parent)</span>
                         </SelectItem>
-                        {availableParents.map((col) => (
-                            <SelectItem key={col.id} value={col.id}>{col.name}</SelectItem>
+                        {formattedCollections.map((col) => (
+                            <SelectItem key={col.id} value={col.id} title={col.path}>
+                                {truncateMiddle(col.displayName, 45)}
+                            </SelectItem>
                         ))}
                     </SelectContent>
                 </Select>

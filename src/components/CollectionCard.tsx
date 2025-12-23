@@ -14,13 +14,14 @@ import { getLabel } from "../constants/labels";
 export interface CollectionCardProps {
   collection: Collection;
   categories: Category[];
+  collections: Collection[];
   onOpen: (id: string) => void;
   onChanged?: () => void; // called after edit save
   onDeleted?: (id: string) => void;
   fallbackImage?: string;
 }
 
-export function CollectionCard({ collection, categories, onOpen, onChanged, onDeleted, fallbackImage }: CollectionCardProps) {
+export function CollectionCard({ collection, categories, collections, onOpen, onChanged, onDeleted, fallbackImage }: CollectionCardProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
@@ -164,7 +165,7 @@ export function CollectionCard({ collection, categories, onOpen, onChanged, onDe
       </CardFooter>
 
       {/* Edit drawer */}
-      <CollectionEditDrawer open={isEditOpen} onOpenChange={setIsEditOpen} collection={collection ?? null} categories={categories} onSaved={handleSaved} />
+      <CollectionEditDrawer open={isEditOpen} onOpenChange={setIsEditOpen} collection={collection ?? null} collections={collections} categories={categories} onSaved={handleSaved} />
 
       {/* Delete confirmation */}
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

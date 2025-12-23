@@ -1221,10 +1221,10 @@ return (
                             key={c.id}
                             collection={c}
                             categories={categories}
+                            collections={collections}
                             onOpen={() => openCollection(c)}
                             onChanged={refreshCollections}
-                            fallbackImage={fallback}
-                          />
+                            fallbackImage={fallback}                           />
                         );
                       })}
                     </div>
@@ -1235,6 +1235,7 @@ return (
                           key={c.id}
                           collection={c}
                           categories={categories}
+                          collections={collections}
                           onOpen={() => openCollection(c)}
                           onChanged={refreshCollections}
                         />

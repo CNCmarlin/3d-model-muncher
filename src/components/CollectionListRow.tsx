@@ -12,12 +12,13 @@ import type { Category } from "../types/category";
 interface CollectionListRowProps {
   collection: Collection;
   categories: Category[];
+  collections: Collection[];
   onOpen: (id: string) => void;
   onChanged?: () => void;
   onDeleted?: (id: string) => void;
 }
 
-export function CollectionListRow({ collection, categories, onOpen, onChanged, onDeleted }: CollectionListRowProps) {
+export function CollectionListRow({ collection, categories, collections, onOpen, onChanged, onDeleted }: CollectionListRowProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
@@ -135,6 +136,7 @@ export function CollectionListRow({ collection, categories, onOpen, onChanged, o
         open={isEditOpen}
         onOpenChange={setIsEditOpen}
         collection={collection ?? null}
+        collections={collections}
         categories={categories}
         onSaved={handleSaved}
       />

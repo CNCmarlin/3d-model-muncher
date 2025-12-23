@@ -278,6 +278,7 @@ export default function CollectionGrid({
                       <CollectionCard
                         key={col.id}
                         collection={col}
+                        collections={collections}
                         categories={config?.categories || []}
                         onOpen={() => onOpenCollection(col)}
                         onChanged={onCollectionChanged}
@@ -293,6 +294,7 @@ export default function CollectionGrid({
                     <CollectionListRow
                       key={col.id}
                       collection={col}
+                      collections={collections}
                       categories={config?.categories || []}
                       onOpen={() => onOpenCollection(col)}
                       onChanged={onCollectionChanged}
@@ -477,6 +479,7 @@ export default function CollectionGrid({
         open={isEditorOpen}
         onOpenChange={setIsEditorOpen}
         collection={tempCollectionData}
+        collections={collections}
         categories={config?.categories || []}
         models={models}
         initialMode={createCollectionMode}
