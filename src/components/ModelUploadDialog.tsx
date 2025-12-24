@@ -4,10 +4,11 @@ import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { ScrollArea } from './ui/scroll-area';
 import { Input } from './ui/input';
-import { FolderPlus, Trash } from 'lucide-react';
+import { FolderPlus, Trash, Layers, Tag } from 'lucide-react';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
+import { Textarea } from './ui/textarea';
 import { toast } from 'sonner';
 import { RendererPool } from '../utils/rendererPool';
 import TagsInput from './TagsInput';
@@ -17,16 +18,26 @@ interface ModelUploadDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onUploaded?: () => void;
+  initialFolder?: string;
 }
 
-export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, onClose, onUploaded }: ModelUploadDialogProps) => {
+export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, onClose, onUploaded, initialFolder }: ModelUploadDialogProps) => {
   const [files, setFiles] = useState<File[]>([] as File[]);
   const [isUploading, setIsUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Destination State
   const [folders, setFolders] = useState<string[]>(['uploads']);
-  const [singleDestination, setSingleDestination] = useState<string>('uploads');
-  const [showCreateFolderInput, setShowCreateFolderInput] = useState(false);
-  const [newFolderName, setNewFolderName] = useState('');
+  const [singleDestination, setSingleDestination] = useState<string>(initialFolder || 'uploads');
+
+  // Group / Collection Features
+  const [isGroupUpload, setIsGroupUpload] = useState(false);
+  const [groupDescription, setGroupDescription] = useState('');
+  const [autoTagFolder, setAutoTagFolder] = useState(true); // Default to true for convenience
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [parentFolder, setParentFolder] = useState('uploads');
+
+  // Standard Metadata
   const [generatePreviews, setGeneratePreviews] = useState<boolean>(true);
   const [previewGenerating, setPreviewGenerating] = useState<boolean>(false);
   const [previewProgress, setPreviewProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
@@ -39,11 +50,11 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
     const dt = e.dataTransfer;
     if (!dt) return;
     const arr = Array.from(dt.files as FileList);
-    
+
     // Filter out .gcode.3mf files and show helpful message
     const gcodeArchives: File[] = [];
     const validFiles: File[] = [];
-    
+
     arr.forEach((f: File) => {
       const lowerName = f.name.toLowerCase();
       if (lowerName.endsWith('.gcode.3mf') || lowerName.endsWith('.3mf.gcode')) {
@@ -52,17 +63,17 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
         validFiles.push(f);
       }
     });
-    
+
     if (gcodeArchives.length > 0) {
       const fileNames = gcodeArchives.map(f => f.name).join(', ');
       toast.error(`G-code archives (${fileNames}) should be uploaded via the G-code analysis dialog in the model details panel`);
     }
-    
+
     if (validFiles.length === 0 && gcodeArchives.length === 0) {
       toast.error('Please drop .3mf or .stl files only');
       return;
     }
-    
+
     if (validFiles.length > 0) {
       setFiles(prev => ([...prev, ...validFiles]));
     }
@@ -72,11 +83,11 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const arr = Array.from(e.target.files || []) as File[];
-    
+
     // Filter out .gcode.3mf files and show helpful message
     const gcodeArchives: File[] = [];
     const validFiles: File[] = [];
-    
+
     arr.forEach((f: File) => {
       const lowerName = f.name.toLowerCase();
       if (lowerName.endsWith('.gcode.3mf') || lowerName.endsWith('.3mf.gcode')) {
@@ -85,17 +96,17 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
         validFiles.push(f);
       }
     });
-    
+
     if (gcodeArchives.length > 0) {
       const fileNames = gcodeArchives.map(f => f.name).join(', ');
       toast.error(`G-code archives (${fileNames}) should be uploaded via the G-code analysis dialog in the model details panel`);
     }
-    
+
     if (validFiles.length === 0 && gcodeArchives.length === 0) {
       toast.error('Please select .3mf or .stl files');
       return;
     }
-    
+
     if (validFiles.length > 0) {
       setFiles(prev => ([...prev, ...validFiles]));
     }
@@ -107,15 +118,24 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
   };
 
   async function applyCategoryAndTagsTo(relPath: string, candidateModel: any | null) {
-  const trimmedCat = (selectedCategory || 'Uncategorized').trim() || 'Uncategorized';
-  const hasTags = Array.isArray(applyTags) && applyTags.length > 0;
+    const trimmedCat = (selectedCategory || 'Uncategorized').trim() || 'Uncategorized';
+
+    let finalTags = [...applyTags];
+    if (autoTagFolder) {
+      // Extract folder name from destination
+      const folderName = singleDestination.split('/').pop() || singleDestination;
+      if (folderName && folderName !== 'uploads' && !finalTags.includes(folderName)) {
+        finalTags.push(folderName);
+      }
+    }
+    const hasTags = finalTags.length > 0;
 
     let jsonPath = '';
     if (relPath.toLowerCase().endsWith('.3mf')) jsonPath = relPath.replace(/\.3mf$/i, '-munchie.json');
     else if (relPath.toLowerCase().endsWith('.stl')) jsonPath = relPath.replace(/\.stl$/i, '-stl-munchie.json');
     else jsonPath = `${relPath}-munchie.json`;
 
-  const changes: any = { filePath: jsonPath, category: trimmedCat };
+    const changes: any = { filePath: jsonPath, category: trimmedCat };
     if (hasTags) {
       const baseTags: string[] = Array.isArray(candidateModel?.tags) ? candidateModel.tags : [];
       const union = new Map<string, string>();
@@ -146,6 +166,18 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
 
     const destArray: string[] = files.map(() => singleDestination || 'uploads');
     fd.append('destinations', JSON.stringify(destArray));
+
+    if (isGroupUpload || groupDescription) {
+      fd.append('createCollection', 'true');
+      fd.append('collectionDescription', groupDescription);
+      // Also tag the collection itself if requested
+      if (autoTagFolder) {
+        const folderName = singleDestination.split('/').pop() || '';
+        if (folderName) fd.append('collectionTags', JSON.stringify([...applyTags, folderName]));
+      } else {
+        fd.append('collectionTags', JSON.stringify(applyTags));
+      }
+    }
 
     try {
       const resp = await fetch('/api/upload-models', { method: 'POST', body: fd });
@@ -241,13 +273,27 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
   };
 
   useEffect(() => {
+    if (isGroupUpload) {
+        // Mode: New Folder/Collection
+        // Path = Parent + / + Name
+        const cleanParent = parentFolder === 'root' ? '' : parentFolder;
+        const cleanName = newCollectionName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
+        const fullPath = cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
+        setSingleDestination(fullPath || 'uploads');
+    } else {
+        // Mode: Direct Upload -> Destination is just the selected folder
+        setSingleDestination(parentFolder);
+    }
+  }, [isGroupUpload, parentFolder, newCollectionName]);
+
+  useEffect(() => {
     if (!isOpen) return;
     setFiles([]);
-    setSingleDestination('uploads');
-    setShowCreateFolderInput(false);
-  setNewFolderName('');
-  setSelectedCategory('Uncategorized');
-  setApplyTags([]);
+    setParentFolder(initialFolder || 'uploads');
+    setNewCollectionName('');
+    setIsGroupUpload(false);
+    setSelectedCategory('Uncategorized');
+    setApplyTags([]);
 
     (async () => {
       try {
@@ -270,29 +316,6 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
 
     // rely on global TagsInput suggestions (context-driven); no local fetch needed
   }, [isOpen]);
-
-  const createFolder = async (folderName?: string) => {
-    const name = (folderName || newFolderName || '').trim();
-    if (!name) {
-      toast.error('Enter a folder name');
-      return;
-    }
-    try {
-      const resp = await fetch('/api/create-model-folder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: name }) });
-      if (!resp.ok) throw new Error('Failed to create folder');
-      const data = await resp.json();
-      if (data && data.path) {
-        setFolders(prev => Array.from(new Set([...(prev || []), data.path])));
-        toast.success(`Created folder ${data.path}`);
-        setNewFolderName('');
-        setSingleDestination(data.path);
-        setShowCreateFolderInput(false);
-      }
-    } catch (e: any) {
-      console.error('Create folder error', e);
-      toast.error(e?.message || 'Failed to create folder');
-    }
-  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -318,74 +341,120 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
             </div>
 
             <div className="mt-4">
-              <div className="flex items-center gap-3 mb-3">
-                <Checkbox id="gen-previews" checked={generatePreviews} onCheckedChange={(v) => setGeneratePreviews(Boolean(v))} />
-                <Label htmlFor="gen-previews" className="text-sm text-foreground">Generate preview images after upload</Label>
-              </div>
 
-              {/* Destination moved above Category */}
-              <div className="mb-3">
-                <div className="text-sm text-foreground mb-1">Destination</div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <Select value={singleDestination} onValueChange={(v) => setSingleDestination(v)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder={singleDestination || 'uploads'} />
-                      </SelectTrigger>
+{/* 2. Destination & Grouping */}
+<div className="grid gap-4 border p-4 rounded-lg bg-card mb-4">
+                
+                {/* Mode Toggle */}
+                <div className="flex items-start space-x-2 mb-2">
+                    <Checkbox 
+                        id="group-upload" 
+                        checked={isGroupUpload} 
+                        onCheckedChange={(v) => setIsGroupUpload(!!v)} 
+                    />
+                    <div className="grid gap-1.5 leading-none">
+                        <Label htmlFor="group-upload" className="flex items-center gap-2 cursor-pointer font-semibold">
+                            <Layers className="h-4 w-4 text-primary" />
+                            Create as New Collection
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                            {isGroupUpload 
+                                ? "Files will be uploaded into a NEW folder created inside the path below."
+                                : "Useful for uploading of muliple related models. Eg. a unzipped download from Printables."
+                            }
+                        </p>
+                    </div>
+                </div>
+
+                <div className="space-y-4 pt-2 border-t">
+                    {/* Parent Folder Selector */}
+                    <div className="space-y-2">
+                        <Label className="text-xs uppercase text-muted-foreground font-bold">
+                            {isGroupUpload ? "Create Inside (Parent)" : "Upload To (Target)"}
+                        </Label>
+                        <Select value={parentFolder} onValueChange={setParentFolder}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select folder..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="uploads">/uploads (Root)</SelectItem>
+                                {(folders || []).filter(f => f !== 'uploads').map(f => (
+                                    <SelectItem key={f} value={f}>{f}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* New Collection Name Input (Only visible when checked) */}
+                    {isGroupUpload && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <Label className="text-xs uppercase text-muted-foreground font-bold text-primary">
+                                New Collection Name
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <FolderPlus className="h-4 w-4 text-muted-foreground" />
+                                <Input 
+                                    value={newCollectionName} 
+                                    onChange={(e) => setNewCollectionName(e.target.value)} 
+                                    placeholder="e.g. Red Race Car" 
+                                    autoFocus
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Final Path: <code>models/{singleDestination}</code>
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Description (Only visible when checked) */}
+                    {isGroupUpload && (
+                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <Label className="text-xs uppercase text-muted-foreground font-bold">
+                                Description (Optional)
+                            </Label>
+                            <Textarea 
+                                value={groupDescription} 
+                                onChange={(e) => setGroupDescription(e.target.value)} 
+                                placeholder="Describe this collection..." 
+                                rows={2}
+                            />
+                        </div>
+                    )}
+                </div>
+            </div>
+
+              {/* Metadata & Tagging */}
+              <div className="grid gap-4 border p-4 rounded-lg bg-card mb-4">
+                <Label className="text-base font-semibold">Metadata</Label>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Category</Label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger><SelectValue placeholder="Uncategorized" /></SelectTrigger>
                       <SelectContent>
-                        {(folders || ['uploads']).map((folder) => (
-                          <SelectItem key={folder} value={folder}>{folder}</SelectItem>
-                        ))}
+                        {availableCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button className="p-1 cursor-pointer" onClick={() => setShowCreateFolderInput(!showCreateFolderInput)}>
-                        <FolderPlus className="h-4 w-4" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent sideOffset={4}>
-                      Create folder
-                    </TooltipContent>
-                  </Tooltip>
+                  <div className="space-y-2">
+                    <Label>Tags</Label>
+                    <TagsInput value={applyTags} onChange={setApplyTags} placeholder="Add tags..." />
+                  </div>
                 </div>
-              </div>
 
-              {showCreateFolderInput && (
-                <div className="mt-2 mb-2 flex items-center gap-2 w-full">
-                  <Input
-                    value={newFolderName}
-                    onChange={(e) => setNewFolderName(e.target.value)}
-                    placeholder="new/folder/path"
-                    className="flex-1"
-                  />
-                  <Button size="sm" onClick={() => createFolder()}>Create</Button>
+                {/* [NEW] Auto-Tag Checkbox */}
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="auto-tag" checked={autoTagFolder} onCheckedChange={(v) => setAutoTagFolder(!!v)} />
+                  <Label htmlFor="auto-tag" className="flex items-center gap-2 cursor-pointer text-sm font-normal">
+                    <Tag className="h-3.5 w-3.5 text-blue-500" />
+                    Auto-tag with folder name (e.g. adds "{singleDestination.split('/').pop()}" tag)
+                  </Label>
                 </div>
-              )}
-
-              <div className="mb-3">
-                <div className="text-sm text-foreground mb-1">Category</div>
-                <Select value={selectedCategory} onValueChange={(v) => setSelectedCategory(v)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Uncategorized" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableCategories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="mb-4">
-                <div className="text-sm text-foreground mb-1">Tags to apply</div>
-                <TagsInput
-                  value={applyTags}
-                  onChange={setApplyTags}
-                  placeholder="Add tags…"
-                />
-                <p className="text-xs text-muted-foreground mt-1">Category defaults to "Uncategorized". Tags here will be applied to all uploaded models.</p>
+                <div className="flex items-center gap-3 mb-3">
+                  <Checkbox id="gen-previews" checked={generatePreviews} onCheckedChange={(v) => setGeneratePreviews(Boolean(v))} />
+                  <Label htmlFor="gen-previews" className="text-sm text-foreground">Generate preview images after upload</Label>
+                </div>
               </div>
 
               {files.length === 0 ? (
@@ -397,7 +466,7 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
                       <li key={i} className={`flex items-center justify-between p-2 rounded bg-muted/20`}>
                         <div className="text-sm w-3/4">
                           <div className="font-medium">{f.name}</div>
-                          <div className="text-xs text-muted-foreground">{Math.round(f.size/1024)} KB</div>
+                          <div className="text-xs text-muted-foreground">{Math.round(f.size / 1024)} KB</div>
                           <div className="mt-2 text-xs text-muted-foreground">Destination: {singleDestination || 'uploads'}</div>
                         </div>
                         <div className="flex flex-col items-end gap-2">
@@ -428,7 +497,9 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
         <DialogFooter>
           <div className="flex gap-2 justify-end w-full">
             <Button variant="outline" onClick={onClose} disabled={isUploading || previewGenerating}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={isUploading || files.length === 0}>{isUploading ? 'Uploading...' : 'Upload & Process'}</Button>
+            <Button onClick={handleSubmit} disabled={isUploading || files.length === 0}>
+              {isUploading ? 'Uploading...' : (isGroupUpload ? 'Create Collection & Upload' : 'Upload Files')}
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>

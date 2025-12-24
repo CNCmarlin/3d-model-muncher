@@ -10,11 +10,13 @@ const { scanDirectory } = require('./dist-backend/utils/threeMFToJson');
 const { ConfigManager } = require('./dist-backend/utils/configManager');
 const { CollectionQueue } = require('./server-utils/collectionQueue');
 const { scanDirectory: scanCollections } = require('./server-utils/collectionScanner');
-
-
+const collectionScanner = require('./server-utils/collectionScanner');
+const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
 const app = express();
 const PORT = process.env.PORT || 3001;
 let activeThumbnailJob = null; // Stores the AbortController for cancellation
+
+const collectionQueue = new CollectionQueue(loadCollections, saveCollections);
 
 // Startup diagnostic: show which GenAI env vars are present (sanitized)
 safeLog('GenAI env presence:', {
@@ -196,8 +198,8 @@ function saveCollections(collections) {
   }
 }
 
-// Add this immediately after the saveCollections function
-const collectionQueue = new CollectionQueue(loadCollections, saveCollections);
+
+
 
 // Reconcile model hidden flags: any model that is not a member of any collection
 // should not remain hidden. We scan all collections to compute the complete set
@@ -1952,8 +1954,6 @@ app.post('/api/generate-thumbnails', async (req, res) => {
   try {
     const { modelIds, force = false } = req.body;
     const modelsDir = getAbsoluteModelsPath();
-    // Import the generator (ensure you ran npm run build:backend!)
-    const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
     
     // We need the server's own URL so Puppeteer can visit it
     const baseUrl = `http://127.0.0.1:${PORT}`;
@@ -2146,11 +2146,16 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
     const uploadsDir = path.join(modelsDir, 'uploads');
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
+    const createCollection = req.body.createCollection === 'true';
+    const collectionDescription = req.body.collectionDescription || '';
+    const collectionTags = req.body.collectionTags ? JSON.parse(req.body.collectionTags) : [];
+
     const { parse3MF, parseSTL, computeMD5 } = require('./dist-backend/utils/threeMFToJson');
 
     const saved = [];
     const processed = [];
     const errors = [];
+    const affectedFolders = new Map();
 
     // Parse optional destinations JSON (array aligned with files order)
     let destinations = null;
@@ -2195,6 +2200,10 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
 
         const destDir = path.join(modelsDir, destFolder);
         if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+        if (!affectedFolders.has(destDir)) {
+          affectedFolders.set(destDir, []);
+      }
 
         let targetPath = path.join(destDir, base);
         // avoid collisions by appending timestamp when necessary
@@ -2241,6 +2250,8 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
           const jsonPath = path.join(modelsDir, jsonRel);
           const derivedId = path.basename(rel).replace(/\.3mf$/i, '').replace(/\.stl$/i, '');
 
+          affectedFolders.get(destDir).push(derivedId);
+
           const fileBuf = fs.readFileSync(modelFilePath);
           const hash = computeMD5(fileBuf);
           let newMetadata;
@@ -2276,20 +2287,15 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
           if (!fs.existsSync(jdir)) fs.mkdirSync(jdir, { recursive: true });
           fs.writeFileSync(jsonPath, JSON.stringify(mergedMetadata, null, 2), 'utf8');
           try {
-            // Dynamic import to allow server start even if build is pending
-            const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
 
             const thumbName = path.basename(modelFilePath) + '-thumb.png';
             const thumbPath = path.join(path.dirname(modelFilePath), thumbName);
-            // Use server's internal address
-            const BASE_URL = process.env.HOST_URL || `http://localhost:${PORT}`;
-            const baseUrl = BASE_URL;
 
+            const BASE_URL = process.env.HOST_URL || `http://localhost:${PORT}`;
             console.log(`📸 Auto-generating thumbnail for: ${derivedId}`);
 
             // Await generation so the thumbnail exists when the UI refreshes
-            await generateThumbnail(modelFilePath, thumbPath, baseUrl);
-
+            await generateThumbnail(modelFilePath, thumbPath, BASE_URL, undefined, modelsDir);
             // Update JSON to include the new thumbnail image
             const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
             const freshJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
@@ -2314,6 +2320,86 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
         errors.push({ file: f.originalname || 'unknown', error: e && e.message ? e.message : String(e) });
       }
     }
+
+    if (affectedFolders.size > 0) {
+      const currentCols = loadCollections();
+      let colsUpdated = false;
+
+      // Iterate the Map: folderPath -> array of newModelIds
+      for (const [folderPath, newModelIds] of affectedFolders.entries()) {
+          const rel = path.relative(modelsDir, folderPath);
+          if (!rel || rel === '' || rel === '.') continue; 
+
+          // Generate standard ID
+          const normalized = rel.replace(/\\/g, '/');
+          const colId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
+          
+          const existingIdx = currentCols.findIndex(c => c.id === colId);
+          const folderName = path.basename(folderPath);
+
+          if (createCollection || existingIdx === -1) {
+              // CASE 1: Create New or Overwrite Collection (Group Upload)
+              const newCol = existingIdx !== -1 ? currentCols[existingIdx] : {
+                  id: colId,
+                  name: folderName,
+                  modelIds: [],
+                  created: new Date().toISOString(),
+                  category: 'Auto-Imported'
+              };
+
+              // [CRITICAL FIX] Add the new IDs immediately
+              const existingIds = new Set(newCol.modelIds || []);
+              newModelIds.forEach(id => existingIds.add(id));
+              newCol.modelIds = Array.from(existingIds);
+
+              // Add Description/Tags if requested
+              if (createCollection && collectionDescription) {
+                  newCol.description = collectionDescription;
+              }
+              if (collectionTags.length > 0) {
+                  newCol.tags = Array.from(new Set([...(newCol.tags || []), ...collectionTags]));
+              }
+
+              newCol.lastModified = new Date().toISOString();
+
+              if (existingIdx !== -1) currentCols[existingIdx] = newCol;
+              else currentCols.push(newCol);
+              
+              colsUpdated = true;
+          } else {
+              // CASE 2: Uploading to existing collection (Standard Upload)
+              // We must manually append the IDs here too, or they won't appear until a full re-scan
+              const existingCol = currentCols[existingIdx];
+              const existingIds = new Set(existingCol.modelIds || []);
+              
+              let changed = false;
+              newModelIds.forEach(id => {
+                  if (!existingIds.has(id)) {
+                      existingIds.add(id);
+                      changed = true;
+                  }
+              });
+              
+              if (changed) {
+                  existingCol.modelIds = Array.from(existingIds);
+                  existingCol.lastModified = new Date().toISOString();
+                  colsUpdated = true;
+              }
+          }
+      }
+
+      if (colsUpdated) {
+          saveCollections(currentCols);
+      }
+    }
+
+  // This ensures modelIds are populated before the frontend refreshes
+  await collectionQueue.add((cols) => {
+      return collectionScanner.scanDirectory(getAbsoluteModelsPath(), getAbsoluteModelsPath(), { strategy: 'strict' });
+  });
+
+  try { reconcileHiddenFlags(); } catch (e) { console.warn('Post-upload reconcile failed', e); }
+
 
     res.json({ success: errors.length === 0, saved, processed, errors });
   } catch (e) {

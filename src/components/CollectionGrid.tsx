@@ -5,7 +5,7 @@ import type { Collection } from '../types/collection';
 import { ModelCard } from './ModelCard';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
-import { ArrowLeft, ChevronRight, FileCheck, Folder, CloudDownload, Clock, Weight, HardDrive, FolderPlus } from 'lucide-react';
+import { ArrowLeft, ChevronRight, FileCheck, Folder, CloudDownload, Clock, Weight, HardDrive, FolderPlus, Upload } from 'lucide-react';
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
 import { ImageWithFallback } from "./ImageWithFallback";
@@ -43,6 +43,7 @@ interface CollectionGridProps {
   onCollectionChanged?: () => void;
   onCreateCollection?: (mode: 'manual' | 'folder') => void;
   isFiltering?: boolean;
+  onUploadClick?: () => void;
 }
 
 export default function CollectionGrid({
@@ -66,6 +67,7 @@ export default function CollectionGrid({
   onBulkEdit,
   onBulkDelete,
   onCollectionChanged,
+  onUploadClick,
 }: CollectionGridProps) {
   // 1. USE CONTEXT
   const { viewMode, getGridClasses } = useLayoutSettings();
@@ -116,13 +118,13 @@ export default function CollectionGrid({
     setCreateCollectionMode(mode);
     // If selecting models for a manual group, pass them in
     if (selectedModelIds.length > 0 && mode === 'manual') {
-        setTempCollectionData({
-            id: '', name: '', modelIds: selectedModelIds, 
-            tags: [], images: [], category: '', description: '',
-            created: new Date().toISOString(), lastModified: new Date().toISOString()
-        } as Collection);
+      setTempCollectionData({
+        id: '', name: '', modelIds: selectedModelIds,
+        tags: [], images: [], category: '', description: '',
+        created: new Date().toISOString(), lastModified: new Date().toISOString()
+      } as Collection);
     } else {
-        setTempCollectionData(null);
+      setTempCollectionData(null);
     }
     setIsEditorOpen(true);
   };
@@ -204,7 +206,18 @@ export default function CollectionGrid({
             onSelectAll={onSelectAll}
             onDeselectAll={onDeselectAll}
           />
-
+          {/* [INSERT] Upload Button */}
+          {!isSelectionMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={onUploadClick}
+            >
+              <Upload className="h-4 w-4" />
+              <span className="hidden sm:inline">Upload Files</span>
+            </Button>
+          )}
           {/* [NEW] New Collection (Folder) Button */}
           {!isSelectionMode && (
             <Button
@@ -353,8 +366,8 @@ export default function CollectionGrid({
                             if (isSelectionMode && e.shiftKey) e.preventDefault();
                           }}
                           className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
-                              ? 'border-primary bg-primary/5'
-                              : ''
+                            ? 'border-primary bg-primary/5'
+                            : ''
                             }`}
                         >
                           {isSelectionMode && (
@@ -375,8 +388,8 @@ export default function CollectionGrid({
                                 src={resolveModelThumbnail(model)}
                                 alt={model.name}
                                 className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
-                                    ? 'border-primary'
-                                    : ''
+                                  ? 'border-primary'
+                                  : ''
                                   }`}
                               />
                               {(() => {
@@ -397,8 +410,8 @@ export default function CollectionGrid({
                             <div className="flex items-start justify-between">
                               <div className="min-w-0 flex-1">
                                 <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${isSelectionMode && selectedModelIds.includes(model.id)
-                                    ? 'text-primary'
-                                    : 'text-card-foreground'
+                                  ? 'text-primary'
+                                  : 'text-card-foreground'
                                   }`}>
                                   {model.name}
                                 </h3>
@@ -485,25 +498,25 @@ export default function CollectionGrid({
         initialMode={createCollectionMode}
         defaultParentId={activeCollection?.id}
         onSave={async (colData) => {
-            try {
-                const response = await fetch('/api/collections', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(colData),
-                });
-                const result = await response.json();
-                if (!result.success) throw new Error(result.error);
-                
-                onCollectionChanged?.();
-                onDeselectAll?.();
-                if (isSelectionMode) onToggleSelectionMode?.();
-                setIsEditorOpen(false);
-            } catch (e) {
-                console.error(e);
-                throw e; // Dialog handles error toast
-            }
+          try {
+            const response = await fetch('/api/collections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(colData),
+            });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error);
+
+            onCollectionChanged?.();
+            onDeselectAll?.();
+            if (isSelectionMode) onToggleSelectionMode?.();
+            setIsEditorOpen(false);
+          } catch (e) {
+            console.error(e);
+            throw e; // Dialog handles error toast
+          }
         }}
-        onDelete={async () => {}}
+        onDelete={async () => { }}
       />
     </div>
   );

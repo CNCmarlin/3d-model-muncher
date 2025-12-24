@@ -750,9 +750,27 @@ const handleSettingsClick = () => {
 
 // Upload dialog state
 const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
-const [isImportOpen, setIsImportOpen] = useState(false); // Existing state
-const [importTargetCollectionId, setImportTargetCollectionId] = useState<string | undefined>(undefined); // NEW State
+const [isImportOpen, setIsImportOpen] = useState(false);
+const [uploadTargetFolder, setUploadTargetFolder] = useState<string | undefined>(undefined);
+const [importTargetCollectionId, setImportTargetCollectionId] = useState<string | undefined>(undefined);
 const [importTargetFolder, setImportTargetFolder] = useState<string | undefined>(undefined);
+
+const handleCollectionUpload = () => {
+  if (activeCollection && activeCollection.id.startsWith('col_')) {
+     try {
+         // Decode "col_Base64..." -> "models/Cars/Porsche"
+         const b64 = activeCollection.id.substring(4);
+         const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+         setUploadTargetFolder(relPath);
+     } catch (e) {
+         console.warn("Could not decode collection path", e);
+         setUploadTargetFolder(undefined);
+     }
+  } else {
+      setUploadTargetFolder(undefined);
+  }
+  setIsUploadDialogOpen(true);
+};
 
 const handleOpenImport = (collectionId?: string) => {
   setImportTargetCollectionId(collectionId);
@@ -1253,6 +1271,7 @@ return (
               collections={collections}
               onOpenCollection={openCollection}
               onImportClick={handleOpenImport}
+              onUploadClick={handleCollectionUpload}
               onBack={() => {
                 // 1. FILTER RESET: If filtering, clear filters but STAY in the collection.
                 if (hasActiveFilters) {
@@ -1454,8 +1473,12 @@ return (
       {/* Upload Dialog */}
       <ModelUploadDialog
         isOpen={isUploadDialogOpen}
-        onClose={() => setIsUploadDialogOpen(false)}
+        onClose={() => {
+          setIsUploadDialogOpen(false)
+          setUploadTargetFolder(undefined);
+        }}
         onUploaded={() => { handleRefreshModels(); }}
+        initialFolder={uploadTargetFolder}
       />
     </div>
   </TagsProvider>
