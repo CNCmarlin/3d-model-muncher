@@ -1,43 +1,41 @@
+// src/components/settings/IntegrationsSettings.tsx
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { CheckCircle2, XCircle, Loader2, Save, ExternalLink, Unplug } from 'lucide-react';
+import { CheckCircle2, XCircle, Save, ExternalLink, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
-import { ConfigManager } from '../../utils/configManager'; // Correct path based on file structure
+import { AppConfig } from '../../types/config'; // Import types
 
-export const IntegrationsSettings: React.FC = () => {
+// [FIX] Add props interface
+interface IntegrationsSettingsProps {
+  config: AppConfig;
+  onConfigChange: (updated: AppConfig) => void;
+  onSave: () => void; // Trigger the main save function
+}
+
+export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ config, onConfigChange, onSave }) => {
   // Spoolman State
-  const [spoolmanUrl, setSpoolmanUrl] = useState('');
   const [spoolmanStatus, setSpoolmanStatus] = useState<'idle' | 'loading' | 'connected' | 'error' | 'disabled'>('idle');
   
-  // Thingiverse State
-  const [thingiverseToken, setThingiverseToken] = useState('');
+  // Local state for inputs (sync with props on load)
+  const [spoolmanUrl, setSpoolmanUrl] = useState(config.integrations?.spoolman?.url || '');
+  const [thingiverseToken, setThingiverseToken] = useState(config.integrations?.thingiverse?.token || '');
 
+  // Sync state if parent config changes (e.g. after a reload)
   useEffect(() => {
-    loadInitialSettings();
-  }, []);
+    setSpoolmanUrl(config.integrations?.spoolman?.url || '');
+    setThingiverseToken(config.integrations?.thingiverse?.token || '');
+  }, [config]);
 
-  const loadInitialSettings = async () => {
-    try {
-      // 1. Load Local Config
-      const config = ConfigManager.loadConfig();
-      
-      // Spoolman
-      if (config.integrations?.spoolman?.url) {
-        setSpoolmanUrl(config.integrations.spoolman.url);
-        checkSpoolmanConnection(config.integrations.spoolman.url);
-      }
-
-      // Thingiverse
-      if (config.integrations?.thingiverse?.token) {
-        setThingiverseToken(config.integrations.thingiverse.token);
-      }
-    } catch (e) {
-      console.error("Failed to load settings", e);
+  // Initial check if URL exists
+  useEffect(() => {
+    if (config.integrations?.spoolman?.url) {
+      checkSpoolmanConnection(config.integrations.spoolman.url);
     }
-  };
+  }, []);
 
   const checkSpoolmanConnection = async (urlOverride?: string) => {
     const urlToCheck = urlOverride || spoolmanUrl;
@@ -45,16 +43,30 @@ export const IntegrationsSettings: React.FC = () => {
 
     setSpoolmanStatus('loading');
     try {
-      // We save via API first to ensure the backend uses the new URL
-      const saveResp = await fetch('/api/spoolman/config', {
+      // NOTE: For the check to work, we temporarily might need to save, 
+      // OR we update the backend proxy to accept a URL param instead of reading from config.
+      // For now, let's assume we save the config first.
+      
+      // Update parent state first
+      const newConfig = {
+        ...config,
+        integrations: {
+          ...config.integrations,
+          spoolman: { ...config.integrations?.spoolman, url: urlToCheck }
+        }
+      };
+      onConfigChange(newConfig);
+      
+      // Trigger the backend test (this requires the backend to have the config, 
+      // so we might need to hit Save first or pass the URL to the status endpoint)
+      // Ideally, update the status endpoint to accept ?url=... for testing unsaved values.
+      // But adhering to current logic: we save first.
+      await fetch('/api/spoolman/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: urlToCheck }),
       });
-      
-      if (!saveResp.ok) throw new Error("Failed to save URL");
 
-      // Now check status
       const statusResp = await fetch('/api/spoolman/status');
       const statusData = await statusResp.json();
       
@@ -63,7 +75,7 @@ export const IntegrationsSettings: React.FC = () => {
         toast.success("Connected to Spoolman!");
       } else {
         setSpoolmanStatus('error');
-        toast.error("Could not connect to Spoolman");
+        toast.error("Could not connect");
       }
     } catch (e) {
       setSpoolmanStatus('error');
@@ -71,40 +83,30 @@ export const IntegrationsSettings: React.FC = () => {
     }
   };
 
-  const handleSaveThingiverse = async () => {
-    try {
-      // We reuse the existing generic save-config endpoint
-      const current = ConfigManager.loadConfig();
-      const newConfig = {
-        ...current,
-        integrations: {
-          ...current.integrations,
-          thingiverse: { token: thingiverseToken }
-        }
-      };
-      
-      const resp = await fetch('/api/save-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newConfig)
-      });
-
-      if (resp.ok) {
-        // Update local storage too
-        ConfigManager.saveConfig(newConfig);
-        toast.success("Thingiverse token saved");
-      } else {
-        throw new Error("Server rejected config");
+  const handleSaveAll = () => {
+    // Construct updated config object
+    const newConfig: AppConfig = {
+      ...config,
+      integrations: {
+        ...config.integrations,
+        spoolman: { url: spoolmanUrl },
+        thingiverse: { token: thingiverseToken }
       }
-    } catch (e) {
-      toast.error("Failed to save token");
-    }
+    };
+
+    // Update Parent State
+    onConfigChange(newConfig);
+    
+    // Trigger Parent Save (writes file + localStorage)
+    onSave();
+    
+    toast.success("Integration settings saved");
   };
 
   return (
     <div className="space-y-6">
       
-      {/* --- Spoolman Section --- */}
+      {/* Spoolman Section */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -119,7 +121,7 @@ export const IntegrationsSettings: React.FC = () => {
             </a>
           </div>
           <CardDescription>
-            Connect to your self-hosted Spoolman instance to track filament inventory and calculate costs.
+            Connect to your self-hosted Spoolman instance.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -134,49 +136,47 @@ export const IntegrationsSettings: React.FC = () => {
               />
               <Button 
                 onClick={() => checkSpoolmanConnection()} 
-                disabled={spoolmanStatus === 'loading'}
-                variant={spoolmanStatus === 'connected' ? "outline" : "default"}
+                variant="outline"
               >
-                {spoolmanStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : "Test & Save"}
+                Test Connection
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Enter the full URL including port. Ensure Model Muncher can reach this IP.
-            </p>
           </div>
         </CardContent>
       </Card>
 
-      {/* --- Thingiverse Section --- */}
+      {/* Thingiverse Section */}
       <Card>
         <CardHeader>
           <CardTitle>Thingiverse Integration</CardTitle>
           <CardDescription>
-            Required for importing models directly from Thingiverse using the Import dialog.
+            App Token for importing models.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="thingiverse-token">App Token</Label>
-            <div className="flex gap-2">
-              <Input 
-                id="thingiverse-token" 
-                type="password"
-                placeholder="Enter your API Token" 
-                value={thingiverseToken}
-                onChange={(e) => setThingiverseToken(e.target.value)}
-              />
-              <Button onClick={handleSaveThingiverse}>
-                <Save className="w-4 h-4 mr-2" />
-                Save
-              </Button>
-            </div>
+            <Input 
+              id="thingiverse-token" 
+              type="password"
+              placeholder="Enter your API Token" 
+              value={thingiverseToken}
+              onChange={(e) => setThingiverseToken(e.target.value)}
+            />
             <p className="text-xs text-muted-foreground">
-              You can generate a token in your Thingiverse App settings.
+              Paste your generated token here.
             </p>
           </div>
         </CardContent>
       </Card>
+
+      {/* Unified Save Button */}
+      <div className="flex justify-end">
+        <Button onClick={handleSaveAll} className="gap-2">
+          <Save className="w-4 h-4" />
+          Save Integrations
+        </Button>
+      </div>
 
     </div>
   );

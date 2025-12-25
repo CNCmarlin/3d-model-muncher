@@ -29,7 +29,7 @@ import {
   Settings as SettingsIcon, AlertCircle, Tag, Edit2, Trash2, Eye,
   BarChart3, Search, AlertTriangle, FileCheck, Files, Heart, Star,
   Github, Box, Images, Archive, Plus, FolderPlus, FileText, Clock, HardDrive,
-  RotateCcw, X, Library, FolderOpen, Settings, Layers, ShieldCheck,  FileCog,
+  RotateCcw, X, Library, FolderOpen, Settings, Layers, ShieldCheck, FileCog,
   FlaskConical, Plug
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -1865,7 +1865,7 @@ export function SettingsPage({
 
         {/* SIDEBAR NAVIGATION */}
         <aside className="w-64 border-r bg-muted/10 flex-shrink-0 overflow-y-auto hidden md:block">
-        <TabsList className="flex flex-col h-auto p-4 space-y-1 bg-transparent justify-start w-full">
+          <TabsList className="flex flex-col h-auto p-4 space-y-1 bg-transparent justify-start w-full">
             <TabsTrigger value="general" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Settings className="mr-2 h-4 w-4" /> General
             </TabsTrigger>
@@ -1884,7 +1884,7 @@ export function SettingsPage({
             <TabsTrigger value="integrity" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <ShieldCheck className="mr-2 h-4 w-4" /> File Integrity
             </TabsTrigger>
-            
+
             {/* [NEW] Integrations Tab */}
             <TabsTrigger value="integrations" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Plug className="mr-2 h-4 w-4" /> Integrations
@@ -3402,8 +3402,15 @@ export function SettingsPage({
 
           {/* [NEW] Integrations Tab */}
           <TabsContent value="integrations" className="space-y-6 mt-0">
-            {/* We render the component we created earlier */}
-            <IntegrationsSettings />
+            <IntegrationsSettings
+              config={localConfig}
+              onConfigChange={(newConfig) => {
+                setLocalConfig(newConfig);
+                // Optional: if you want immediate persistence on every keystroke, handle here.
+                // But usually 'onSave' handles the actual persistence.
+              }}
+              onSave={() => handleSaveConfig(localConfig)}
+            />
           </TabsContent>
 
           {/* Configuration Tab */}

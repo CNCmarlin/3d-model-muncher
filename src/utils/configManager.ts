@@ -22,12 +22,14 @@ export class ConfigManager {
       defaultModelView: "images",
       defaultModelColor: "#aaaaaa",
       // [FIX 1] Add primaryColor to defaults
-      primaryColor: null, 
+      primaryColor: null,
       showPrintedBadge: true,
       modelCardPrimary: 'printTime',
       modelCardSecondary: 'filamentUsed',
       autoSave: true,
       modelDirectory: "./models",
+      gcodeOverwriteBehavior: 'prompt',
+      gcodeStorageBehavior: 'save-and-link'
     },
     filters: {
       defaultCategory: "all",
@@ -35,6 +37,7 @@ export class ConfigManager {
       defaultLicense: "all",
       defaultSortBy: "none"
     },
+    integrations: {},
     lastModified: new Date().toISOString()
   };
 
@@ -68,8 +71,8 @@ export class ConfigManager {
           const validated = this.validateView(view);
           return validated !== undefined ? validated : this.defaultConfig.settings.defaultView;
         })(),
-        defaultGridDensity: typeof config?.settings?.defaultGridDensity === 'number' && !isNaN(config.settings.defaultGridDensity) 
-          ? config.settings.defaultGridDensity 
+        defaultGridDensity: typeof config?.settings?.defaultGridDensity === 'number' && !isNaN(config.settings.defaultGridDensity)
+          ? config.settings.defaultGridDensity
           : this.defaultConfig.settings.defaultGridDensity,
         defaultModelView: (() => {
           const modelView = config?.settings?.defaultModelView;
@@ -79,7 +82,7 @@ export class ConfigManager {
         defaultModelColor: typeof config?.settings?.defaultModelColor === 'string' && config.settings.defaultModelColor.trim() !== ''
           ? config.settings.defaultModelColor
           : this.defaultConfig.settings.defaultModelColor,
-        
+
         // [FIX 2] Add primaryColor validation so it is persisted
         primaryColor: (typeof config?.settings?.primaryColor === 'string' || config?.settings?.primaryColor === null)
           ? config.settings.primaryColor
@@ -104,6 +107,8 @@ export class ConfigManager {
         modelDirectory: typeof config?.settings?.modelDirectory === 'string' && config.settings.modelDirectory.trim() !== ''
           ? config.settings.modelDirectory
           : this.defaultConfig.settings.modelDirectory,
+        gcodeOverwriteBehavior: config?.settings?.gcodeOverwriteBehavior || this.defaultConfig.settings.gcodeOverwriteBehavior,
+        gcodeStorageBehavior: config?.settings?.gcodeStorageBehavior || this.defaultConfig.settings.gcodeStorageBehavior,
       },
       filters: {
         defaultCategory: typeof config?.filters?.defaultCategory === 'string' && config.filters.defaultCategory.trim() !== ''
@@ -119,11 +124,12 @@ export class ConfigManager {
           ? config.filters.defaultSortBy
           : this.defaultConfig.filters.defaultSortBy
       },
+      integrations: config?.integrations || {},
       lastModified: config?.lastModified || new Date().toISOString()
     };
 
     // Validate categories have required fields
-    validatedConfig.categories = validatedConfig.categories.filter(cat => 
+    validatedConfig.categories = validatedConfig.categories.filter(cat =>
       cat.id && cat.label && cat.icon
     );
 
@@ -165,25 +171,25 @@ export class ConfigManager {
         const fs = require('fs');
         // @ts-ignore
         const path = require('path');
-        
+
         // 1. Look in the data folder first (Primary Production Path)
         let configPath = path.join(process.cwd(), 'data', 'config.json');
-        
+
         // 2. If not found, check root (Dev/Legacy Path)
         if (!fs.existsSync(configPath)) {
-             // Fallback to root directory
-             configPath = path.join(process.cwd(), CONFIG_FILENAME);
+          // Fallback to root directory
+          configPath = path.join(process.cwd(), CONFIG_FILENAME);
         }
 
         console.log(`[ConfigManager] Attempting to load server config from: ${configPath}`);
 
         if (fs.existsSync(configPath)) {
-            const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            const validated = this.validateConfig(fileConfig);
-            return validated;
+          const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          const validated = this.validateConfig(fileConfig);
+          return validated;
         } else {
-            console.warn(`[ConfigManager] No config file found at ${configPath}, using defaults.`);
-            return this.getDefaultConfig();
+          console.warn(`[ConfigManager] No config file found at ${configPath}, using defaults.`);
+          return this.getDefaultConfig();
         }
 
       } catch (e) {
@@ -212,32 +218,59 @@ export class ConfigManager {
       } else {
         console.debug('[ConfigManager] No stored config found in localStorage');
       }
-      
+
     } catch (error) {
       console.warn('Failed to load config from localStorage:', error);
     }
-    
+
     const defaultConfig = this.getDefaultConfig();
     return defaultConfig;
   }
 
   /**
-   * Save configuration to localStorage
+   * Save configuration to localStorage (Browser) or File (Server)
    */
   static saveConfig(config: AppConfig): void {
+    const isNode = typeof window === 'undefined';
+
     try {
       const validatedConfig = this.validateConfig(config);
-
       const jsonString = JSON.stringify(validatedConfig, null, 2);
-      try {
-        console.debug('[ConfigManager] Saving config to localStorage, lastModified=', validatedConfig.lastModified);
-        localStorage.setItem(STORAGE_KEY, jsonString);
-      } catch (err) {
-        console.error('[ConfigManager] Failed to write to localStorage:', err);
-        throw err;
+
+      if (isNode) {
+        // --- SERVER-SIDE SAVE ---
+        try {
+          // @ts-ignore
+          const fs = require('fs');
+          // @ts-ignore
+          const path = require('path');
+
+          const dataDir = path.join(process.cwd(), 'data');
+          const configPath = path.join(dataDir, 'config.json');
+
+          // Ensure directory exists
+          if (!fs.existsSync(dataDir)) {
+            fs.mkdirSync(dataDir, { recursive: true });
+          }
+
+          console.log(`[ConfigManager] Saving server config to: ${configPath}`);
+          fs.writeFileSync(configPath, jsonString, 'utf8');
+        } catch (err) {
+          console.error('[ConfigManager] Failed to write config file on server:', err);
+          throw err;
+        }
+      } else {
+        // --- CLIENT-SIDE SAVE ---
+        try {
+          console.debug('[ConfigManager] Saving config to localStorage, lastModified=', validatedConfig.lastModified);
+          localStorage.setItem(STORAGE_KEY, jsonString);
+        } catch (err) {
+          console.error('[ConfigManager] Failed to write to localStorage:', err);
+          throw err;
+        }
       }
     } catch (error) {
-      console.error('Failed to save config to localStorage:', error);
+      console.error('Failed to save config:', error);
       throw error;
     }
   }
@@ -248,7 +281,7 @@ export class ConfigManager {
   static async importConfig(file: File): Promise<AppConfig> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      
+
       reader.onload = (event) => {
         try {
           const content = event.target?.result as string;
@@ -259,11 +292,11 @@ export class ConfigManager {
           reject(new Error('Invalid configuration file format'));
         }
       };
-      
+
       reader.onerror = () => {
         reject(new Error('Failed to read configuration file'));
       };
-      
+
       reader.readAsText(file);
     });
   }
@@ -277,7 +310,7 @@ export class ConfigManager {
       const blob = new Blob([JSON.stringify(configToExport, null, 2)], {
         type: 'application/json'
       });
-      
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
