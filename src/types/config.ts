@@ -1,5 +1,14 @@
 import { Category } from "./category";
 
+export interface IntegrationSettings {
+  spoolman?: {
+    url?: string;
+  };
+  thingiverse?: {
+    token?: string;
+  };
+}
+
 export interface AppConfig {
   version: string;
   categories: Category[];
@@ -25,5 +34,6 @@ export interface AppConfig {
     defaultLicense: string;
     defaultSortBy?: string;
   };
+  integrations?: IntegrationSettings;
   lastModified: string;
 }

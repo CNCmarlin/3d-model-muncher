@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Progress } from "./ui/progress";
 import { AutoImportDialog } from "./AutoImportDialog";
 import * as LucideIcons from 'lucide-react';
+import { IntegrationsSettings } from './settings/IntegrationsSettings';
 
 
 import {
@@ -28,7 +29,8 @@ import {
   Settings as SettingsIcon, AlertCircle, Tag, Edit2, Trash2, Eye,
   BarChart3, Search, AlertTriangle, FileCheck, Files, Heart, Star,
   Github, Box, Images, Archive, Plus, FolderPlus, FileText, Clock, HardDrive,
-  RotateCcw, X, Library, FolderOpen
+  RotateCcw, X, Library, FolderOpen, Settings, Layers, ShieldCheck,  FileCog,
+  FlaskConical, Plug
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ImageWithFallback } from './ImageWithFallback';
@@ -204,12 +206,12 @@ export function SettingsPage({
     if (!settingsAction) return;
     setSelectedTab('integrity');
     const actionFileType = settingsAction.fileType;
-    
+
     // Fix: Map string to object
     if (actionFileType) {
-      setSelectedFileTypes({ 
-        "3mf": actionFileType === "3mf", 
-        "stl": actionFileType === "stl" 
+      setSelectedFileTypes({
+        "3mf": actionFileType === "3mf",
+        "stl": actionFileType === "stl"
       });
     }
 
@@ -407,7 +409,7 @@ export function SettingsPage({
 
   const handleGenerateModelJson = async (overrideTypes?: { "3mf": boolean; stl: boolean }) => {
     const types = overrideTypes || selectedFileTypes;
-    
+
     if (hashCheckResult) setHashCheckResult(null);
     setIsGeneratingJson(true);
     setGenerateResult(null);
@@ -422,9 +424,9 @@ export function SettingsPage({
       const resp = await fetch('/api/scan-models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            check3mf: types["3mf"],
-            checkStl: types["stl"]
+        body: JSON.stringify({
+          check3mf: types["3mf"],
+          checkStl: types["stl"]
         })
       });
 
@@ -1266,7 +1268,7 @@ export function SettingsPage({
     setHashCheckProgress(0);
 
     const types = overrideTypes || selectedFileTypes;
-    
+
     const activeTypes = [];
     if (types["3mf"]) activeTypes.push(".3mf");
     if (types["stl"]) activeTypes.push(".stl");
@@ -1277,7 +1279,7 @@ export function SettingsPage({
     fetch('/api/hash-check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         check3mf: types["3mf"],
         checkStl: types["stl"]
       })
@@ -1863,33 +1865,39 @@ export function SettingsPage({
 
         {/* SIDEBAR NAVIGATION */}
         <aside className="w-64 border-r bg-muted/10 flex-shrink-0 overflow-y-auto hidden md:block">
-          <TabsList className="flex flex-col h-auto p-4 space-y-1 bg-transparent justify-start w-full">
+        <TabsList className="flex flex-col h-auto p-4 space-y-1 bg-transparent justify-start w-full">
             <TabsTrigger value="general" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              <SettingsIcon className="mr-2 h-4 w-4" /> General
+              <Settings className="mr-2 h-4 w-4" /> General
             </TabsTrigger>
             <TabsTrigger value="collections" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Library className="mr-2 h-4 w-4" /> Collections
             </TabsTrigger>
             <TabsTrigger value="categories" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              Categories
+              <Layers className="mr-2 h-4 w-4" /> Categories
             </TabsTrigger>
             <TabsTrigger value="tags" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              Tag Management
+              <Tag className="mr-2 h-4 w-4" /> Tag Management
             </TabsTrigger>
             <TabsTrigger value="backup" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              Backup & Restore
+              <Archive className="mr-2 h-4 w-4" /> Backup & Restore
             </TabsTrigger>
             <TabsTrigger value="integrity" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              File Integrity
+              <ShieldCheck className="mr-2 h-4 w-4" /> File Integrity
             </TabsTrigger>
+            
+            {/* [NEW] Integrations Tab */}
+            <TabsTrigger value="integrations" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              <Plug className="mr-2 h-4 w-4" /> Integrations
+            </TabsTrigger>
+
             <TabsTrigger value="config" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              Configuration
+              <FileCog className="mr-2 h-4 w-4" /> Configuration
             </TabsTrigger>
             <TabsTrigger value="support" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              Support
+              <Heart className="mr-2 h-4 w-4" /> Support
             </TabsTrigger>
             <TabsTrigger value="experimental" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              Experimental
+              <FlaskConical className="mr-2 h-4 w-4" /> Experimental
             </TabsTrigger>
           </TabsList>
         </aside>
@@ -1903,6 +1911,7 @@ export function SettingsPage({
             <TabsTrigger value="tags">Tags</TabsTrigger>
             <TabsTrigger value="backup">Backup</TabsTrigger>
             <TabsTrigger value="integrity">Integrity</TabsTrigger>
+            <TabsTrigger value="Integrations">Itegrations</TabsTrigger>
             <TabsTrigger value="config">Config</TabsTrigger>
             <TabsTrigger value="support">Support</TabsTrigger>
             <TabsTrigger value="experimental">Experimental</TabsTrigger>
@@ -2305,12 +2314,12 @@ export function SettingsPage({
                           Create clean PNG snapshots for models that don't have them.
                         </p>
                       </div>
-                      
+
                       {/* CONDITIONAL BUTTONS */}
                       {isGeneratingThumbnails ? (
-                        <Button 
-                          variant="destructive" 
-                          size="sm" 
+                        <Button
+                          variant="destructive"
+                          size="sm"
                           onClick={handleCancelThumbnails}
                           className="animate-pulse"
                         >
@@ -2329,7 +2338,7 @@ export function SettingsPage({
                       )}
                     </div>
                   </div>
-                  </div>
+                </div>
                 <Separator />
 
                 {/* G-code Settings */}
@@ -2509,7 +2518,7 @@ export function SettingsPage({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-              <div className="flex flex-wrap gap-2 mb-4">
+                <div className="flex flex-wrap gap-2 mb-4">
                   <Button onClick={() => handleCreateCollection('folder')} variant="outline" className="gap-2">
                     <FolderPlus className="h-4 w-4" />
                     New Collection
@@ -3057,339 +3066,345 @@ export function SettingsPage({
           </TabsContent>
 
           <TabsContent value="integrity" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>File Integrity Check</CardTitle>
-                  <CardDescription>
-                    Verify model files and manage metadata
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex flex-col items-start gap-4">
-                    <div className="flex-1 space-y-4">
-                      <div>
-                        <h3 className="font-medium">File Verification</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Check for duplicates and verify model metadata
-                        </p>
-                        <div className="mt-2">
-                          <Label className="text-sm font-medium">File Types</Label>
-                          <div className="flex gap-4 mt-2">
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id="file-type-3mf"
-                                checked={selectedFileTypes["3mf"]}
-                                onCheckedChange={(checked) => setSelectedFileTypes(prev => ({ ...prev, "3mf": Boolean(checked) }))}
-                              />
-                              <Label htmlFor="file-type-3mf" className="cursor-pointer">3MF</Label>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id="file-type-stl"
-                                checked={selectedFileTypes["stl"]}
-                                onCheckedChange={(checked) => setSelectedFileTypes(prev => ({ ...prev, "stl": Boolean(checked) }))}
-                              />
-                              <Label htmlFor="file-type-stl" className="cursor-pointer">STL</Label>
-                            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>File Integrity Check</CardTitle>
+                <CardDescription>
+                  Verify model files and manage metadata
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-col items-start gap-4">
+                  <div className="flex-1 space-y-4">
+                    <div>
+                      <h3 className="font-medium">File Verification</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Check for duplicates and verify model metadata
+                      </p>
+                      <div className="mt-2">
+                        <Label className="text-sm font-medium">File Types</Label>
+                        <div className="flex gap-4 mt-2">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="file-type-3mf"
+                              checked={selectedFileTypes["3mf"]}
+                              onCheckedChange={(checked) => setSelectedFileTypes(prev => ({ ...prev, "3mf": Boolean(checked) }))}
+                            />
+                            <Label htmlFor="file-type-3mf" className="cursor-pointer">3MF</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="file-type-stl"
+                              checked={selectedFileTypes["stl"]}
+                              onCheckedChange={(checked) => setSelectedFileTypes(prev => ({ ...prev, "stl": Boolean(checked) }))}
+                            />
+                            <Label htmlFor="file-type-stl" className="cursor-pointer">STL</Label>
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button 
-                          onClick={() => handleRunHashCheck()}
-                          disabled={isHashChecking || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
-                          className="gap-2"
-                        >
-                          {isHashChecking ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <FileCheck className="h-4 w-4" />
-                          )}
-                          {isHashChecking ? 'Checking...' : 'Run Check'}
-                        </Button>
-                        <Button
-                          onClick={() => handleGenerateModelJson()}
-                          disabled={isGeneratingJson || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
-                          className="gap-2"
-                          variant="secondary"
-                        >
-                          {isGeneratingJson ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Files className="h-4 w-4" />
-                          )}
-                          {isGeneratingJson ? 'Generating...' : 'Generate'}
-                        </Button>
-                      </div>
-                      
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleRunHashCheck()}
+                        disabled={isHashChecking || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
+                        className="gap-2"
+                      >
+                        {isHashChecking ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileCheck className="h-4 w-4" />
+                        )}
+                        {isHashChecking ? 'Checking...' : 'Run Check'}
+                      </Button>
+                      <Button
+                        onClick={() => handleGenerateModelJson()}
+                        disabled={isGeneratingJson || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
+                        className="gap-2"
+                        variant="secondary"
+                      >
+                        {isGeneratingJson ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Files className="h-4 w-4" />
+                        )}
+                        {isGeneratingJson ? 'Generating...' : 'Generate'}
+                      </Button>
                     </div>
 
-                    {(hashCheckResult || generateResult) && (
-                      <div className="flex flex-wrap gap-4 mt-3 w-full">
-                        {hashCheckResult && (
-                          <>
-                            <div key="verified-count" className="flex items-center gap-2">
-                              <FileCheck className="h-4 w-4 text-green-600" />
-                              <span className="text-sm">{hashCheckResult.verified} verified</span>
+                  </div>
+
+                  {(hashCheckResult || generateResult) && (
+                    <div className="flex flex-wrap gap-4 mt-3 w-full">
+                      {hashCheckResult && (
+                        <>
+                          <div key="verified-count" className="flex items-center gap-2">
+                            <FileCheck className="h-4 w-4 text-green-600" />
+                            <span className="text-sm">{hashCheckResult.verified} verified</span>
+                          </div>
+                          {hashCheckResult.corrupted > 0 && (
+                            <div key="corrupted-count" className="flex items-center gap-2">
+                              <AlertTriangle className="h-4 w-4 text-red-600" />
+                              <span className="text-sm">{hashCheckResult.corrupted} issues</span>
                             </div>
-                            {hashCheckResult.corrupted > 0 && (
-                              <div key="corrupted-count" className="flex items-center gap-2">
-                                <AlertTriangle className="h-4 w-4 text-red-600" />
-                                <span className="text-sm">{hashCheckResult.corrupted} issues</span>
+                          )}
+                          {hashCheckResult.duplicateGroups.length > 0 && (
+                            <div key="duplicates-count" className="flex items-center gap-2">
+                              <Files className="h-4 w-4 text-blue-600" />
+                              <span className="text-sm">{hashCheckResult.duplicateGroups.length} duplicates</span>
+                            </div>
+                          )}
+                          {(hashCheckResult.skipped || 0) > 0 && (
+                            <div key="skipped-count" className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-gray-600" />
+                              <span className="text-sm">{hashCheckResult.skipped} skipped</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {generateResult && (() => {
+                        // Compute once
+                        const processedNum = typeof generateResult.processed === 'number'
+                          ? generateResult.processed
+                          : (generateResult.generated || 0) + (generateResult.verified || 0);
+                        const skippedNum = generateResult.skipped || 0;
+                        const totalSeen = processedNum + skippedNum;
+
+                        // Prefer explicit `generated`; otherwise treat `processed` as generated for display
+                        const hasExplicitGenerated = typeof generateResult.generated === 'number';
+                        const showAsGenerated = hasExplicitGenerated || (typeof generateResult.generated === 'undefined' && processedNum > 0);
+
+                        // Show separate 'generated' only when it differs from processed
+                        const showGeneratedSeparate = hasExplicitGenerated && (generateResult.generated !== processedNum);
+
+                        return (
+                          <>
+                            {totalSeen > 0 && (
+                              <div key="gen-total-status" className="flex items-center gap-2">
+                                <BarChart3 className="h-4 w-4 text-primary" />
+                                <span className="text-sm">{totalSeen} total</span>
                               </div>
                             )}
-                            {hashCheckResult.duplicateGroups.length > 0 && (
-                              <div key="duplicates-count" className="flex items-center gap-2">
-                                <Files className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm">{hashCheckResult.duplicateGroups.length} duplicates</span>
+
+                            {processedNum > 0 && (
+                              <div key="gen-processed-status" className="flex items-center gap-2">
+                                <FileCheck className={`h-4 w-4 ${showAsGenerated ? 'text-green-600' : 'text-blue-600'}`} />
+                                <span className="text-sm">{processedNum} {showAsGenerated ? 'generated' : 'processed'}</span>
                               </div>
                             )}
-                            {(hashCheckResult.skipped || 0) > 0 && (
-                              <div key="skipped-count" className="flex items-center gap-2">
+
+                            {(skippedNum > 0) && (
+                              <div key="gen-skipped-count" className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-gray-600" />
-                                <span className="text-sm">{hashCheckResult.skipped} skipped</span>
+                                <span className="text-sm">{skippedNum} skipped</span>
+                              </div>
+                            )}
+
+                            {showGeneratedSeparate && (
+                              <div key="gen-generated-count" className="flex items-center gap-2">
+                                <HardDrive className="h-4 w-4 text-green-600" />
+                                <span className="text-sm text-green-600">{generateResult.generated || 0} generated</span>
+                              </div>
+                            )}
+
+                            {((generateResult.verified || 0) > 0) && (
+                              <div key="gen-verified-count" className="flex items-center gap-2">
+                                <FileCheck className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm">{generateResult.verified || 0} verified</span>
                               </div>
                             )}
                           </>
-                        )}
-                        {generateResult && (() => {
-                          // Compute once
-                          const processedNum = typeof generateResult.processed === 'number'
-                            ? generateResult.processed
-                            : (generateResult.generated || 0) + (generateResult.verified || 0);
-                          const skippedNum = generateResult.skipped || 0;
-                          const totalSeen = processedNum + skippedNum;
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
 
-                          // Prefer explicit `generated`; otherwise treat `processed` as generated for display
-                          const hasExplicitGenerated = typeof generateResult.generated === 'number';
-                          const showAsGenerated = hasExplicitGenerated || (typeof generateResult.generated === 'undefined' && processedNum > 0);
+                {isHashChecking && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Progress</span>
+                      <span>{Math.round(hashCheckProgress)}%</span>
+                    </div>
+                    <Progress value={hashCheckProgress} className="w-full" />
+                  </div>
+                )}
 
-                          // Show separate 'generated' only when it differs from processed
-                          const showGeneratedSeparate = hasExplicitGenerated && (generateResult.generated !== processedNum);
+                {hashCheckResult && hashCheckResult.corruptedFiles && hashCheckResult.corruptedFiles.length > 0 && (
+                  <div className="space-y-4">
+                    <Separator />
+                    <div>
+                      <h3 className="font-medium mb-2 text-red-600">Files Requiring Attention</h3>
+                      <div className="space-y-2">
+                        {hashCheckResult.corruptedFiles.map((file, idx) => {
+                          const modelData = corruptedModels[file.filePath];
+                          // Better fallback logic - try multiple ways to find the model
+                          const fallbackModel = models.find(m => {
+                            // Try exact match first (normalize slashes and case for comparison)
+                            const normalizedFileP = file.filePath.replace(/\\/g, '/').toLowerCase();
+                            const normalizedModelUrl = m.modelUrl?.replace(/\\/g, '/').toLowerCase();
+                            if (normalizedModelUrl === normalizedFileP) return true;
+                            // Try with /models/ prefix
+                            if (normalizedModelUrl === `/models/${normalizedFileP}`) return true;
+                            // Try without /models/ prefix from file path
+                            const withoutModelsPrefix = normalizedFileP.replace(/^[/\\]?models[/\\]?/, '');
+                            if (normalizedModelUrl === withoutModelsPrefix || normalizedModelUrl === `/models/${withoutModelsPrefix}`) return true;
+                            return false;
+                          });
+
+                          const model = modelData || fallbackModel;
 
                           return (
-                            <>
-                              {totalSeen > 0 && (
-                                <div key="gen-total-status" className="flex items-center gap-2">
-                                  <BarChart3 className="h-4 w-4 text-primary" />
-                                  <span className="text-sm">{totalSeen} total</span>
-                                </div>
-                              )}
-
-                              {processedNum > 0 && (
-                                <div key="gen-processed-status" className="flex items-center gap-2">
-                                  <FileCheck className={`h-4 w-4 ${showAsGenerated ? 'text-green-600' : 'text-blue-600'}`} />
-                                  <span className="text-sm">{processedNum} {showAsGenerated ? 'generated' : 'processed'}</span>
-                                </div>
-                              )}
-
-                              {(skippedNum > 0) && (
-                                <div key="gen-skipped-count" className="flex items-center gap-2">
-                                  <Clock className="h-4 w-4 text-gray-600" />
-                                  <span className="text-sm">{skippedNum} skipped</span>
-                                </div>
-                              )}
-
-                              {showGeneratedSeparate && (
-                                <div key="gen-generated-count" className="flex items-center gap-2">
-                                  <HardDrive className="h-4 w-4 text-green-600" />
-                                  <span className="text-sm text-green-600">{generateResult.generated || 0} generated</span>
-                                </div>
-                              )}
-
-                              {((generateResult.verified || 0) > 0) && (
-                                <div key="gen-verified-count" className="flex items-center gap-2">
-                                  <FileCheck className="h-4 w-4 text-blue-600" />
-                                  <span className="text-sm">{generateResult.verified || 0} verified</span>
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
-                  </div>
-
-                  {isHashChecking && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Progress</span>
-                        <span>{Math.round(hashCheckProgress)}%</span>
-                      </div>
-                      <Progress value={hashCheckProgress} className="w-full" />
-                    </div>
-                  )}
-
-                  {hashCheckResult && hashCheckResult.corruptedFiles && hashCheckResult.corruptedFiles.length > 0 && (
-                    <div className="space-y-4">
-                      <Separator />
-                      <div>
-                        <h3 className="font-medium mb-2 text-red-600">Files Requiring Attention</h3>
-                        <div className="space-y-2">
-                          {hashCheckResult.corruptedFiles.map((file, idx) => {
-                            const modelData = corruptedModels[file.filePath];
-                            // Better fallback logic - try multiple ways to find the model
-                            const fallbackModel = models.find(m => {
-                              // Try exact match first (normalize slashes and case for comparison)
-                              const normalizedFileP = file.filePath.replace(/\\/g, '/').toLowerCase();
-                              const normalizedModelUrl = m.modelUrl?.replace(/\\/g, '/').toLowerCase();
-                              if (normalizedModelUrl === normalizedFileP) return true;
-                              // Try with /models/ prefix
-                              if (normalizedModelUrl === `/models/${normalizedFileP}`) return true;
-                              // Try without /models/ prefix from file path
-                              const withoutModelsPrefix = normalizedFileP.replace(/^[/\\]?models[/\\]?/, '');
-                              if (normalizedModelUrl === withoutModelsPrefix || normalizedModelUrl === `/models/${withoutModelsPrefix}`) return true;
-                              return false;
-                            });
-                            
-                            const model = modelData || fallbackModel;
-                            
-                            return (
-                              <div key={`corrupt-${idx}-${file.filePath.replace(/[^a-zA-Z0-9]/g, '-')}`} 
-                                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800"
-                                >
-                                  <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-red-900 dark:text-red-100 truncate">
-                                    {model ? getDisplayPath(model) : file.filePath.replace(/^[/\\]?models[/\\]?/, '')}
-                                  </p>
-                                  <p className="text-sm text-red-600 dark:text-red-400">
-                                    {file.error || (file.actualHash && file.expectedHash && file.actualHash !== file.expectedHash
-                                      ? 'Hash mismatch: model file may have been updated and saved. Regenerate munchie.json to update metadata.'
-                                      : 'Missing metadata or hash mismatch')}
-                                  </p>
-                                </div>
-                                {file.actualHash && file.expectedHash && file.expectedHash !== 'UNKNOWN' && file.actualHash !== file.expectedHash && (
-                                  <div className="mt-3 sm:mt-0 ml-0 sm:ml-4 shrink-0">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => handleRegenerate(model || { id: `regen-${(file.filePath || 'unknown').replace(/[^a-zA-Z0-9]/g, '-')}`, filePath: file.filePath } as any)}
-                                    >
-                                      Regenerate
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {hashCheckResult && hashCheckResult.duplicateGroups && hashCheckResult.duplicateGroups.length > 0 && (
-                    <div className="space-y-4">
-                      <Separator />
-                      <div>
-                        <h3 className="font-medium mb-2">Duplicate Files</h3>
-                        <div className="space-y-2">
-                          {hashCheckResult.duplicateGroups.map((group, idx) => (
-                            <div 
-                              key={`dup-${idx}`}
-                              className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800"
+                            <div key={`corrupt-${idx}-${file.filePath.replace(/[^a-zA-Z0-9]/g, '-')}`}
+                              className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800"
                             >
-                              <div key={`header-${group.hash}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
-                                <span className="text-sm text-blue-600 dark:text-blue-400">
-                                  {group.models.length} copies - {group.totalSize} total
-                                </span>
-                                <Dialog open={openDuplicateGroupHash === group.hash} onOpenChange={(open: boolean) => setOpenDuplicateGroupHash(open ? group.hash : null)}>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="gap-2"
-                                      onClick={() => setOpenDuplicateGroupHash(group.hash)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                      Remove Duplicates
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="w-full max-w-[72rem]">
-                                    <DialogHeader>
-                                      <DialogTitle>Remove Duplicate Files</DialogTitle>
-                                      <DialogDescription>
-                                        Choose which file to keep. All other copies will be deleted. <br/><strong className="text-destructive">This action cannot be undone.</strong>
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    {/* Wrap list in an overflow-x-auto container so very long paths don't push the buttons out of view */}
-                                    <div className="space-y-2 min-w-0">
-                                      <ScrollArea className="w-full" showHorizontalScrollbar={true}>
-                                        <div className="w-max">
-                                          {group.models.map((model) => (
-                                            <div key={`dup-dialog-${group.hash}-${model.id}-${model.name}`} className="flex items-center justify-between p-2 bg-muted rounded-md gap-2 mb-2">
-                                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                {(() => {
-                                                  const src = resolveModelThumbnail(model);
-                                                  if (src) {
-                                                    return (
-                                                      <ImageWithFallback
-                                                        src={src}
-                                                        alt={model.name}
-                                                        className="w-8 h-8 object-cover rounded border flex-shrink-0"
-                                                      />
-                                                    );
-                                                  }
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-red-900 dark:text-red-100 truncate">
+                                  {model ? getDisplayPath(model) : file.filePath.replace(/^[/\\]?models[/\\]?/, '')}
+                                </p>
+                                <p className="text-sm text-red-600 dark:text-red-400">
+                                  {file.error || (file.actualHash && file.expectedHash && file.actualHash !== file.expectedHash
+                                    ? 'Hash mismatch: model file may have been updated and saved. Regenerate munchie.json to update metadata.'
+                                    : 'Missing metadata or hash mismatch')}
+                                </p>
+                              </div>
+                              {file.actualHash && file.expectedHash && file.expectedHash !== 'UNKNOWN' && file.actualHash !== file.expectedHash && (
+                                <div className="mt-3 sm:mt-0 ml-0 sm:ml-4 shrink-0">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleRegenerate(model || { id: `regen-${(file.filePath || 'unknown').replace(/[^a-zA-Z0-9]/g, '-')}`, filePath: file.filePath } as any)}
+                                  >
+                                    Regenerate
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {hashCheckResult && hashCheckResult.duplicateGroups && hashCheckResult.duplicateGroups.length > 0 && (
+                  <div className="space-y-4">
+                    <Separator />
+                    <div>
+                      <h3 className="font-medium mb-2">Duplicate Files</h3>
+                      <div className="space-y-2">
+                        {hashCheckResult.duplicateGroups.map((group, idx) => (
+                          <div
+                            key={`dup-${idx}`}
+                            className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800"
+                          >
+                            <div key={`header-${group.hash}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
+                              <span className="text-sm text-blue-600 dark:text-blue-400">
+                                {group.models.length} copies - {group.totalSize} total
+                              </span>
+                              <Dialog open={openDuplicateGroupHash === group.hash} onOpenChange={(open: boolean) => setOpenDuplicateGroupHash(open ? group.hash : null)}>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="gap-2"
+                                    onClick={() => setOpenDuplicateGroupHash(group.hash)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    Remove Duplicates
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="w-full max-w-[72rem]">
+                                  <DialogHeader>
+                                    <DialogTitle>Remove Duplicate Files</DialogTitle>
+                                    <DialogDescription>
+                                      Choose which file to keep. All other copies will be deleted. <br /><strong className="text-destructive">This action cannot be undone.</strong>
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  {/* Wrap list in an overflow-x-auto container so very long paths don't push the buttons out of view */}
+                                  <div className="space-y-2 min-w-0">
+                                    <ScrollArea className="w-full" showHorizontalScrollbar={true}>
+                                      <div className="w-max">
+                                        {group.models.map((model) => (
+                                          <div key={`dup-dialog-${group.hash}-${model.id}-${model.name}`} className="flex items-center justify-between p-2 bg-muted rounded-md gap-2 mb-2">
+                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                              {(() => {
+                                                const src = resolveModelThumbnail(model);
+                                                if (src) {
                                                   return (
-                                                    <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border flex-shrink-0">
-                                                      <Box className="h-4 w-4 text-muted-foreground" />
-                                                    </div>
+                                                    <ImageWithFallback
+                                                      src={src}
+                                                      alt={model.name}
+                                                      className="w-8 h-8 object-cover rounded border flex-shrink-0"
+                                                    />
                                                   );
-                                                })()}
-                                                <div className="ml-2 text-sm pr-4 min-w-0 w-full">
-                                                  <div className="overflow-x-auto whitespace-nowrap">
-                                                    <span className="select-all">{getDisplayPath(model)}</span>
+                                                }
+                                                return (
+                                                  <div className="w-8 h-8 flex items-center justify-center bg-muted rounded border flex-shrink-0">
+                                                    <Box className="h-4 w-4 text-muted-foreground" />
                                                   </div>
+                                                );
+                                              })()}
+                                              <div className="ml-2 text-sm pr-4 min-w-0 w-full">
+                                                <div className="overflow-x-auto whitespace-nowrap">
+                                                  <span className="select-all">{getDisplayPath(model)}</span>
                                                 </div>
                                               </div>
-                                              <div className="flex-shrink-0 ml-4">
-                                                <Button
-                                                  variant="destructive"
-                                                  size="sm"
-                                                  onClick={async () => {
-                                                    const success = await handleRemoveDuplicates(group, model.id);
-                                                    if (success) {
-                                                      // Close the dialog for this group
-                                                      setOpenDuplicateGroupHash(null);
-                                                    }
-                                                  }}
-                                                >
-                                                  Keep This
-                                                </Button>
-                                              </div>
                                             </div>
-                                          ))}
-                                        </div>
-                                      </ScrollArea>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              </div>
-                              <div key={`models-${group.hash}`} className="space-y-2">
-                                {group.models.map((model) => (
-                                  <div key={`dup-list-${group.hash}-${model.id}-${model.name}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                      <ModelThumbnail model={model} name={model.name} />
-                                      <span className="text-sm truncate">{getDisplayPath(model)}</span>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => onModelClick?.(model)}
-                                    >
-                                      View
-                                    </Button>
+                                            <div className="flex-shrink-0 ml-4">
+                                              <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={async () => {
+                                                  const success = await handleRemoveDuplicates(group, model.id);
+                                                  if (success) {
+                                                    // Close the dialog for this group
+                                                    setOpenDuplicateGroupHash(null);
+                                                  }
+                                                }}
+                                              >
+                                                Keep This
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </ScrollArea>
                                   </div>
-                                ))}
-                              </div>
+                                </DialogContent>
+                              </Dialog>
                             </div>
-                          ))}
-                        </div>
+                            <div key={`models-${group.hash}`} className="space-y-2">
+                              {group.models.map((model) => (
+                                <div key={`dup-list-${group.hash}-${model.id}-${model.name}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <ModelThumbnail model={model} name={model.name} />
+                                    <span className="text-sm truncate">{getDisplayPath(model)}</span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => onModelClick?.(model)}
+                                  >
+                                    View
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* [NEW] Integrations Tab */}
+          <TabsContent value="integrations" className="space-y-6 mt-0">
+            {/* We render the component we created earlier */}
+            <IntegrationsSettings />
+          </TabsContent>
 
           {/* Configuration Tab */}
           <TabsContent value="config" className="space-y-6 mt-0">

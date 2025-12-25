@@ -7,7 +7,6 @@ import { Input } from './ui/input';
 import { FolderPlus, Trash, Layers, Tag } from 'lucide-react';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
-import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Textarea } from './ui/textarea';
 import { toast } from 'sonner';
 import { RendererPool } from '../utils/rendererPool';

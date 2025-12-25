@@ -303,6 +303,80 @@ app.get('/api/collections', (req, res) => {
   }
 });
 
+// --- Spoolman Integration Proxy ---
+
+// Helper to get Spoolman URL
+function getSpoolmanUrl() {
+  const config = ConfigManager.loadConfig();
+  // Allow env var override for Docker power users
+  let url = process.env.SPOOLMAN_URL || config.integrations?.spoolman?.url || '';
+  // Remove trailing slash for consistency
+  return url.replace(/\/$/, '');
+}
+
+// 1. Health Check (Verify Connection)
+app.get('/api/spoolman/status', async (req, res) => {
+  const url = getSpoolmanUrl();
+  if (!url) return res.json({ status: 'disabled' });
+
+  try {
+    // Spoolman exposes a /health endpoint
+    const response = await fetch(`${url}/health`);
+    if (response.ok) {
+      res.json({ status: 'connected', url });
+    } else {
+      res.status(502).json({ status: 'error', message: 'Spoolman reachable but returned error' });
+    }
+  } catch (e) {
+    res.status(502).json({ status: 'error', message: 'Failed to connect to Spoolman' });
+  }
+});
+
+// 2. Get Active Spools (The core data)
+app.get('/api/spoolman/spools', async (req, res) => {
+  const url = getSpoolmanUrl();
+  if (!url) return res.status(400).json({ error: 'Spoolman not configured' });
+
+  try {
+    // Fetch active spools (allow_archived=false)
+    const response = await fetch(`${url}/api/v1/spool?allow_archived=false`);
+    
+    if (!response.ok) throw new Error(`Spoolman Error: ${response.status}`);
+    
+    const data = await response.json();
+    
+    // Transform data slightly for our UI if needed, or pass raw
+    // Spoolman returns a rich object: { id, filament: { vendor, name, material, price, weight... }, remaining_weight }
+    res.json({ success: true, spools: data });
+  } catch (e) {
+    console.error('Spoolman proxy error:', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 3. Save Spoolman Config
+app.post('/api/spoolman/config', (req, res) => {
+  const { url } = req.body;
+  // Simple validation
+  if (url && !url.startsWith('http')) {
+    return res.status(400).json({ success: false, error: 'URL must start with http:// or https://' });
+  }
+
+  try {
+    const config = ConfigManager.loadConfig();
+    if (!config.integrations) config.integrations = {};
+    if (!config.integrations.spoolman) config.integrations.spoolman = {};
+    
+    config.integrations.spoolman.url = url;
+    config.lastModified = new Date().toISOString();
+    
+    ConfigManager.saveConfig(config);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Failed to save config' });
+  }
+});
+
 // Create or update a collection
 app.post('/api/collections', async (req, res) => {
   try {
@@ -2080,13 +2154,86 @@ app.post('/api/generate-thumbnails', async (req, res) => {
   }
 });
 
+// --- Spoolman Integration Proxy ---
+
+// Helper to get Spoolman URL from config
+function getSpoolmanUrl() {
+  const config = ConfigManager.loadConfig();
+  // Allow env var override for Docker power users
+  let url = process.env.SPOOLMAN_URL || config.integrations?.spoolman?.url || '';
+  // Remove trailing slash for consistency
+  return url.replace(/\/$/, '');
+}
+
+// 1. Health Check (Verify Connection)
+app.get('/api/spoolman/status', async (req, res) => {
+  const url = getSpoolmanUrl();
+  if (!url) return res.json({ status: 'disabled' });
+
+  try {
+    // Spoolman exposes a /health endpoint
+    const response = await fetch(`${url}/health`);
+    if (response.ok) {
+      res.json({ status: 'connected', url });
+    } else {
+      res.status(502).json({ status: 'error', message: 'Spoolman reachable but returned error' });
+    }
+  } catch (e) {
+    res.status(502).json({ status: 'error', message: 'Failed to connect to Spoolman' });
+  }
+});
+
+// 2. Get Active Spools (The core data)
+app.get('/api/spoolman/spools', async (req, res) => {
+  const url = getSpoolmanUrl();
+  if (!url) return res.status(400).json({ error: 'Spoolman not configured' });
+
+  try {
+    // Fetch active spools (allow_archived=false)
+    const response = await fetch(`${url}/api/v1/spool?allow_archived=false`);
+    
+    if (!response.ok) throw new Error(`Spoolman Error: ${response.status}`);
+    
+    const data = await response.json();
+    res.json({ success: true, spools: data });
+  } catch (e) {
+    console.error('Spoolman proxy error:', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// 3. Save Spoolman Config
+app.post('/api/spoolman/config', (req, res) => {
+  const { url } = req.body;
+  // Simple validation
+  if (url && !url.startsWith('http')) {
+    return res.status(400).json({ success: false, error: 'URL must start with http:// or https://' });
+  }
+
+  try {
+    const config = ConfigManager.loadConfig();
+    if (!config.integrations) config.integrations = {};
+    if (!config.integrations.spoolman) config.integrations.spoolman = {};
+    
+    config.integrations.spoolman.url = url;
+    config.lastModified = new Date().toISOString();
+    
+    // Save to disk
+    ConfigManager.saveConfig(config);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Failed to save config' });
+  }
+});
+
 // --- API: Import from Thingiverse ---
 app.post('/api/import/thingiverse', async (req, res) => {
   try {
     const { thingId, targetFolder = 'imported', collectionId, category } = req.body;
 
     if (!thingId) return res.status(400).json({ success: false, error: 'No Thing ID provided' });
-    const token = process.env.THINGIVERSE_TOKEN;
+    const config = ConfigManager.loadConfig();
+    const token = config.integrations?.thingiverse?.token || process.env.THINGIVERSE_TOKEN;
     if (!token) return res.status(500).json({ success: false, error: 'Server missing THINGIVERSE_TOKEN' });
 
     // Import Utility - Dynamic require allows server to start even if backend isn't built yet
