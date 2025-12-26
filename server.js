@@ -1521,43 +1521,128 @@ app.get('/api/models', async (req, res) => {
 });
 
 // API endpoint to trigger model directory scan and JSON generation
+// API endpoint to get all model data
+app.get('/api/models', async (req, res) => {
+  try {
+    const absolutePath = getAbsoluteModelsPath();
+    serverDebug(`API /models scanning directory: ${absolutePath}`);
+    
+    let models = [];
+    
+    // Function to recursively scan directories
+    function scanForModels(directory) {
+  serverDebug(`Scanning directory: ${directory}`);
+      const entries = fs.readdirSync(directory, { withFileTypes: true });
+  serverDebug(`Found ${entries.length} entries in ${directory}`);
+      
+      for (const entry of entries) {
+        const fullPath = path.join(directory, entry.name);
+        
+        if (entry.isDirectory()) {
+          // Recursively scan subdirectories (debug only)
+          serverDebug(`Scanning subdirectory: ${fullPath}`);
+          scanForModels(fullPath);
+        } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
+          // Load and parse each munchie file
+          // console.log(`Found munchie file: ${fullPath}`);
+          try {
+            const fileContent = fs.readFileSync(fullPath, 'utf8');
+            const model = JSON.parse(fileContent);
+            // Add relative path information for proper URL construction
+            const relativePath = path.relative(absolutePath, fullPath);
+            
+            // Handle both 3MF and STL file types
+            let modelUrl, filePath;
+            if (entry.name.endsWith('-stl-munchie.json')) {
+              // STL file - check if corresponding .stl file exists
+              // Only process files with proper naming format: [name]-stl-munchie.json
+              const fileName = entry.name;
+              
+              // Skip files with malformed names (e.g., containing duplicate suffixes)
+              if (fileName.includes('-stl-munchie.json_')) {
+                serverDebug(`Skipping malformed STL JSON file: ${fullPath}`);
+              } else {
+                const baseFilePath = relativePath.replace('-stl-munchie.json', '');
+                // Try both .stl and .STL extensions
+                let stlFilePath = baseFilePath + '.stl';
+                let absoluteStlPath = path.join(absolutePath, stlFilePath);
+                
+                if (!fs.existsSync(absoluteStlPath)) {
+                  // Try uppercase extension
+                  stlFilePath = baseFilePath + '.STL';
+                  absoluteStlPath = path.join(absolutePath, stlFilePath);
+                }
+                
+                if (fs.existsSync(absoluteStlPath)) {
+                  modelUrl = '/models/' + stlFilePath.replace(/\\/g, '/');
+                  filePath = stlFilePath;
+                  
+                  model.modelUrl = modelUrl;
+                  model.filePath = filePath;
+                  
+                  // console.log(`Added STL model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
+                  models.push(model);
+                } else {
+                  serverDebug(`Skipping ${fullPath} - corresponding .stl/.STL file not found`);
+                }
+              }
+            } else {
+              // 3MF file - check if corresponding .3mf file exists
+              // Only process files with proper naming format: [name]-munchie.json
+              const fileName = entry.name;
+              
+              // Skip files with malformed names
+              if (fileName.includes('-munchie.json_')) {
+                serverDebug(`Skipping malformed 3MF JSON file: ${fullPath}`);
+              } else {
+                const threeMfFilePath = relativePath.replace('-munchie.json', '.3mf');
+                const absoluteThreeMfPath = path.join(absolutePath, threeMfFilePath);
+                
+                if (fs.existsSync(absoluteThreeMfPath)) {
+                  modelUrl = '/models/' + threeMfFilePath.replace(/\\/g, '/');
+                  filePath = threeMfFilePath;
+                  
+                  model.modelUrl = modelUrl;
+                  model.filePath = filePath;
+                  
+                  // console.log(`Added 3MF model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
+                  models.push(model);
+                } else {
+                  serverDebug(`Skipping ${fullPath} - corresponding .3mf file not found at ${absoluteThreeMfPath}`);
+                }
+              }
+            }
+          } catch (error) {
+                console.error(`Error reading model file ${fullPath}:`, error);
+          }
+        }
+      }
+    }
+    
+  // Start the recursive scan
+  scanForModels(absolutePath);
+
+  // Summary: concise result for normal logs (debug contains per-directory details)
+  console.log(`API /models scan complete: found ${models.length} model(s)`);
+
+  res.json(models);
+  } catch (error) {
+    console.error('Error loading models:', error);
+    res.status(500).json({ success: false, message: 'Failed to load models', error: error.message });
+  }
+});
+
+// API endpoint to trigger model directory scan and JSON generation
 app.post('/api/scan-models', async (req, res) => {
   try {
-    // [FIX] Accept new boolean flags from frontend, fall back to legacy 'fileType'
-    const { fileType, check3mf, checkStl, stream = false } = req.body;
+    const { fileType = "3mf", stream = false } = req.body; // "3mf" or "stl" only
     const dir = getModelsDirectory();
+    const result = await scanDirectory(dir, fileType);
+
+    // After scanning, also run legacy image migration on munchie files so that
+    // generated files do not contain top-level `thumbnail` or `images` fields.
     const modelsDir = getAbsoluteModelsPath();
-
-    // Determine what to scan based on flags
-    const do3mf = check3mf === true || (fileType === '3mf') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
-    const doStl = checkStl === true || (fileType === 'stl') || (fileType === 'all') || (!check3mf && !checkStl && !fileType);
-
-    // Helper to run scan for a specific type
-    async function runScan(type) {
-      return await scanDirectory(dir, type);
-    }
-
-    let result = { processed: 0, skipped: 0 };
-
-    // [FIX] Run scans based on boolean flags
-    if (do3mf) {
-      const r = await runScan('3mf');
-      result.processed += r.processed;
-      result.skipped += r.skipped;
-    }
-
-    if (doStl) {
-      const r = await runScan('stl');
-      result.processed += r.processed;
-      result.skipped += r.skipped;
-    }
-
-    // ... rest of the function (legacy migration logic) remains the same ...
-
-    // --- ORIGINAL LEGACY MIGRATION LOGIC STARTS HERE ---
-    // (Preserved exactly as is to ensure old files are updated)
-
-    const migrated = [];
+  const migrated = [];
     const skipped = [];
     const errors = [];
 
@@ -1704,7 +1789,7 @@ app.post('/api/scan-models', async (req, res) => {
         res.write(JSON.stringify({ type: 'error', error: String(e) }) + '\n');
       }
       // Final summary
-      res.write(JSON.stringify({ type: 'done', success: true, processed: result.processed, skipped: result.skipped, skippedFiles: skipped.length, errors }) + '\n');
+  res.write(JSON.stringify({ type: 'done', success: true, processed: result.processed, skipped: result.skipped, skippedFiles: skipped.length, errors }) + '\n');
       return res.end();
     } else {
       // Non-streaming: run migration and respond with final JSON
@@ -1763,6 +1848,7 @@ app.post('/api/scan-models', async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to generate model JSON files.', error: error.message });
   }
 });
+
 
 // NOTE: Migration of legacy images is now performed as part of /api/scan-models
 // The old /api/migrate-legacy-images endpoint has been removed.
