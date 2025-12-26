@@ -50,6 +50,7 @@ import { CollectionListRow } from "./components/CollectionListRow";
 import { useLayoutSettings } from "./components/LayoutSettingsContext";
 import { LayoutControls } from "./components/LayoutControls";
 import { SpoolmanProvider } from "./context/SpoolmanContext";
+import { PrinterStatusHub } from "./components/PrinterStatusHub";
 
 // Initial type for view
 type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view';
@@ -1100,6 +1101,12 @@ return (
               </div>
             )}
           </div>
+
+          {/* [INSERT] CENTER SECTION: Printer Hub */}
+            {/* We use flex-1 to push it to center, but ensure it doesn't shrink to 0 */}
+            <div className="flex-1 flex justify-center min-w-0 px-2">
+               {appConfig && <PrinterStatusHub config={appConfig} />}
+            </div>
 
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
