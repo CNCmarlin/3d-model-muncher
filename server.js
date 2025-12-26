@@ -167,7 +167,7 @@ const collectionsFilePath = (() => {
     if (process.env.NODE_ENV === 'test') {
       return path.join(process.cwd(), 'data', 'collections.test.json');
     }
-  } catch { }
+  } catch {}
   return defaultPath;
 })();
 
@@ -198,22 +198,15 @@ function saveCollections(collections) {
   }
 }
 
-
-
-
 // Reconcile model hidden flags: any model that is not a member of any collection
 // should not remain hidden. We scan all collections to compute the complete set
 // of member IDs, then iterate munchie files and clear `hidden` when an ID is
 // not present in any collection. This is intended to keep the main library
 // visible unless a model is part of a set/collection.
-// Reconcile model hidden flags: ensure models in collections are hidden,
-// and models NOT in collections are visible.
 function reconcileHiddenFlags() {
   try {
     const cols = loadCollections();
     const inAnyCollection = new Set();
-
-    // 1. Build Index of all 'Collected' models
     for (const c of cols) {
       const ids = Array.isArray(c?.modelIds) ? c.modelIds : [];
       for (const id of ids) {
@@ -222,25 +215,20 @@ function reconcileHiddenFlags() {
     }
 
     const modelsRoot = getAbsoluteModelsPath();
-
-    // 2. Scan and Enforce Rules
     (function scan(dir) {
       let entries = [];
       try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { /* ignore */ }
-
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           scan(full);
           continue;
         }
-
         if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
           try {
             const raw = fs.readFileSync(full, 'utf8');
             const data = raw ? JSON.parse(raw) : null;
             if (!data || typeof data !== 'object') continue;
-
             const id = data.id;
             if (!id || typeof id !== 'string') continue;
 
@@ -1015,14 +1003,14 @@ app.post('/api/save-model', async (req, res) => {
   }
 
   // If filePath is a model file (.stl/.3mf), convert to munchie.json
-  if (filePath && (filePath.endsWith('.stl') || filePath.endsWith('.STL'))) {
-    filePath = filePath.replace(/\.stl$/i, '-stl-munchie.json').replace(/\.STL$/i, '-stl-munchie.json');
-  } else if (filePath && filePath.endsWith('.3mf')) {
+  if (filePath && /\.stl$/i.test(filePath)) {
+    filePath = filePath.replace(/\.stl$/i, '-stl-munchie.json');
+  } else if (filePath && /\.3mf$/i.test(filePath)) {
     filePath = filePath.replace(/\.3mf$/i, '-munchie.json');
   }
 
   // Refuse to write to raw model files
-  if (filePath && (filePath.endsWith('.stl') || filePath.endsWith('.3mf'))) {
+  if (filePath && (/\.stl$/i.test(filePath) || /\.3mf$/i.test(filePath))) {
     console.error('Refusing to write to model file:', filePath);
     return res.status(400).json({ success: false, error: 'Refusing to write to model file' });
   }
@@ -1407,126 +1395,6 @@ app.post('/api/save-model', async (req, res) => {
 
 // API endpoint to get all model data
 app.get('/api/models', async (req, res) => {
-  // DEBUG LOG - Paste this right after "app.get('/api/models'..."
-  const currentPath = getAbsoluteModelsPath();
-  console.log('🔍 DEBUG: Server is scanning this folder:', currentPath);
-  console.log('📂 DEBUG: Does this folder exist?', require('fs').existsSync(currentPath));
-  try {
-    const absolutePath = getAbsoluteModelsPath();
-    serverDebug(`API /models scanning directory: ${absolutePath}`);
-
-    let models = [];
-
-    // Function to recursively scan directories
-    function scanForModels(directory) {
-      serverDebug(`Scanning directory: ${directory}`);
-      const entries = fs.readdirSync(directory, { withFileTypes: true });
-      serverDebug(`Found ${entries.length} entries in ${directory}`);
-
-      for (const entry of entries) {
-        const fullPath = path.join(directory, entry.name);
-
-        if (entry.isDirectory()) {
-          // Recursively scan subdirectories (debug only)
-          serverDebug(`Scanning subdirectory: ${fullPath}`);
-          scanForModels(fullPath);
-        } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
-          // Load and parse each munchie file
-          // console.log(`Found munchie file: ${fullPath}`);
-          try {
-            const fileContent = fs.readFileSync(fullPath, 'utf8');
-            const model = JSON.parse(fileContent);
-            // Add relative path information for proper URL construction
-            const relativePath = path.relative(absolutePath, fullPath);
-
-            // Handle both 3MF and STL file types
-            let modelUrl, filePath;
-            if (entry.name.endsWith('-stl-munchie.json')) {
-              // STL file - check if corresponding .stl file exists
-              // Only process files with proper naming format: [name]-stl-munchie.json
-              const fileName = entry.name;
-
-              // Skip files with malformed names (e.g., containing duplicate suffixes)
-              if (fileName.includes('-stl-munchie.json_')) {
-                serverDebug(`Skipping malformed STL JSON file: ${fullPath}`);
-              } else {
-                const baseFilePath = relativePath.replace('-stl-munchie.json', '');
-                // Try both .stl and .STL extensions
-                let stlFilePath = baseFilePath + '.stl';
-                let absoluteStlPath = path.join(absolutePath, stlFilePath);
-
-                if (!fs.existsSync(absoluteStlPath)) {
-                  // Try uppercase extension
-                  stlFilePath = baseFilePath + '.STL';
-                  absoluteStlPath = path.join(absolutePath, stlFilePath);
-                }
-
-                if (fs.existsSync(absoluteStlPath)) {
-                  modelUrl = '/models/' + stlFilePath.replace(/\\/g, '/');
-                  filePath = stlFilePath;
-
-                  model.modelUrl = modelUrl;
-                  model.filePath = filePath;
-
-                  // console.log(`Added STL model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
-                  models.push(model);
-                } else {
-                  serverDebug(`Skipping ${fullPath} - corresponding .stl/.STL file not found`);
-                }
-              }
-            } else {
-              // 3MF file - check if corresponding .3mf file exists
-              // Only process files with proper naming format: [name]-munchie.json
-              const fileName = entry.name;
-
-              // Skip files with malformed names
-              if (fileName.includes('-munchie.json_')) {
-                serverDebug(`Skipping malformed 3MF JSON file: ${fullPath}`);
-              } else {
-                const threeMfFilePath = relativePath.replace('-munchie.json', '.3mf');
-                const absoluteThreeMfPath = path.join(absolutePath, threeMfFilePath);
-
-                if (fs.existsSync(absoluteThreeMfPath)) {
-                  modelUrl = '/models/' + threeMfFilePath.replace(/\\/g, '/');
-                  filePath = threeMfFilePath;
-
-                  model.modelUrl = modelUrl;
-                  model.filePath = filePath;
-
-                  // console.log(`Added 3MF model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
-                  models.push(model);
-                } else {
-                  serverDebug(`Skipping ${fullPath} - corresponding .3mf file not found at ${absoluteThreeMfPath}`);
-                }
-              }
-            }
-          } catch (error) {
-            console.error(`Error reading model file ${fullPath}:`, error);
-          }
-        }
-      }
-    }
-
-    // Start the recursive scan
-    scanForModels(absolutePath);
-
-    // Summary: concise result for normal logs (debug contains per-directory details)
-    console.log(`API /models scan complete: found ${models.length} model(s)`);
-
-    res.json(models);
-  } catch (error) {
-    console.error('Error loading models:', error);
-    res.status(500).json({ success: false, message: 'Failed to load models', error: error.message });
-  }
-});
-
-// API endpoint to trigger model directory scan and JSON generation
-// API endpoint to get all model data
-app.get('/api/models', async (req, res) => {
-  // DEBUG LOG - Paste this right after "app.get('/api/models'..."
-  const currentPath = getAbsoluteModelsPath();
-  console.log('🔍 DEBUG: Server is scanning this folder:', currentPath);
-  console.log('📂 DEBUG: Does this folder exist?', require('fs').existsSync(currentPath));
   try {
     const absolutePath = getAbsoluteModelsPath();
     serverDebug(`API /models scanning directory: ${absolutePath}`);
@@ -1853,7 +1721,6 @@ app.post('/api/scan-models', async (req, res) => {
   }
 });
 
-
 // NOTE: Migration of legacy images is now performed as part of /api/scan-models
 // The old /api/migrate-legacy-images endpoint has been removed.
 
@@ -1872,13 +1739,13 @@ app.post('/api/save-config', (req, res) => {
     }
 
     // During tests, prefer writing to a per-worker config to avoid clobbering the real config.json
-    let configPath = (function () {
+    let configPath = (function() {
       try {
         const vitestWorkerId = process.env.VITEST_WORKER_ID;
         if (vitestWorkerId) return path.join(dataDir, `config.vitest-${vitestWorkerId}.json`);
         const jestWorkerId = process.env.JEST_WORKER_ID;
         if (jestWorkerId) return path.join(dataDir, `config.jest-${jestWorkerId}.json`);
-      } catch { }
+      } catch {}
       return path.join(dataDir, 'config.json');
     })();
     // Ensure lastModified is updated on server-side save
@@ -1911,7 +1778,7 @@ app.get('/api/load-config', (req, res) => {
           if (fs.existsSync(workerPath)) configPath = workerPath;
         }
       }
-    } catch { }
+    } catch {}
     if (!configPath) configPath = path.join(dataDir, 'config.json');
     if (!fs.existsSync(configPath)) {
       return res.status(404).json({ success: false, error: 'No server-side config found' });
@@ -2444,7 +2311,6 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
     const modelsDir = getAbsoluteModelsPath();
     const uploadsDir = path.join(modelsDir, 'uploads');
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
     const createCollection = req.body.createCollection === 'true';
     const collectionDescription = req.body.collectionDescription || '';
     const collectionTags = req.body.collectionTags ? JSON.parse(req.body.collectionTags) : [];
@@ -2865,13 +2731,16 @@ app.post('/api/parse-gcode', upload.single('file'), async (req, res) => {
       return res.status(400).json({ success: false, error: 'No file uploaded or gcodeFilePath provided' });
     }
 
-    // 1. Parse the G-code
+    // Parse the G-code content
     let gcodeData;
     try {
       const filenameForParser = targetGcodePath || (req.file ? req.file.originalname : 'unknown.gcode');
       gcodeData = parseGcode(gcodeContent, filenameForParser);
     } catch (error) {
-      return res.status(400).json({ success: false, error: `Failed to parse G-code: ${error.message}` });
+      return res.status(400).json({
+        success: false,
+        error: `Failed to parse G-code: ${error.message}`
+      });
     }
 
     // Add gcodeFilePath to the result if we saved it
@@ -3013,7 +2882,7 @@ app.post('/api/create-model-folder', express.json(), (req, res) => {
 // --- API: Get all -munchie.json files and their hashes ---
 app.get('/api/munchie-files', (req, res) => {
   const modelsDir = getAbsoluteModelsPath();
-  try { console.log('[debug] /api/munchie-files scanning modelsDir=', modelsDir); } catch (e) { }
+  try { console.log('[debug] /api/munchie-files scanning modelsDir=', modelsDir); } catch (e) {}
   let result = [];
 
   function scanDirectory(dir) {
@@ -3034,7 +2903,7 @@ app.get('/api/munchie-files', (req, res) => {
               hash: json.hash,
               modelUrl: '/models/' + relativePath.replace(/\\/g, '/')
             };
-            try { console.log('[debug] /api/munchie-files item', { fileName: item.fileName, hash: item.hash, modelUrl: item.modelUrl }); } catch (e) { }
+            try { console.log('[debug] /api/munchie-files item', { fileName: item.fileName, hash: item.hash, modelUrl: item.modelUrl }); } catch (e) {}
             result.push(item);
           } catch (e) {
             // skip unreadable or invalid files
@@ -3049,7 +2918,7 @@ app.get('/api/munchie-files', (req, res) => {
 
   try {
     scanDirectory(modelsDir);
-    try { console.log('[debug] /api/munchie-files found', Array.isArray(result) ? result.length : 0, 'items'); } catch (e) { }
+    try { console.log('[debug] /api/munchie-files found', Array.isArray(result) ? result.length : 0, 'items'); } catch (e) {}
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: 'Failed to read models directory' });
@@ -3057,12 +2926,11 @@ app.get('/api/munchie-files', (req, res) => {
 });
 
 // --- API: Hash check for all .3mf files and their -munchie.json ---
-// --- API: Hash check for all .3mf files and their -munchie.json ---
 app.post('/api/hash-check', async (req, res) => {
   try {
     const { fileType = "3mf" } = req.body; // "3mf" or "stl" only
     const modelsDir = getAbsoluteModelsPath();
-    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) { }
+    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) {}
     const { computeMD5 } = require('./dist-backend/utils/threeMFToJson');
     let result = [];
     let seenHashes = new Set();
@@ -3129,7 +2997,7 @@ app.post('/api/hash-check', async (req, res) => {
     }
 
     // Process all found models
-    try { console.log('[debug] /api/hash-check base entries count=', Object.keys(cleanedModelMap).length); } catch (e) { }
+    try { console.log('[debug] /api/hash-check base entries count=', Object.keys(cleanedModelMap).length); } catch (e) {}
     for (const base in cleanedModelMap) {
       const entry = cleanedModelMap[base];
       const threeMFPath = entry.threeMF ? path.join(modelsDir, entry.threeMF) : null;
@@ -3230,7 +3098,7 @@ app.get('/api/load-model', async (req, res) => {
     const { filePath, id } = req.query;
     // Prefer id-based lookup when provided (more robust)
     const modelsDir = path.resolve(getModelsDirectory());
-    try { console.log('[debug] /api/load-model modelsDir=', modelsDir, 'id=', id); } catch (e) { }
+    try { console.log('[debug] /api/load-model modelsDir=', modelsDir, 'id=', id); } catch (e) {}
 
     // If `id` provided, try scanning for a munchie.json with matching id
     if (id && typeof id === 'string' && id.trim().length > 0) {
@@ -3248,9 +3116,9 @@ app.get('/api/load-model', async (req, res) => {
               const raw = fs.readFileSync(full, 'utf8');
               if (!raw || raw.trim().length === 0) continue;
               const parsed = JSON.parse(raw);
-              try { console.log('[debug] /api/load-model inspecting', full, 'parsed.id=', parsed && parsed.id, 'parsed.name=', parsed && parsed.name); } catch (e) { }
+              try { console.log('[debug] /api/load-model inspecting', full, 'parsed.id=', parsed && parsed.id, 'parsed.name=', parsed && parsed.name); } catch (e) {}
               if (parsed && (parsed.id === id || parsed.name === id)) {
-                try { console.log('[debug] /api/load-model matched id at', full); } catch (e) { }
+                try { console.log('[debug] /api/load-model matched id at', full); } catch (e) {}
                 return full;
               }
             } catch (e) {
@@ -3268,7 +3136,7 @@ app.get('/api/load-model', async (req, res) => {
           const parsed = JSON.parse(content);
           return res.json(parsed);
         }
-        try { console.log('[debug] /api/load-model no match found for id', id); } catch (e) { }
+        try { console.log('[debug] /api/load-model no match found for id', id); } catch (e) {}
         // If search completed without finding a match, return 404 to indicate not found
         return res.status(404).json({ success: false, error: 'Model not found for id' });
       } catch (e) {
@@ -3480,8 +3348,6 @@ async function getAllModels(modelsDirectory) {
 
   return models;
 }
-
-
 
 // API endpoint: Gemini suggestion (provider-backed with mock fallback)
 app.post('/api/gemini-suggest', async (req, res) => {
