@@ -209,19 +209,17 @@ export function SettingsPage({
 
     // Fix: Map string to object
     if (actionFileType) {
-      setSelectedFileTypes({
-        "3mf": actionFileType === "3mf",
-        "stl": actionFileType === "stl"
-      });
+      setSelectedFileTypes({ "3mf": actionFileType === "3mf", "stl": actionFileType === "stl" });
     }
 
     (async () => {
       try {
-        const typeObj = { "3mf": actionFileType === "3mf", "stl": actionFileType === "stl" };
         if (settingsAction.type === 'hash-check') {
-          handleRunHashCheck(typeObj);
+          // Call the hash check with the explicit file type
+          handleRunHashCheck(actionFileType);
         } else if (settingsAction.type === 'generate') {
-          await handleGenerateModelJson(typeObj);
+          // Call the generate handler with the explicit file type
+          await handleGenerateModelJson(actionFileType);
         }
       } catch (err) {
         console.error('Error running settingsAction:', err);
@@ -313,7 +311,7 @@ export function SettingsPage({
 
 
   // File type selection state - "3mf", "stl", or "all"
-  const [selectedFileTypes, setSelectedFileTypes] = useState({ "3mf": true, "stl": false });
+  const [selectedFileTypes, setSelectedFileTypes] = useState<{ "3mf": boolean; "stl": boolean }>({ "3mf": true, "stl": true });
 
   // Lazy load experimental tab component from separate file
   const ExperimentalTab = lazy(() => import('./settings/ExperimentalTab'));
@@ -407,46 +405,61 @@ export function SettingsPage({
     );
   };
 
-  const handleGenerateModelJson = async (overrideTypes?: { "3mf": boolean; stl: boolean }) => {
-    const types = overrideTypes || selectedFileTypes;
-
+  const handleGenerateModelJson = async (fileType?: "3mf" | "stl") => {
+    // Determine which file types to process
+    const fileTypesToProcess: Array<"3mf" | "stl"> = fileType 
+      ? [fileType] 
+      : [...(selectedFileTypes["3mf"] ? ["3mf" as const] : []), ...(selectedFileTypes["stl"] ? ["stl" as const] : [])];
+    
+    if (fileTypesToProcess.length === 0) return;
+    
+    // Clear any previous hash-check results so UI doesn't show stale verified counts
     if (hashCheckResult) setHashCheckResult(null);
     setIsGeneratingJson(true);
+    // Clear previous generation result so UI shows fresh status while running
     setGenerateResult(null);
-
-    const activeTypes = [];
-    if (types["3mf"]) activeTypes.push(".3mf");
-    if (types["stl"]) activeTypes.push(".stl");
-    const fileTypeText = activeTypes.join(" & ") || "no files";
-
-    setStatusMessage(`Generating JSON for ${fileTypeText} files...`);
+    
     try {
-      const resp = await fetch('/api/scan-models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          check3mf: types["3mf"],
-          checkStl: types["stl"]
-        })
-      });
+      let totalProcessed = 0;
+      let totalSkipped = 0;
+      let totalGenerated = 0;
+      let totalVerified = 0;
+      
+      // Process each selected file type sequentially
+      for (const effectiveFileType of fileTypesToProcess) {
+        const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
+        setStatusMessage(`Generating JSON for all ${fileTypeText} files...`);
+        
+        const resp = await fetch('/api/scan-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: effectiveFileType })
+        });
 
-      if (!resp.ok) {
-        const errBody = await resp.text().catch(() => '');
-        throw new Error(`Scan failed: ${resp.status} ${errBody}`);
+        if (!resp.ok) {
+          const errBody = await resp.text().catch(() => '');
+          throw new Error(`Scan failed for ${fileTypeText}: ${resp.status} ${errBody}`);
+        }
+
+        // Read final JSON summary from the server
+        const data = await resp.json().catch(() => ({} as any));
+        if (!data || (data.success === false)) {
+          throw new Error(data?.error || `Scan failed for ${fileTypeText}`);
+        }
+
+        // Accumulate counts from each file type
+        totalProcessed += typeof data.processed === 'number' ? data.processed : 0;
+        totalSkipped += typeof data.skipped === 'number' ? data.skipped : 0;
+        totalGenerated += typeof data.generated === 'number' ? data.generated : 0;
+        totalVerified += typeof data.verified === 'number' ? data.verified : 0;
       }
-
-      // Read final JSON summary from the server
-      const data = await resp.json().catch(() => ({} as any));
-      if (!data || (data.success === false)) {
-        throw new Error(data?.error || 'Scan failed');
-      }
-
-      // Populate generateResult with any counts the server provided
+      
+      // Populate generateResult with accumulated counts
       setGenerateResult({
-        processed: typeof data.processed === 'number' ? data.processed : undefined,
-        skipped: typeof data.skipped === 'number' ? data.skipped : undefined,
-        generated: typeof data.generated === 'number' ? data.generated : undefined,
-        verified: typeof data.verified === 'number' ? data.verified : undefined,
+        processed: totalProcessed > 0 ? totalProcessed : undefined,
+        skipped: totalSkipped > 0 ? totalSkipped : undefined,
+        generated: totalGenerated > 0 ? totalGenerated : undefined,
+        verified: totalVerified > 0 ? totalVerified : undefined,
       });
 
       setSaveStatus('saved');
@@ -1260,115 +1273,126 @@ export function SettingsPage({
   };
 
   // Run scanModelFile for all models, update models, and produce a HashCheckResult
-  const handleRunHashCheck = (overrideTypes?: { "3mf": boolean; stl: boolean }) => {
+  const handleRunHashCheck = async (fileType?: "3mf" | "stl") => {
+    // Determine which file types to process
+    const fileTypesToProcess: Array<"3mf" | "stl"> = fileType 
+      ? [fileType] 
+      : [...(selectedFileTypes["3mf"] ? ["3mf" as const] : []), ...(selectedFileTypes["stl"] ? ["stl" as const] : [])];
+    
+    if (fileTypesToProcess.length === 0) return;
+    
+    // Clear any previous generate or duplicate results so the UI doesn't show stale counts
     if (generateResult) setGenerateResult(null);
     setDuplicateGroups([]);
     setHashCheckResult(null);
     setIsHashChecking(true);
     setHashCheckProgress(0);
 
-    const types = overrideTypes || selectedFileTypes;
-
-    const activeTypes = [];
-    if (types["3mf"]) activeTypes.push(".3mf");
-    if (types["stl"]) activeTypes.push(".stl");
-    const fileTypeText = activeTypes.join(" & ") || "no files";
-
-    setStatusMessage(`Rescanning ${fileTypeText} files...`);
-
-    fetch('/api/hash-check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        check3mf: types["3mf"],
-        checkStl: types["stl"]
-      })
-    })
-      .then(resp => resp.json())
-      .then(data => {
-        if (!data.success) throw new Error(data.error || 'Hash check failed');
-
-        // Map backend results to hash check result
-        let verified = typeof data.verified === 'number' ? data.verified : 0;
-        let corrupted = 0;
-        const corruptedFiles: CorruptedFile[] = [];
-        const duplicateGroups: DuplicateGroup[] = [];
-        const hashToModels: Record<string, Model[]> = {};
-        const updatedModels: Model[] = [];
-        const usedIds = new Set<string>(); // Track used IDs to prevent duplicates
-
-        // Default Model shape for missing fields
-        const defaultModel: Model = {
-          id: '',
-          name: '',
-          thumbnail: '',
-          images: [],
-          tags: [],
-          isPrinted: false,
-          printTime: '',
-          filamentUsed: '',
-          category: 'Utility',
-          description: '',
-          fileSize: '',
-          modelUrl: '',
-          license: '',
-          notes: '',
-          printSettings: { layerHeight: '', infill: '', nozzle: '' },
-          hash: '',
-          lastScanned: '',
-          source: '',
-          price: 0,
-          filePath: ''
-        };
-
+    try {
+      let allVerified = 0;
+      let allCorrupted = 0;
+      const allCorruptedFiles: CorruptedFile[] = [];
+      const allDuplicateGroups: DuplicateGroup[] = [];
+      const allHashToModels: Record<string, Model[]> = {};
+      const allUpdatedModels: Model[] = [];
+      const usedIds = new Set<string>(); // Track used IDs across both runs
+      
+      // Default Model shape for missing fields
+      const defaultModel: Model = {
+        id: '',
+        name: '',
+        thumbnail: '',
+        images: [],
+        tags: [],
+        isPrinted: false,
+        printTime: '',
+        filamentUsed: '',
+        category: 'Utility',
+        description: '',
+        fileSize: '',
+        modelUrl: '',
+        license: '',
+        notes: '',
+        printSettings: { layerHeight: '', infill: '', nozzle: '' },
+        hash: '',
+        lastScanned: '',
+        source: '',
+        price: 0,
+        filePath: ''
+      };
+      
+      // Process each selected file type sequentially
+      for (const effectiveFileType of fileTypesToProcess) {
+        const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
+        setStatusMessage(`Rescanning ${fileTypeText} files and comparing hashes...`);
+        
+        const resp = await fetch('/api/hash-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileType: effectiveFileType })
+        });
+        
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.error || `Hash check failed for ${fileTypeText}`);
+        
+        // Map backend results and accumulate
+        allVerified += typeof data.verified === 'number' ? data.verified : 0;
+        
         for (const r of data.results) {
-          // Try to find the full model in the current models array
-          const fullModel = models.find(m => {
-            // Try matching by name
-            if (m.name === r.baseName) return true;
-
-            // Try matching by expected URL
-            const expectedUrl = r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '';
-            if (m.modelUrl === expectedUrl) return true;
-
-            // Try matching by normalized URL
-            const normalizedModelUrl = m.modelUrl.replace(/\\/g, '/');
-            const normalizedExpectedUrl = expectedUrl.replace(/\\/g, '/');
-            if (normalizedModelUrl === normalizedExpectedUrl) return true;
-
-            return false;
-          });
-
-          // Create unique ID
-          const filePath = r.threeMF || r.stl || r.baseName;
-          let baseId = fullModel?.id || `hash-${filePath.replace(/[^a-zA-Z0-9]/g, '-')}-${r.hash?.substring(0, 8) || Date.now()}`;
-
-          // Ensure ID is unique
-          let uniqueId = baseId;
-          let counter = 1;
-          while (usedIds.has(uniqueId)) {
-            uniqueId = `${baseId}-${counter}`;
-            counter++;
-          }
-          usedIds.add(uniqueId);
-
-          const mergedModel = {
-            ...defaultModel,
-            ...fullModel,
-            id: uniqueId,
-            name: fullModel?.name || r.baseName.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '') || r.baseName,
-            modelUrl: r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '',
-            hash: r.hash,
-            status: r.status
-          };
+        // Try to find the full model in the current models array for images/thumbnails
+        const fullModel = models.find(m => {
+          // Try multiple matching strategies with case-insensitive comparison for file systems like Windows/macOS
+          if (m.name === r.baseName) return true;
+          
+          // Normalize paths: convert backslashes to forward slashes and lowercase for comparison
+          const normalizedModelUrl = m.modelUrl.replace(/\\/g, '/').toLowerCase();
+          const file3mf = r.threeMF ? r.threeMF.replace(/\\/g, '/').toLowerCase() : null;
+          const fileStl = r.stl ? r.stl.replace(/\\/g, '/').toLowerCase() : null;
+          
+          // Try endsWith match (handles subdirectories)
+          if (file3mf && normalizedModelUrl.endsWith(file3mf)) return true;
+          if (fileStl && normalizedModelUrl.endsWith(fileStl)) return true;
+          
+          // Try with /models/ prefix
+          if (file3mf && normalizedModelUrl === `/models/${file3mf}`) return true;
+          if (fileStl && normalizedModelUrl === `/models/${fileStl}`) return true;
+          
+          // Try comparing just the filename (case-insensitive)
+          const modelFileName = m.modelUrl?.split(/[/\\]/).pop()?.toLowerCase();
+          const hashFileName = (r.threeMF?.split(/[/\\]/).pop() || r.stl?.split(/[/\\]/).pop())?.toLowerCase();
+          return modelFileName && hashFileName && modelFileName === hashFileName;
+        });
+        
+        // Create a unique ID that includes the full file path to ensure uniqueness
+        const filePath = r.threeMF || r.stl || r.baseName;
+        let baseId = fullModel?.id || `hash-${filePath.replace(/[^a-zA-Z0-9]/g, '-')}-${r.hash?.substring(0, 8) || Date.now()}`;
+        
+        // Ensure ID is unique by adding a counter if necessary
+        let uniqueId = baseId;
+        let counter = 1;
+        while (usedIds.has(uniqueId)) {
+          uniqueId = `${baseId}-${counter}`;
+          counter++;
+        }
+        usedIds.add(uniqueId);
+        
+        const mergedModel = {
+          ...defaultModel,
+          ...fullModel,
+          id: uniqueId,
+          name: fullModel?.name || r.baseName.split(/[/\\]/).pop()?.replace(/\.(3mf|stl)$/i, '') || r.baseName, // Use clean filename as name
+          modelUrl: r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '',
+          hash: r.hash,
+          status: r.status
+        };
+        
 
           if (r.status === 'ok') {
-            verified++;
+            allVerified++;
           } else {
-            corrupted++;
-            // Add file info to corruptedFiles
+            allCorrupted++;
             const filePath = r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '';
-            corruptedFiles.push({
+            allCorruptedFiles.push({
               model: mergedModel,
               filePath: filePath,
               error: r.details || 'Unknown error',
@@ -1377,46 +1401,44 @@ export function SettingsPage({
             });
           }
           if (r.hash) {
-            if (!hashToModels[r.hash]) hashToModels[r.hash] = [];
-            hashToModels[r.hash].push(mergedModel);
+            if (!allHashToModels[r.hash]) allHashToModels[r.hash] = [];
+            allHashToModels[r.hash].push(mergedModel);
           }
-          updatedModels.push(mergedModel);
+          allUpdatedModels.push(mergedModel);
         }
-
-        // Identify duplicate groups
-        for (const hash in hashToModels) {
-          if (hashToModels[hash].length > 1) {
-            duplicateGroups.push({ hash, models: hashToModels[hash], totalSize: '0' });
-          }
+      }
+      
+      // Find duplicate groups across all file types
+      for (const hash in allHashToModels) {
+        if (allHashToModels[hash].length > 1) {
+          allDuplicateGroups.push({ hash, models: allHashToModels[hash], totalSize: '0' });
         }
-
-        setDuplicateGroups(duplicateGroups);
-        setHashCheckResult({
-          verified,
-          corrupted,
-          duplicateGroups,
-          corruptedFiles,
-          corruptedFileDetails: corruptedFiles,
-          lastCheck: new Date().toISOString()
-        });
-
-        onModelsUpdate(updatedModels);
-        setSaveStatus('saved');
-        setStatusMessage('Hash check complete. See results.');
-        setTimeout(() => {
-          setSaveStatus('idle');
-          setStatusMessage('');
-        }, 4000);
-      })
-      .catch(error => {
-        setSaveStatus('error');
-        setStatusMessage('Model scan failed');
-        console.error('Model scan error:', error);
-      })
-      .finally(() => {
-        setIsHashChecking(false);
-        setHashCheckProgress(0);
+      }
+      
+      setDuplicateGroups(allDuplicateGroups);
+      setHashCheckResult({
+        verified: allVerified,
+        corrupted: allCorrupted,
+        duplicateGroups: allDuplicateGroups,
+        corruptedFiles: allCorruptedFiles,
+        corruptedFileDetails: allCorruptedFiles,
+        lastCheck: new Date().toISOString()
       });
+      onModelsUpdate(allUpdatedModels);
+      setSaveStatus('saved');
+      setStatusMessage('Hash check complete. See results.');
+      setTimeout(() => {
+        setSaveStatus('idle');
+        setStatusMessage('');
+      }, 4000);
+    } catch (error) {
+      setSaveStatus('error');
+      setStatusMessage('Model scan failed');
+      console.error('Model scan error:', error);
+    } finally {
+      setIsHashChecking(false);
+      setHashCheckProgress(0);
+    }
   };
 
   const handleRemoveDuplicates = async (group: DuplicateGroup, keepModelId: string): Promise<boolean> => {
@@ -1532,8 +1554,9 @@ export function SettingsPage({
         toast.success('Regenerated munchie data');
       }
 
-      // Re-run the hash check to refresh UI
-      handleRunHashCheck(selectedFileTypes);
+      // Re-run the hash check to refresh UI with the first selected file type
+      const firstSelectedType = selectedFileTypes["3mf"] ? "3mf" : "stl";
+      handleRunHashCheck(firstSelectedType);
     } catch (e: any) {
       console.error('Regenerate error:', e);
       toast.error(e?.message || 'Failed to regenerate munchie file');

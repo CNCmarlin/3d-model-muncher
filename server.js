@@ -2939,23 +2939,45 @@ app.post('/api/hash-check', async (req, res) => {
     let modelMap = {};
 
     // Recursively scan directories
+    // --- ROBUST SYNC SCANNER (Direct Replacement) ---
     function scanDirectory(dir) {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      // 1. Safety: Try to read the directory. If it fails, log and SKIP (don't crash).
+      let entries = [];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch (err) {
+        console.warn(`[Scanner] ⚠️ SKIPPING FOLDER (Access Denied): ${dir}`);
+        return; 
+      }
+
+      console.log(`[Scanner] 📂 Scanning: ${dir} (${entries.length} items)`);
+
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
+
+        // 2. Safety: Skip hidden system folders that often crash scanners
+        if (entry.name.startsWith('.') || entry.name === 'System Volume Information' || entry.name === '$RECYCLE.BIN') {
+            continue; 
+        }
+
         if (entry.isDirectory()) {
+          // Recurse deeper
           scanDirectory(fullPath);
         } else {
           const relativePath = path.relative(modelsDir, fullPath);
 
+          // [DEBUG] Log the file we are looking at
+          // console.log(`[Scanner] 🔎 Checking file: ${entry.name}`);
+
           if (fileType === "3mf") {
-            // Only process 3MF files and their JSON companions
             const lowerPath = relativePath.toLowerCase();
-            // Skip G-code archives (.gcode.3mf and .3mf.gcode)
+            // Skip G-code archives
             if ((lowerPath.endsWith('.gcode.3mf') || lowerPath.endsWith('.3mf.gcode'))) {
+              console.log(`[Scanner] 🚫 Ignored G-code archive: ${entry.name}`);
               continue;
             }
             if (lowerPath.endsWith('.3mf')) {
+              console.log(`[Scanner] ✅ Found 3MF: ${entry.name}`);
               const base = relativePath.replace(/\.3mf$/i, '');
               modelMap[base] = modelMap[base] || {};
               modelMap[base].threeMF = relativePath;
@@ -2965,12 +2987,13 @@ app.post('/api/hash-check', async (req, res) => {
               modelMap[base].json = relativePath;
             }
           } else if (fileType === "stl") {
-            // Only process STL files and their JSON companions
-            if (relativePath.toLowerCase().endsWith('.stl')) {
+            const lowerPath = relativePath.toLowerCase();
+            if (lowerPath.endsWith('.stl')) {
+              console.log(`[Scanner] ✅ Found STL: ${entry.name}`);
               const base = relativePath.replace(/\.stl$/i, '');
               modelMap[base] = modelMap[base] || {};
               modelMap[base].stl = relativePath;
-            } else if (relativePath.toLowerCase().endsWith('-stl-munchie.json')) {
+            } else if (lowerPath.endsWith('-stl-munchie.json')) {
               const base = relativePath.replace(/-stl-munchie\.json$/i, '');
               modelMap[base] = modelMap[base] || {};
               modelMap[base].json = relativePath;
