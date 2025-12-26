@@ -7,6 +7,24 @@ export interface IntegrationSettings {
   thingiverse?: {
     token?: string;
   };
+  // [NEW] Unified AI Provider Selection
+  ai?: {
+    provider?: 'google' | 'openai' | 'ollama' | 'none';
+  };
+    google?: {
+      provider?: 'vertex' | 'studio';
+      apiKey?: string;
+      projectId?: string;
+      serviceAccountJson?: string;
+    };
+    openai?: {
+      apiKey?: string;
+      model?: string;
+    };
+    ollama?: {
+      url?: string;
+      model?: string;
+    };
 }
 
 export interface AppConfig {

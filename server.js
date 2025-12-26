@@ -377,6 +377,51 @@ app.post('/api/spoolman/config', (req, res) => {
   }
 });
 
+// 4. Use Filament (Deduct weight)
+app.post('/api/spoolman/use', async (req, res) => {
+  const url = getSpoolmanUrl();
+  if (!url) return res.status(400).json({ error: 'Spoolman not configured' });
+
+  const { spoolId, weight } = req.body;
+  if (!spoolId || !weight) return res.status(400).json({ error: 'Missing spoolId or weight' });
+
+  try {
+    // 1. Get current spool data to find remaining weight
+    const getResponse = await fetch(`${url}/api/v1/spool/${spoolId}`);
+    if (!getResponse.ok) throw new Error('Failed to fetch spool info');
+    const spool = await getResponse.json();
+
+    // 2. Calculate new weight
+    // Spoolman expects "remaining_weight" in the PATCH payload
+    const currentWeight = parseFloat(spool.remaining_weight);
+    const deductAmount = parseFloat(weight);
+    const newWeight = Math.max(0, currentWeight - deductAmount); // Prevent negative
+
+    // 3. Send update to Spoolman
+    const patchResponse = await fetch(`${url}/api/v1/spool/${spoolId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        remaining_weight: newWeight 
+      })
+    });
+
+    if (!patchResponse.ok) {
+      const err = await patchResponse.text();
+      throw new Error(`Spoolman update failed: ${err}`);
+    }
+
+    const updatedSpool = await patchResponse.json();
+    
+    console.log(`[Spoolman] Deducted ${weight}g from spool ${spoolId}. Remaining: ${updatedSpool.remaining_weight}`);
+    res.json({ success: true, spool: updatedSpool });
+
+  } catch (e) {
+    console.error('Spoolman deduct error:', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Create or update a collection
 app.post('/api/collections', async (req, res) => {
   try {
@@ -2281,6 +2326,25 @@ app.post('/api/import/thingiverse', async (req, res) => {
   }
 });
 
+// --- API: Verify Thingiverse Token ---
+app.post('/api/thingiverse/verify', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ success: false, error: 'Token required' });
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const resp = await fetch('https://api.thingiverse.com/users/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return res.json({ success: true, username: data.name || 'Unknown User' });
+    }
+    return res.status(resp.status).json({ success: false, error: `Verification failed (${resp.status})` });
+  } catch(e) {
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // API endpoint to upload .3mf / .stl files and generate their munchie.json files
 app.post('/api/upload-models', upload.array('files'), async (req, res) => {
   try {
@@ -3327,10 +3391,12 @@ async function getAllModels(modelsDirectory) {
   return models;
 }
 
+
+
 // API endpoint: Gemini suggestion (provider-backed with mock fallback)
 app.post('/api/gemini-suggest', async (req, res) => {
   try {
-    const { imageBase64, mimeType, prompt } = req.body || {};
+    const { imageBase64, mimeType, prompt, config } = req.body || {};
 
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ success: false, error: 'Prompt is required' });
@@ -3350,7 +3416,7 @@ app.post('/api/gemini-suggest', async (req, res) => {
       // Resolve relative to this file's directory so the module loads regardless of process.cwd()
       const adapterPath = path.join(__dirname, 'server-utils', 'genaiAdapter');
       const adapter = require(adapterPath);
-      genaiResult = await adapter.suggest({ prompt, imageBase64, mimeType, provider: requestedProvider });
+      genaiResult = await adapter.suggest({ prompt, imageBase64, mimeType, provider: requestedProvider, config: config || {} });
     } catch (e) {
       console.warn('GenAI adapter error or not configured:', e && e.message);
       genaiResult = null;

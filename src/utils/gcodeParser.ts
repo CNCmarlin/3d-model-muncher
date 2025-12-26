@@ -146,11 +146,18 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
     }
     if (filamentTypes.length === 0) {
       const match = trimmed.match(patterns.type);
-      if (match) filamentTypes = parseCSV(match[1]);
+      // [FIX] Log found material types for debugging
+      if (match) { 
+        filamentTypes = parseCSV(match[1]); 
+        console.log('[GcodeParser] Found Materials:', filamentTypes); 
+      }
     }
     if (filamentColors.length === 0) {
       const match = trimmed.match(patterns.color);
-      if (match) filamentColors = parseCSV(match[1]);
+      if (match) 
+        filamentColors = parseCSV(match[1]);
+      console.log('[GcodeParser] Found Material Colors:', filamentColors); 
+
     }
     if (!layerHeight) { const match = trimmed.match(patterns.layerHeight); if (match) layerHeight = match[1]; }
     if (!infill) { const match = trimmed.match(patterns.infill); if (match) infill = match[1]; }
@@ -209,6 +216,7 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
     if (filenameTime && filenameTime[0]) {
       metadata.printTime = filenameTime[0];
       console.log('[GcodeParser] Recovered Time from Filename:', metadata.printTime);
+      console.log('[GcodeParser] Filaments:', JSON.stringify(metadata.filaments));
     }
   }
   

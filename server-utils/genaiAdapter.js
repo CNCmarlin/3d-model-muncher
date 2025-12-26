@@ -44,21 +44,21 @@ The JSON must be parseable by a strict JSON parser. Do NOT include any additiona
 // from overriding the internal system instruction which enforces consistent
 // output structure and content rules. The adapter will always use
 // `DEFAULT_SYSTEM_PROMPT` when building provider requests.
-async function suggest({ prompt, imageBase64, mimeType, systemPrompt, provider = process.env.GEMINI_PROVIDER }) {
+async function suggest({ prompt, imageBase64, mimeType, systemPrompt, provider = process.env.GEMINI_PROVIDER, config = {} }) {
   if (!prompt || typeof prompt !== 'string') {
     throw new Error('prompt required');
   }
 
   // Provider: OpenAI (text completion / responses)
   if (provider && provider.toLowerCase() === 'openai') {
-    const key = process.env.OPENAI_API_KEY;
+    const key = config.apiKey || process.env.OPENAI_API_KEY;
     if (!key) throw new Error('OPENAI_API_KEY not configured');
 
     // Build a lightweight request: use the responses endpoint if available, otherwise fallback
     const url = 'https://api.openai.com/v1/chat/completions';
 
-  // Always enforce the DEFAULT_SYSTEM_PROMPT; ignore any client-provided value.
-  const system = DEFAULT_SYSTEM_PROMPT;
+    // Always enforce the DEFAULT_SYSTEM_PROMPT; ignore any client-provided value.
+    const system = DEFAULT_SYSTEM_PROMPT;
     const user = `Prompt: ${prompt}\nReturn JSON with keys: description (string), category (single word), tags (array of strings).`;
 
     const body = {
@@ -107,30 +107,30 @@ async function suggest({ prompt, imageBase64, mimeType, systemPrompt, provider =
     return {
       description: json.description || '',
       category: json.category || '',
-      tags: Array.isArray(json.tags) ? json.tags.slice(0, 6) : [] ,
+      tags: Array.isArray(json.tags) ? json.tags.slice(0, 6) : [],
       raw: parsed
     };
   }
 
   // Provider: Google Gemini (Generative Models API)
   if (provider && provider.toLowerCase() === 'gemini') {
-    // Load dotenv if available so local .env values are picked up in dev
-    try { require('dotenv').config(); } catch (e) { /* noop */ }
-
-    const key = process.env.GOOGLE_API_KEY;
-    if (!key && !process.env.GOOGLE_APPLICATION_CREDENTIALS) throw new Error('GOOGLE_API_KEY or GOOGLE_APPLICATION_CREDENTIALS required for gemini provider');
-
-    // Prefer the official @google/genai client. If it's not available or fails, return null
-    // so the server will fall back to the mock suggestion behavior.
+    // Prefer config key, fall back to env var
+    const key = config.apiKey || process.env.GOOGLE_API_KEY;
+    
+    // Note: Service Account JSON handling via config is complex to pass to GoogleGenAI directly 
+    // without writing to a file, so for now we prioritize API Key mode for UI config.
+    if (!key && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        throw new Error('Google API Key required');
+    }
     try {
       const { GoogleGenAI } = require('@google/genai');
       const clientOpts = {};
-      if (process.env.GOOGLE_API_KEY) clientOpts.apiKey = process.env.GOOGLE_API_KEY;
+      if (key) clientOpts.apiKey = key;
       const ai = new GoogleGenAI(clientOpts);
 
       const contents = [];
-  // Include the enforced system instruction as the first content item (client-supplied systemPrompt is ignored)
-  const sys = DEFAULT_SYSTEM_PROMPT;
+      // Include the enforced system instruction as the first content item (client-supplied systemPrompt is ignored)
+      const sys = DEFAULT_SYSTEM_PROMPT;
       if (sys) contents.push({ text: sys });
       if (imageBase64) contents.push({ inlineData: { mimeType: mimeType || 'image/jpeg', data: imageBase64 } });
       contents.push({ text: prompt });
@@ -169,6 +169,47 @@ async function suggest({ prompt, imageBase64, mimeType, systemPrompt, provider =
       return null;
     }
   }
+
+  // Provider: Ollama (Local) - New Addition
+  if (provider && provider.toLowerCase() === 'ollama') {
+    const url = (config.url || 'http://localhost:11434').replace(/\/$/, '');
+    const model = config.model || 'llava';
+    
+    const body = {
+      model: model,
+      stream: false,
+      messages: [
+          { role: 'system', content: DEFAULT_SYSTEM_PROMPT },
+          { role: 'user', content: `Prompt: ${prompt}`, images: imageBase64 ? [imageBase64] : [] }
+      ],
+      format: "json" // Force JSON mode
+    };
+
+    if (!fetchFn) throw new Error('No fetch available');
+
+    const resp = await fetchFn(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    if (!resp.ok) throw new Error(`Ollama Error: ${resp.status}`);
+    const parsed = await resp.json();
+    
+    let json = null;
+    try {
+        json = JSON.parse(parsed.message.content);
+    } catch(e) {
+        json = { description: parsed.message.content, category: '', tags: [] };
+    }
+
+    return {
+        description: json.description || '',
+        category: json.category || '',
+        tags: Array.isArray(json.tags) ? json.tags : [],
+        raw: parsed
+    };
+}
 
   // No provider configured
   return null;

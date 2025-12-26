@@ -2215,7 +2215,7 @@ export function ModelDetailsDrawer({
     layerHeight: model?.printSettings?.layerHeight || model?.userDefined?.printSettings?.layerHeight || 'Unknown',
     infill: model?.printSettings?.infill || model?.userDefined?.printSettings?.infill || 'Unknown',
     nozzle: model?.printSettings?.nozzle || model?.userDefined?.printSettings?.nozzle || 'Unknown',
-    printer: model?.printSettings?.printer || 'Unknown' 
+    printer: model?.printSettings?.printer || 'Unknown'
   };
 
   // Determine if the underlying model is STL or 3MF using filePath/modelUrl
@@ -2225,6 +2225,17 @@ export function ModelDetailsDrawer({
       return p.endsWith('.stl') || p.endsWith('-stl-munchie.json');
     } catch (_) { return false; }
   })();
+
+  const handleLocalUpdate = (updates: Partial<Model>) => {
+    // Merge updates into the current model state so UI reflects it immediately
+    const updated = { ...currentModel, ...updates };
+    // This updates the local state of the drawer
+    if (isEditing) {
+      setEditedModel(updated as Model);
+    }
+    // This notifies the parent app list
+    onModelUpdate(updated as Model);
+  };
 
   return (
     <Sheet open={isOpen} onOpenChange={handleSheetOpenChange}>
@@ -2611,1200 +2622,1234 @@ export function ModelDetailsDrawer({
 
               <Separator />
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* [FIX] Updated grid to 4 columns for large screens to fit Material */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                {/* [NEW] Material Card */}
                 <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
                   <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
                     <Layers className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Layer Height</p>
-                    <p className="font-semibold text-foreground">{safePrintSettings.layerHeight ? `${safePrintSettings.layerHeight} mm` : ''}</p>
+                  <div className="min-w-0"> {/* min-w-0 ensures truncation works */}
+                    <p className="text-sm text-muted-foreground">Material</p>
+                    <p className="font-semibold text-foreground truncate" title={currentModel.gcodeData?.filaments?.[0]?.type || 'Unknown'}>
+                      {currentModel.gcodeData?.filaments?.[0]?.type || 'Unknown'}
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                  <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
-                    <Droplet className="h-5 w-5 text-muted-foreground" />
+                  <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
+                    <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
+                      <Layers className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Layer Height</p>
+                      <p className="font-semibold text-foreground">{safePrintSettings.layerHeight ? `${safePrintSettings.layerHeight} mm` : ''}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Infill</p>
-                    <p className="font-semibold text-foreground">{safePrintSettings.infill}</p>
+
+                  <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
+                    <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
+                      <Droplet className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Infill</p>
+                      <p className="font-semibold text-foreground">{safePrintSettings.infill}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
+                    <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
+                      <Diameter className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Nozzle</p>
+                      <p className="font-semibold text-foreground">{safePrintSettings.nozzle ? `${safePrintSettings.nozzle} mm` : ''}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                  <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
-                    <Diameter className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Nozzle</p>
-                    <p className="font-semibold text-foreground">{safePrintSettings.nozzle ? `${safePrintSettings.nozzle} mm` : ''}</p>
-                  </div>
-                </div>
+                {/* Pricing Section (shows only if price defined) */}
+                {currentModel.price !== undefined && currentModel.price !== 0 && (
+                  <>
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-primary/5 to-primary/10 rounded-lg border border-primary/20">
+                        <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
+                          <Store className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Price</p>
+                          <p className="text-xl font-semibold text-foreground">${currentModel.price}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+
+                {/* [NEW] Spoolman Inventory Check */}
+                <Separator className="my-2" />
+                <SpoolmanWidget
+                  model={currentModel}
+                  onUpdateModel={handleLocalUpdate}
+                />
               </div>
 
-              {/* Pricing Section (shows only if price defined) */}
-              {currentModel.price !== undefined && currentModel.price !== 0 && (
-                <>
+              {/* Model Details */}
+              <div className="space-y-4">
+                <h3 className="font-semibold text-lg text-card-foreground">Details</h3>
+                {isEditing ? (
+                  <div className="grid gap-6">
+                    {/* Print settings (editable only for STL models) */}
+                    {isStlModel && (
+                      <>
+                        {/* [NEW] Material Input */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="edit-material">Material</Label>
+                            <Input
+                              id="edit-material"
+                              value={(editedModel as any)?.printSettings?.material || ''}
+                              onChange={(e) => setEditedModel(prev => {
+                                if (!prev) return prev;
+                                const ps = { ...(prev.printSettings || {}) } as any;
+                                ps.material = e.target.value;
+                                return { ...prev, printSettings: ps } as Model;
+                              })}
+                              placeholder="e.g. PLA, PETG"
+                            />
+                          </div>
+                          {/* Moved Printer here to pair with Material */}
+                          <div className="space-y-2">
+                            <Label htmlFor="edit-layer-height">Layer height (mm)</Label>
+                            <Input
+                              id="edit-layer-height"
+                              value={(editedModel as any)?.printSettings?.layerHeight || ''}
+                              onChange={(e) => setEditedModel(prev => {
+                                if (!prev) return prev;
+                                const ps = { ...(prev.printSettings || {}) } as any;
+                                ps.layerHeight = e.target.value;
+                                return { ...prev, printSettings: ps } as Model;
+                              })}
+                              placeholder="e.g. 0.2"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="edit-infill">Infill (%)</Label>
+                            <Input
+                              id="edit-infill"
+                              value={(editedModel as any)?.printSettings?.infill || ''}
+                              onChange={(e) => setEditedModel(prev => {
+                                if (!prev) return prev;
+                                const ps = { ...(prev.printSettings || {}) } as any;
+                                ps.infill = e.target.value;
+                                return { ...prev, printSettings: ps } as Model;
+                              })}
+                              placeholder="e.g. 20%"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="edit-nozzle">Nozzle (mm)</Label>
+                            <Input
+                              id="edit-nozzle"
+                              value={(editedModel as any)?.printSettings?.nozzle || ''}
+                              onChange={(e) => setEditedModel(prev => {
+                                if (!prev) return prev;
+                                const ps = { ...(prev.printSettings || {}) } as any;
+                                ps.nozzle = e.target.value;
+                                return { ...prev, printSettings: ps } as Model;
+                              })}
+                              placeholder="e.g. 0.4"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="edit-printer">Printer</Label>
+                            <Input
+                              id="edit-printer"
+                              value={(editedModel as any)?.printSettings?.printer || ''}
+                              onChange={(e) => setEditedModel(prev => {
+                                if (!prev) return prev;
+                                const ps = { ...(prev.printSettings || {}) } as any;
+                                ps.printer = e.target.value;
+                                return { ...prev, printSettings: ps } as Model;
+                              })}
+                              placeholder="e.g. Bambu P1S"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-name">Model Name</Label>
+                        <Input
+                          id="edit-name"
+                          value={editedModel?.name || ""}
+                          onChange={(e) => setEditedModel(prev => prev ? { ...prev, name: e.target.value } : null)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-category">Category</Label>
+                        <Select
+                          value={editedModel?.category || ""}
+                          onValueChange={(value: string) => setEditedModel(prev => prev ? { ...prev, category: value } : null)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((category) => (
+                              <SelectItem key={category.id} value={category.label}>
+                                {category.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-designer">Designer</Label>
+                        <Input
+                          id="edit-designer"
+                          // Model type doesn't currently include `designer`/`Designer` optional property.
+                          // Use a safe any-cast to read legacy metadata if present (e.g., Designer from 3mf metadata).
+                          value={editedModel?.designer ?? ""}
+                          onChange={(e) => setEditedModel(prev => prev ? ({ ...prev, designer: e.target.value } as any) as Model : null)}
+                          placeholder="Designer name"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-description">Description</Label>
+                      <Textarea
+                        id="edit-description"
+                        value={editedModel?.description || ""}
+                        onChange={(e) => setEditedModel(prev => prev ? { ...prev, description: e.target.value } : null)}
+                        rows={3}
+                      />
+                      {/* If there is a stored userDefined description (including empty string), allow restoring the original top-level description */}
+                      {originalUserDefinedDescriptionRef.current !== null && (
+                        <div className="pt-2">
+                          <div className="flex items-center space-x-3">
+                            <Switch
+                              checked={restoreOriginalDescription}
+                              onCheckedChange={(next: boolean) => {
+                                setRestoreOriginalDescription(next);
+                                setEditedModel(prev => {
+                                  if (!prev) return prev;
+                                  if (next) {
+                                    // Remove only the nested userDefined.description while
+                                    // preserving any userDefined.images so the save can
+                                    // clear the description but keep images.
+                                    const copy = { ...prev } as any;
+                                    const ud = copy.userDefined && typeof copy.userDefined === 'object' ? { ...copy.userDefined } : {};
+                                    // Delete the description key so save logic knows to clear it
+                                    if (Object.prototype.hasOwnProperty.call(ud, 'description')) delete ud.description;
+                                    copy.userDefined = ud;
+                                    // Show the original top-level description in the edit buffer
+                                    copy.description = originalTopLevelDescriptionRef.current || '';
+                                    return copy as Model;
+                                  } else {
+                                    // Restore the previous userDefined description into the edit buffer
+                                    const copy = { ...prev } as any;
+                                    if (originalUserDefinedDescriptionRef.current !== null) {
+                                      copy.userDefined = { description: originalUserDefinedDescriptionRef.current };
+                                      copy.description = originalUserDefinedDescriptionRef.current;
+                                    }
+                                    return copy as Model;
+                                  }
+                                });
+                              }}
+                              id="restore-original-description"
+                            />
+                            <Label htmlFor="restore-original-description">Restore original description</Label>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-license">License</Label>
+                        <Select
+                          value={editedModel?.license || ""}
+                          onValueChange={(value: string) => setEditedModel(prev => prev ? { ...prev, license: value } : null)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {/* If the current edited license isn't in the known set, show it as a disabled item
+                            so the SelectTrigger displays the value instead of an empty placeholder. */}
+                            {editedModel?.license && !isKnownLicense(editedModel.license) && (
+                              <SelectItem value={editedModel.license} disabled>
+                                {editedModel.license} (unknown)
+                              </SelectItem>
+                            )}
+
+                            {LICENSES.map((lic) => (
+                              <SelectItem key={lic} value={lic}>{lic}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-price">Selling Price</Label>
+                        <div className="relative">
+                          <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            id="edit-price"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={editedModel?.price ?? ""}
+                            onChange={(e) =>
+                              setEditedModel(prev =>
+                                prev
+                                  ? { ...prev, price: e.target.value === "" ? 0 : parseFloat(e.target.value) }
+                                  : null
+                              )
+                            }
+                            className="pl-9"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <Switch
+                        checked={editedModel?.isPrinted || false}
+                        onCheckedChange={(checked: boolean) => setEditedModel(prev => prev ? { ...prev, isPrinted: checked } : null)}
+                        id="edit-printed"
+                      />
+                      <Label htmlFor="edit-printed">Mark as printed</Label>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <Switch
+                        checked={editedModel?.hidden || false}
+                        onCheckedChange={(checked: boolean) => setEditedModel(prev => prev ? { ...prev, hidden: checked } : null)}
+                        id="edit-hidden"
+                      />
+                      <Label htmlFor="edit-hidden">Hide model from view</Label>
+                    </div>
+
+                    {/* Print Time & Filament Editing */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-print-time">Print Time</Label>
+                        <Input
+                          id="edit-print-time"
+                          placeholder="e.g. 1h 30m"
+                          value={editedModel?.printTime || ""}
+                          onChange={(e) => setEditedModel(prev => prev ? { ...prev, printTime: e.target.value } : null)}
+                        />
+                        <p className="text-xs text-muted-foreground">Friendly print time string (keeps existing formatting).</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-filament">Filament</Label>
+                        <Input
+                          id="edit-filament"
+                          placeholder="e.g. 12g PLA"
+                          value={editedModel?.filamentUsed || ""}
+                          onChange={(e) => setEditedModel(prev => prev ? { ...prev, filamentUsed: e.target.value } : null)}
+                        />
+                        <p className="text-xs text-muted-foreground">Amount/type of filament used.</p>
+                      </div>
+                    </div>
+
+                    {/* Tags Editing Section */}
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Label>Tags</Label>
+                      </div>
+
+                      {/* Tags editor */}
+                      <TagsInput
+                        value={editedModel?.tags || []}
+                        onChange={(next) => {
+                          if (!editedModel) return;
+                          setEditedModel({ ...editedModel, tags: next });
+                        }}
+                      />
+
+                      {/* Suggested Tags */}
+                      {getSuggestedTags().length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-sm text-muted-foreground">Suggested tags for {currentModel.category}:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {getSuggestedTags().map((tag: string) => (
+                              <Badge
+                                key={tag}
+                                variant="outline"
+                                className="text-sm cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                                onClick={() => handleSuggestedTagClick(tag)}
+                              >
+                                + {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Current tags are shown within TagsInput; retain suggested below */}
+                    </div>
+
+                    {/* Notes Editing Section */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="edit-notes">Notes</Label>
+                      </div>
+                      <Textarea
+                        id="edit-notes"
+                        placeholder="Add your personal notes about this model..."
+                        value={editedModel?.notes || ""}
+                        onChange={(e) => setEditedModel(prev => prev ? { ...prev, notes: e.target.value } : null)}
+                        rows={4}
+                        className="resize-none"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Use notes to track print settings, modifications, or reminders.
+                      </p>
+                    </div>
+
+                    {/* Related Files Editing Section */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label>Related files</Label>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">Provide a relative path to a file in the `models/` folder (or any public path). In view mode these become download links.</p>
+
+                      <div className="space-y-2">
+                        {(editedModel?.related_files || []).map((rf, idx) => (
+                          <div key={`related-${idx}`} className="flex items-center gap-2">
+                            <Button size="sm" variant="ghost" onClick={() => setEditedModel(prev => {
+                              if (!prev) return prev;
+                              const arr = Array.isArray(prev.related_files) ? prev.related_files.slice() : [];
+                              arr.splice(idx, 1);
+                              return { ...prev, related_files: arr } as Model;
+                            })} aria-label={`Remove related file ${idx}`} title="Remove this related file">
+                              <X className="h-4 w-4" />
+                            </Button>
+                            <Input
+                              data-related-index={idx}
+                              value={rf}
+                              placeholder={"path/to/related_file.zip"}
+                              onChange={(e) => setEditedModel(prev => {
+                                if (!prev) return prev;
+                                const arr = Array.isArray(prev.related_files) ? prev.related_files.slice() : [];
+                                arr[idx] = e.target.value;
+                                return { ...prev, related_files: arr } as Model;
+                              })}
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="min-w-[64px] flex items-center gap-2"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: true } }));
+                                  try {
+                                    const resp = await fetch('/api/verify-file', {
+                                      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: rf })
+                                    });
+                                    const j = await resp.json();
+                                    if (j && j.success) {
+                                      setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: !!j.exists, message: j.exists ? `Found (${j.size} bytes)` : 'Not found' } }));
+                                    } else {
+                                      setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: false, message: j && j.error ? String(j.error) : 'Error' } }));
+                                    }
+                                  } catch (err: any) {
+                                    setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: false, message: String(err?.message || err) } }));
+                                  }
+                                }}
+                                title={relatedVerifyStatus[idx]?.loading
+                                  ? 'Checking...'
+                                  : relatedVerifyStatus[idx] && typeof relatedVerifyStatus[idx].ok !== 'undefined'
+                                    ? (relatedVerifyStatus[idx].ok ? 'Found' : 'Not found')
+                                    : 'Verify'}
+                              >
+                                {relatedVerifyStatus[idx]?.loading ? (
+                                  'Checking...'
+                                ) : relatedVerifyStatus[idx] && typeof relatedVerifyStatus[idx].ok !== 'undefined' ? (
+                                  relatedVerifyStatus[idx].ok ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Ban className="h-4 w-4 text-destructive" />
+                                ) : (
+                                  'Verify'
+                                )}
+                              </Button>
+                              {/* View button: only visible when verification succeeded */}
+                              {(!isEditing && relatedVerifyStatus[idx]?.ok) ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={relatedVerifyStatus[idx]?.loading}
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    let candidate = rf;
+                                    try {
+                                      if (candidate.endsWith('.3mf')) {
+                                        candidate = candidate.replace(/\.3mf$/i, '-munchie.json');
+                                      } else if (/\.stl$/i.test(candidate)) {
+                                        candidate = candidate.replace(/\.stl$/i, '-stl-munchie.json');
+                                      }
+                                      if (candidate.startsWith('/models/')) candidate = candidate.replace(/^\/models\//, '');
+
+                                      const url = `/models/${candidate}`;
+                                      const resp = await fetch(url, { cache: 'no-store' });
+                                      if (!resp.ok) {
+                                        try { toast?.error && toast.error('Related munchie JSON not found'); } catch (e) { }
+                                        return;
+                                      }
+                                      const parsed = await resp.json();
+                                      try {
+                                        if (typeof onModelUpdate === 'function') onModelUpdate(parsed as Model);
+                                      } catch (e) {
+                                        console.warn('onModelUpdate failed when loading related model', e);
+                                      }
+                                    } catch (err) {
+                                      try { toast?.error && toast.error('Failed to load related model'); } catch (e) { }
+                                      console.error('Failed to load related model', err);
+                                    }
+                                  }}
+                                >
+                                  View
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+
+                        <div className="flex items-center gap-2">
+                          {/* When Add is clicked we push an empty editable input with a helpful placeholder and focus it */}
+                          <Button size="sm" onClick={() => {
+                            setEditedModel(prev => {
+                              if (!prev) return prev;
+                              const arr = Array.isArray(prev.related_files) ? prev.related_files.slice() : [];
+                              const newIdx = arr.length;
+                              arr.push("");
+                              // set focus target for effect after render
+                              setTimeout(() => setFocusRelatedIndex(newIdx), 0);
+                              return { ...prev, related_files: arr } as Model;
+                            });
+                          }}>
+                            Add
+                          </Button>
+                        </div>
+                        {/* Validation feedback for related files */}
+                        {(invalidRelated && invalidRelated.length > 0) && (
+                          <div className="text-sm text-destructive mt-2">
+                            <strong>Invalid related files (remove or correct to save):</strong>
+                            <ul className="list-disc pl-5 mt-1">
+                              {invalidRelated.map((s, i) => <li key={i}>{s}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {(serverRejectedRelated && serverRejectedRelated.length > 0) && (
+                          <div className="text-sm text-yellow-700 mt-2">
+                            <strong>Server rejected these entries (they were removed):</strong>
+                            <ul className="list-disc pl-5 mt-1">
+                              {serverRejectedRelated.map((s, i) => <li key={i}>{s}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Source Editing Section */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="edit-source">Source URL</Label>
+                      </div>
+                      <Input
+                        id="edit-source"
+                        type="url"
+                        placeholder="https://www.thingiverse.com/thing/123456"
+                        value={editedModel?.source || ""}
+                        onChange={(e) => setEditedModel(prev => prev ? { ...prev, source: e.target.value } : null)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Link to where you downloaded this model (Thingiverse, Printables, etc.)
+                      </p>
+                    </div>
+
+                    {/* Bottom Action Buttons for Editing */}
+                    <div className="flex items-center justify-end gap-3 pt-6 border-t border-border bg-muted/30 -mx-6 px-6 py-4 mt-8 rounded-lg">
+                      <Button onClick={cancelEditing} variant="outline" className="gap-2" disabled={isSaving}>
+                        <X className="h-4 w-4" />
+                        Cancel
+                      </Button>
+                      <Button onClick={saveChanges} className="gap-2" disabled={invalidRelated.length > 0 || isSaving} title={invalidRelated.length > 0 ? 'Cannot save: fix invalid related files' : undefined}>
+                        {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        {isSaving ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
                   <div className="space-y-4">
-                    <div className="flex items-center gap-3 p-4 bg-gradient-to-br from-primary/5 to-primary/10 rounded-lg border border-primary/20">
-                      <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
-                        <Store className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Price</p>
-                        <p className="text-xl font-semibold text-foreground">${currentModel.price}</p>
-                      </div>
+                    <p className="text-muted-foreground text-base leading-relaxed">
+                      {(() => {
+                        // Prefer userDefined.description when available.
+                        try {
+                          const ud = (currentModel as any).userDefined;
+                          // If userDefined.description is present and non-empty (after trim)
+                          // treat it as an override. If it's an empty string, fall back
+                          // to the top-level description.
+                          if (ud && typeof ud === 'object' && typeof ud.description === 'string') {
+                            if (ud.description.trim() !== '') return ud.description;
+                          }
+                        } catch (e) {
+                          // ignore and fall back
+                        }
+                        return currentModel.description;
+                      })()}
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* License Information (hidden when not set) */}
+                      {currentModel.license && (
+                        <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">License:</span>
+                          <Badge variant="outline" className="font-medium">
+                            {currentModel.license}
+                          </Badge>
+                        </div>
+                      )}
+
+                      {/* Designer (if present) */}
+                      {currentModel.designer && (
+                        <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">Designer:</span>
+                          <span className="font-medium">{currentModel.designer}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+
+              </div>
+
+
+              {!isEditing && Array.isArray(currentModel.tags) && currentModel.tags.length > 0 && (
+                <>
+                  <Separator />
+                  {/* Tags Display */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Tag className="h-5 w-5 text-muted-foreground" />
+                      <h3 className="font-semibold text-lg text-card-foreground">Tags</h3>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {currentModel.tags.map((tag, index) => (
+                        <Badge key={`${tag}-${index}`} variant="secondary" className="text-sm">
+                          {tag}
+                        </Badge>
+                      ))}
                     </div>
                   </div>
                 </>
               )}
-            
 
-            {/* [NEW] Spoolman Inventory Check */}
-            <Separator className="my-2" />
-            <SpoolmanWidget model={currentModel} />
-          </div>
 
-          {/* Model Details */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-lg text-card-foreground">Details</h3>
-            {isEditing ? (
-              <div className="grid gap-6">
-                {/* Print settings (editable only for STL models) */}
-                {isStlModel && (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-layer-height">Layer height (mm)</Label>
-                        <Input
-                          id="edit-layer-height"
-                          value={(editedModel as any)?.printSettings?.layerHeight || ''}
-                          onChange={(e) => setEditedModel(prev => {
-                            if (!prev) return prev;
-                            const ps = { ...(prev.printSettings || {}) } as any;
-                            ps.layerHeight = e.target.value;
-                            return { ...prev, printSettings: ps } as Model;
-                          })}
-                          placeholder="e.g. 0.2"
-                        />
-                      </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-infill">Infill (%)</Label>
-                        <Input
-                          id="edit-infill"
-                          value={(editedModel as any)?.printSettings?.infill || ''}
-                          onChange={(e) => setEditedModel(prev => {
-                            if (!prev) return prev;
-                            const ps = { ...(prev.printSettings || {}) } as any;
-                            ps.infill = e.target.value;
-                            return { ...prev, printSettings: ps } as Model;
-                          })}
-                          placeholder="e.g. 20%"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-nozzle">Nozzle (mm)</Label>
-                        <Input
-                          id="edit-nozzle"
-                          value={(editedModel as any)?.printSettings?.nozzle || ''}
-                          onChange={(e) => setEditedModel(prev => {
-                            if (!prev) return prev;
-                            const ps = { ...(prev.printSettings || {}) } as any;
-                            ps.nozzle = e.target.value;
-                            return { ...prev, printSettings: ps } as Model;
-                          })}
-                          placeholder="e.g. 0.4"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="edit-printer">Printer</Label>
-                        <Input
-                          id="edit-printer"
-                          value={(editedModel as any)?.printSettings?.printer || ''}
-                          onChange={(e) => setEditedModel(prev => {
-                            if (!prev) return prev;
-                            const ps = { ...(prev.printSettings || {}) } as any;
-                            ps.printer = e.target.value;
-                            return { ...prev, printSettings: ps } as Model;
-                          })}
-                          placeholder="e.g. Bambu P1S"
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-name">Model Name</Label>
-                    <Input
-                      id="edit-name"
-                      value={editedModel?.name || ""}
-                      onChange={(e) => setEditedModel(prev => prev ? { ...prev, name: e.target.value } : null)}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-category">Category</Label>
-                    <Select
-                      value={editedModel?.category || ""}
-                      onValueChange={(value: string) => setEditedModel(prev => prev ? { ...prev, category: value } : null)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category.id} value={category.label}>
-                            {category.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-designer">Designer</Label>
-                    <Input
-                      id="edit-designer"
-                      // Model type doesn't currently include `designer`/`Designer` optional property.
-                      // Use a safe any-cast to read legacy metadata if present (e.g., Designer from 3mf metadata).
-                      value={editedModel?.designer ?? ""}
-                      onChange={(e) => setEditedModel(prev => prev ? ({ ...prev, designer: e.target.value } as any) as Model : null)}
-                      placeholder="Designer name"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-description">Description</Label>
-                  <Textarea
-                    id="edit-description"
-                    value={editedModel?.description || ""}
-                    onChange={(e) => setEditedModel(prev => prev ? { ...prev, description: e.target.value } : null)}
-                    rows={3}
-                  />
-                  {/* If there is a stored userDefined description (including empty string), allow restoring the original top-level description */}
-                  {originalUserDefinedDescriptionRef.current !== null && (
-                    <div className="pt-2">
-                      <div className="flex items-center space-x-3">
-                        <Switch
-                          checked={restoreOriginalDescription}
-                          onCheckedChange={(next: boolean) => {
-                            setRestoreOriginalDescription(next);
-                            setEditedModel(prev => {
-                              if (!prev) return prev;
-                              if (next) {
-                                // Remove only the nested userDefined.description while
-                                // preserving any userDefined.images so the save can
-                                // clear the description but keep images.
-                                const copy = { ...prev } as any;
-                                const ud = copy.userDefined && typeof copy.userDefined === 'object' ? { ...copy.userDefined } : {};
-                                // Delete the description key so save logic knows to clear it
-                                if (Object.prototype.hasOwnProperty.call(ud, 'description')) delete ud.description;
-                                copy.userDefined = ud;
-                                // Show the original top-level description in the edit buffer
-                                copy.description = originalTopLevelDescriptionRef.current || '';
-                                return copy as Model;
-                              } else {
-                                // Restore the previous userDefined description into the edit buffer
-                                const copy = { ...prev } as any;
-                                if (originalUserDefinedDescriptionRef.current !== null) {
-                                  copy.userDefined = { description: originalUserDefinedDescriptionRef.current };
-                                  copy.description = originalUserDefinedDescriptionRef.current;
-                                }
-                                return copy as Model;
-                              }
-                            });
-                          }}
-                          id="restore-original-description"
-                        />
-                        <Label htmlFor="restore-original-description">Restore original description</Label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-license">License</Label>
-                    <Select
-                      value={editedModel?.license || ""}
-                      onValueChange={(value: string) => setEditedModel(prev => prev ? { ...prev, license: value } : null)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {/* If the current edited license isn't in the known set, show it as a disabled item
-                            so the SelectTrigger displays the value instead of an empty placeholder. */}
-                        {editedModel?.license && !isKnownLicense(editedModel.license) && (
-                          <SelectItem value={editedModel.license} disabled>
-                            {editedModel.license} (unknown)
-                          </SelectItem>
-                        )}
-
-                        {LICENSES.map((lic) => (
-                          <SelectItem key={lic} value={lic}>{lic}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-price">Selling Price</Label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="edit-price"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={editedModel?.price ?? ""}
-                        onChange={(e) =>
-                          setEditedModel(prev =>
-                            prev
-                              ? { ...prev, price: e.target.value === "" ? 0 : parseFloat(e.target.value) }
-                              : null
-                          )
-                        }
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-3">
-                  <Switch
-                    checked={editedModel?.isPrinted || false}
-                    onCheckedChange={(checked: boolean) => setEditedModel(prev => prev ? { ...prev, isPrinted: checked } : null)}
-                    id="edit-printed"
-                  />
-                  <Label htmlFor="edit-printed">Mark as printed</Label>
-                </div>
-
-                <div className="flex items-center space-x-3">
-                  <Switch
-                    checked={editedModel?.hidden || false}
-                    onCheckedChange={(checked: boolean) => setEditedModel(prev => prev ? { ...prev, hidden: checked } : null)}
-                    id="edit-hidden"
-                  />
-                  <Label htmlFor="edit-hidden">Hide model from view</Label>
-                </div>
-
-                {/* Print Time & Filament Editing */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-print-time">Print Time</Label>
-                    <Input
-                      id="edit-print-time"
-                      placeholder="e.g. 1h 30m"
-                      value={editedModel?.printTime || ""}
-                      onChange={(e) => setEditedModel(prev => prev ? { ...prev, printTime: e.target.value } : null)}
-                    />
-                    <p className="text-xs text-muted-foreground">Friendly print time string (keeps existing formatting).</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-filament">Filament</Label>
-                    <Input
-                      id="edit-filament"
-                      placeholder="e.g. 12g PLA"
-                      value={editedModel?.filamentUsed || ""}
-                      onChange={(e) => setEditedModel(prev => prev ? { ...prev, filamentUsed: e.target.value } : null)}
-                    />
-                    <p className="text-xs text-muted-foreground">Amount/type of filament used.</p>
-                  </div>
-                </div>
-
-                {/* Tags Editing Section */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Label>Tags</Label>
-                  </div>
-
-                  {/* Tags editor */}
-                  <TagsInput
-                    value={editedModel?.tags || []}
-                    onChange={(next) => {
-                      if (!editedModel) return;
-                      setEditedModel({ ...editedModel, tags: next });
-                    }}
-                  />
-
-                  {/* Suggested Tags */}
-                  {getSuggestedTags().length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Suggested tags for {currentModel.category}:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {getSuggestedTags().map((tag: string) => (
-                          <Badge
-                            key={tag}
-                            variant="outline"
-                            className="text-sm cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
-                            onClick={() => handleSuggestedTagClick(tag)}
-                          >
-                            + {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Current tags are shown within TagsInput; retain suggested below */}
-                </div>
-
-                {/* Notes Editing Section */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="edit-notes">Notes</Label>
-                  </div>
-                  <Textarea
-                    id="edit-notes"
-                    placeholder="Add your personal notes about this model..."
-                    value={editedModel?.notes || ""}
-                    onChange={(e) => setEditedModel(prev => prev ? { ...prev, notes: e.target.value } : null)}
-                    rows={4}
-                    className="resize-none"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Use notes to track print settings, modifications, or reminders.
-                  </p>
-                </div>
-
-                {/* Related Files Editing Section */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label>Related files</Label>
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">Provide a relative path to a file in the `models/` folder (or any public path). In view mode these become download links.</p>
-
-                  <div className="space-y-2">
-                    {(editedModel?.related_files || []).map((rf, idx) => (
-                      <div key={`related-${idx}`} className="flex items-center gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => setEditedModel(prev => {
-                          if (!prev) return prev;
-                          const arr = Array.isArray(prev.related_files) ? prev.related_files.slice() : [];
-                          arr.splice(idx, 1);
-                          return { ...prev, related_files: arr } as Model;
-                        })} aria-label={`Remove related file ${idx}`} title="Remove this related file">
-                          <X className="h-4 w-4" />
-                        </Button>
-                        <Input
-                          data-related-index={idx}
-                          value={rf}
-                          placeholder={"path/to/related_file.zip"}
-                          onChange={(e) => setEditedModel(prev => {
-                            if (!prev) return prev;
-                            const arr = Array.isArray(prev.related_files) ? prev.related_files.slice() : [];
-                            arr[idx] = e.target.value;
-                            return { ...prev, related_files: arr } as Model;
-                          })}
-                        />
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="min-w-[64px] flex items-center gap-2"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: true } }));
-                              try {
-                                const resp = await fetch('/api/verify-file', {
-                                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: rf })
-                                });
-                                const j = await resp.json();
-                                if (j && j.success) {
-                                  setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: !!j.exists, message: j.exists ? `Found (${j.size} bytes)` : 'Not found' } }));
-                                } else {
-                                  setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: false, message: j && j.error ? String(j.error) : 'Error' } }));
-                                }
-                              } catch (err: any) {
-                                setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: false, message: String(err?.message || err) } }));
-                              }
-                            }}
-                            title={relatedVerifyStatus[idx]?.loading
-                              ? 'Checking...'
-                              : relatedVerifyStatus[idx] && typeof relatedVerifyStatus[idx].ok !== 'undefined'
-                                ? (relatedVerifyStatus[idx].ok ? 'Found' : 'Not found')
-                                : 'Verify'}
-                          >
-                            {relatedVerifyStatus[idx]?.loading ? (
-                              'Checking...'
-                            ) : relatedVerifyStatus[idx] && typeof relatedVerifyStatus[idx].ok !== 'undefined' ? (
-                              relatedVerifyStatus[idx].ok ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Ban className="h-4 w-4 text-destructive" />
-                            ) : (
-                              'Verify'
-                            )}
-                          </Button>
-                          {/* View button: only visible when verification succeeded */}
-                          {(!isEditing && relatedVerifyStatus[idx]?.ok) ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={relatedVerifyStatus[idx]?.loading}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                let candidate = rf;
-                                try {
-                                  if (candidate.endsWith('.3mf')) {
-                                    candidate = candidate.replace(/\.3mf$/i, '-munchie.json');
-                                  } else if (/\.stl$/i.test(candidate)) {
-                                    candidate = candidate.replace(/\.stl$/i, '-stl-munchie.json');
-                                  }
-                                  if (candidate.startsWith('/models/')) candidate = candidate.replace(/^\/models\//, '');
-
-                                  const url = `/models/${candidate}`;
-                                  const resp = await fetch(url, { cache: 'no-store' });
-                                  if (!resp.ok) {
-                                    try { toast?.error && toast.error('Related munchie JSON not found'); } catch (e) { }
-                                    return;
-                                  }
-                                  const parsed = await resp.json();
-                                  try {
-                                    if (typeof onModelUpdate === 'function') onModelUpdate(parsed as Model);
-                                  } catch (e) {
-                                    console.warn('onModelUpdate failed when loading related model', e);
-                                  }
-                                } catch (err) {
-                                  try { toast?.error && toast.error('Failed to load related model'); } catch (e) { }
-                                  console.error('Failed to load related model', err);
-                                }
-                              }}
-                            >
-                              View
-                            </Button>
-                          ) : null}
-                        </div>
-                      </div>
-                    ))}
-
+              {currentModel.notes && (
+                <>
+                  <Separator />
+                  {/* Notes Section */}
+                  <div className="space-y-4">
                     <div className="flex items-center gap-2">
-                      {/* When Add is clicked we push an empty editable input with a helpful placeholder and focus it */}
-                      <Button size="sm" onClick={() => {
-                        setEditedModel(prev => {
-                          if (!prev) return prev;
-                          const arr = Array.isArray(prev.related_files) ? prev.related_files.slice() : [];
-                          const newIdx = arr.length;
-                          arr.push("");
-                          // set focus target for effect after render
-                          setTimeout(() => setFocusRelatedIndex(newIdx), 0);
-                          return { ...prev, related_files: arr } as Model;
-                        });
-                      }}>
-                        Add
-                      </Button>
+                      <StickyNote className="h-5 w-5 text-muted-foreground" />
+                      <h3 className="font-semibold text-lg text-card-foreground">Notes</h3>
                     </div>
-                    {/* Validation feedback for related files */}
-                    {(invalidRelated && invalidRelated.length > 0) && (
-                      <div className="text-sm text-destructive mt-2">
-                        <strong>Invalid related files (remove or correct to save):</strong>
-                        <ul className="list-disc pl-5 mt-1">
-                          {invalidRelated.map((s, i) => <li key={i}>{s}</li>)}
-                        </ul>
+                    <div className="p-4 bg-muted/30 rounded-lg border">
+                      <p className="text-foreground leading-relaxed whitespace-pre-wrap">
+                        {currentModel.notes}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Files Carousel (Main + Related) */}
+              {(!isEditing && (
+                (Array.isArray(currentModel.related_files) && currentModel.related_files.length > 0) ||
+                (currentModel.modelUrl || currentModel.filePath)
+              )) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                        <h3 className="font-semibold text-lg text-card-foreground">Files</h3>
                       </div>
-                    )}
-                    {(serverRejectedRelated && serverRejectedRelated.length > 0) && (
-                      <div className="text-sm text-yellow-700 mt-2">
-                        <strong>Server rejected these entries (they were removed):</strong>
-                        <ul className="list-disc pl-5 mt-1">
-                          {serverRejectedRelated.map((s, i) => <li key={i}>{s}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Source Editing Section */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="edit-source">Source URL</Label>
-                  </div>
-                  <Input
-                    id="edit-source"
-                    type="url"
-                    placeholder="https://www.thingiverse.com/thing/123456"
-                    value={editedModel?.source || ""}
-                    onChange={(e) => setEditedModel(prev => prev ? { ...prev, source: e.target.value } : null)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Link to where you downloaded this model (Thingiverse, Printables, etc.)
-                  </p>
-                </div>
+                      {/* Horizontal Carousel for Files */}
+                      <ScrollArea className="w-full whitespace-nowrap rounded-md border bg-muted/10">
+                        <div className="flex w-max space-x-3 p-4">
 
-                {/* Bottom Action Buttons for Editing */}
-                <div className="flex items-center justify-end gap-3 pt-6 border-t border-border bg-muted/30 -mx-6 px-6 py-4 mt-8 rounded-lg">
-                  <Button onClick={cancelEditing} variant="outline" className="gap-2" disabled={isSaving}>
-                    <X className="h-4 w-4" />
-                    Cancel
-                  </Button>
-                  <Button onClick={saveChanges} className="gap-2" disabled={invalidRelated.length > 0 || isSaving} title={invalidRelated.length > 0 ? 'Cannot save: fix invalid related files' : undefined}>
-                    {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-muted-foreground text-base leading-relaxed">
-                  {(() => {
-                    // Prefer userDefined.description when available.
-                    try {
-                      const ud = (currentModel as any).userDefined;
-                      // If userDefined.description is present and non-empty (after trim)
-                      // treat it as an override. If it's an empty string, fall back
-                      // to the top-level description.
-                      if (ud && typeof ud === 'object' && typeof ud.description === 'string') {
-                        if (ud.description.trim() !== '') return ud.description;
-                      }
-                    } catch (e) {
-                      // ignore and fall back
-                    }
-                    return currentModel.description;
-                  })()}
-                </p>
+                          {/* 1. Main File Card */}
+                          {(() => {
+                            const mainPath = normalizeModelPath(currentModel.modelUrl || currentModel.filePath);
+                            const mainDisplay = mainPath ? mainPath.split(/[/\\]/).pop() : currentModel.name;
+                            const isMainActive = active3DFile === mainPath;
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* License Information (hidden when not set) */}
-                  {currentModel.license && (
-                    <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">License:</span>
-                      <Badge variant="outline" className="font-medium">
-                        {currentModel.license}
-                      </Badge>
-                    </div>
-                  )}
+                            if (!mainPath) return null;
 
-                  {/* Designer (if present) */}
-                  {currentModel.designer && (
-                    <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-medium">Designer:</span>
-                      <span className="font-medium">{currentModel.designer}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-
-          </div>
-
-
-          {!isEditing && Array.isArray(currentModel.tags) && currentModel.tags.length > 0 && (
-            <>
-              <Separator />
-              {/* Tags Display */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Tag className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg text-card-foreground">Tags</h3>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {currentModel.tags.map((tag, index) => (
-                    <Badge key={`${tag}-${index}`} variant="secondary" className="text-sm">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-
-
-          {currentModel.notes && (
-            <>
-              <Separator />
-              {/* Notes Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <StickyNote className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg text-card-foreground">Notes</h3>
-                </div>
-                <div className="p-4 bg-muted/30 rounded-lg border">
-                  <p className="text-foreground leading-relaxed whitespace-pre-wrap">
-                    {currentModel.notes}
-                  </p>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Files Carousel (Main + Related) */}
-          {(!isEditing && (
-            (Array.isArray(currentModel.related_files) && currentModel.related_files.length > 0) ||
-            (currentModel.modelUrl || currentModel.filePath)
-          )) && (
-              <>
-                <Separator />
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-muted-foreground" />
-                    <h3 className="font-semibold text-lg text-card-foreground">Files</h3>
-                  </div>
-
-                  {/* Horizontal Carousel for Files */}
-                  <ScrollArea className="w-full whitespace-nowrap rounded-md border bg-muted/10">
-                    <div className="flex w-max space-x-3 p-4">
-
-                      {/* 1. Main File Card */}
-                      {(() => {
-                        const mainPath = normalizeModelPath(currentModel.modelUrl || currentModel.filePath);
-                        const mainDisplay = mainPath ? mainPath.split(/[/\\]/).pop() : currentModel.name;
-                        const isMainActive = active3DFile === mainPath;
-
-                        if (!mainPath) return null;
-
-                        return (
-                          <div
-                            className={`w-[140px] group relative flex flex-col gap-2 cursor-pointer`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setViewMode('3d');
-                              setActive3DFile(mainPath);
-                              detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                          >
-                            {/* Thumbnail / Preview Area */}
-                            <div className={`aspect-square rounded-md border overflow-hidden relative ${isMainActive ? 'ring-2 ring-primary' : 'bg-muted'}`}>
-                              <ImageWithFallback
-                                src={resolveModelThumbnail(currentModel)}
-                                alt="Main Model"
-                                className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                              />
-                              <div className="absolute top-1 left-1">
-                                <Badge variant={isMainActive ? "default" : "secondary"} className="text-[10px] h-5 px-1.5 shadow-sm">
-                                  MAIN
-                                </Badge>
-                              </div>
-                              {/* Hover Overlay with Download */}
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full" title="View 3D">
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="secondary"
-                                  className="h-8 w-8 rounded-full"
-                                  title="Download"
-                                  onClick={handleDownloadClick}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-
-                            {/* Filename Footer */}
-                            <div className="space-y-0.5">
-                              <p className={`text-sm font-medium truncate ${isMainActive ? 'text-primary' : 'text-foreground'}`} title={mainDisplay}>
-                                {mainDisplay}
-                              </p>
-                              <p className="text-xs text-muted-foreground">Model File</p>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* 2. Related File Cards */}
-                      {currentModel.related_files && currentModel.related_files.map((path, idx) => {
-                        const normPath = normalizeModelPath(path) || path;
-                        const isViewable = isViewable3D(path);
-                        const isActive = active3DFile === normPath;
-                        const fileName = path.split(/[/\\]/).pop() || 'File';
-
-                        // Determine icon based on extension
-                        const ext = fileName.split('.').pop()?.toLowerCase();
-                        const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '');
-                        const isArchive = ['zip', 'rar', '7z'].includes(ext || '');
-                        const isDoc = ['pdf', 'txt', 'md'].includes(ext || '');
-
-                        return (
-                          <div
-                            key={`file-${idx}`}
-                            className={`w-[140px] group relative flex flex-col gap-2 cursor-pointer`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (isViewable) {
-                                setViewMode('3d');
-                                setActive3DFile(normPath);
-                                detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                              } else {
-                                // If not viewable in 3D, trigger download on card click
-                                const safeName = path.replace(/^\/+/, '').split('/').pop() || '';
-                                const normalizedPath = path.replace(/\\/g, '/');
-                                triggerDownload(normalizedPath, e.nativeEvent as any as MouseEvent, safeName);
-                              }
-                            }}
-                          >
-                            {/* Thumbnail Area */}
-                            <div className={`aspect-square rounded-md border overflow-hidden relative flex items-center justify-center bg-muted/30 ${isActive ? 'ring-2 ring-primary' : ''}`}>
-                              {isImage ? (
-                                // If it's an image file, show it
-                                <img src={`/models/${path}`} alt={fileName} className="h-full w-full object-cover" />
-                              ) : (
-                                // Otherwise show a nice icon
-                                <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                                  {isViewable ? <Box className="h-8 w-8" /> :
-                                    isArchive ? <Package className="h-8 w-8" /> :
-                                      isDoc ? <FileText className="h-8 w-8" /> :
-                                        <FileText className="h-8 w-8" />
-                                  }
-                                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-50">{ext}</span>
+                            return (
+                              <div
+                                className={`w-[140px] group relative flex flex-col gap-2 cursor-pointer`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewMode('3d');
+                                  setActive3DFile(mainPath);
+                                  detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                              >
+                                {/* Thumbnail / Preview Area */}
+                                <div className={`aspect-square rounded-md border overflow-hidden relative ${isMainActive ? 'ring-2 ring-primary' : 'bg-muted'}`}>
+                                  <ImageWithFallback
+                                    src={resolveModelThumbnail(currentModel)}
+                                    alt="Main Model"
+                                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                                  />
+                                  <div className="absolute top-1 left-1">
+                                    <Badge variant={isMainActive ? "default" : "secondary"} className="text-[10px] h-5 px-1.5 shadow-sm">
+                                      MAIN
+                                    </Badge>
+                                  </div>
+                                  {/* Hover Overlay with Download */}
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full" title="View 3D">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="secondary"
+                                      className="h-8 w-8 rounded-full"
+                                      title="Download"
+                                      onClick={handleDownloadClick}
+                                    >
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
-                              )}
 
-                              {/* Hover Overlay */}
-                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                {isViewable && (
-                                  <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full" title="View 3D">
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                <Button
-                                  size="icon"
-                                  variant="secondary"
-                                  className="h-8 w-8 rounded-full"
-                                  title="Download"
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
+                                {/* Filename Footer */}
+                                <div className="space-y-0.5">
+                                  <p className={`text-sm font-medium truncate ${isMainActive ? 'text-primary' : 'text-foreground'}`} title={mainDisplay}>
+                                    {mainDisplay}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">Model File</p>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* 2. Related File Cards */}
+                          {currentModel.related_files && currentModel.related_files.map((path, idx) => {
+                            const normPath = normalizeModelPath(path) || path;
+                            const isViewable = isViewable3D(path);
+                            const isActive = active3DFile === normPath;
+                            const fileName = path.split(/[/\\]/).pop() || 'File';
+
+                            // Determine icon based on extension
+                            const ext = fileName.split('.').pop()?.toLowerCase();
+                            const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '');
+                            const isArchive = ['zip', 'rar', '7z'].includes(ext || '');
+                            const isDoc = ['pdf', 'txt', 'md'].includes(ext || '');
+
+                            return (
+                              <div
+                                key={`file-${idx}`}
+                                className={`w-[140px] group relative flex flex-col gap-2 cursor-pointer`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isViewable) {
+                                    setViewMode('3d');
+                                    setActive3DFile(normPath);
+                                    detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                  } else {
+                                    // If not viewable in 3D, trigger download on card click
                                     const safeName = path.replace(/^\/+/, '').split('/').pop() || '';
                                     const normalizedPath = path.replace(/\\/g, '/');
                                     triggerDownload(normalizedPath, e.nativeEvent as any as MouseEvent, safeName);
-                                  }}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
+                                  }
+                                }}
+                              >
+                                {/* Thumbnail Area */}
+                                <div className={`aspect-square rounded-md border overflow-hidden relative flex items-center justify-center bg-muted/30 ${isActive ? 'ring-2 ring-primary' : ''}`}>
+                                  {isImage ? (
+                                    // If it's an image file, show it
+                                    <img src={`/models/${path}`} alt={fileName} className="h-full w-full object-cover" />
+                                  ) : (
+                                    // Otherwise show a nice icon
+                                    <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                      {isViewable ? <Box className="h-8 w-8" /> :
+                                        isArchive ? <Package className="h-8 w-8" /> :
+                                          isDoc ? <FileText className="h-8 w-8" /> :
+                                            <FileText className="h-8 w-8" />
+                                      }
+                                      <span className="text-[10px] uppercase font-bold tracking-wider opacity-50">{ext}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Hover Overlay */}
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                    {isViewable && (
+                                      <Button size="icon" variant="secondary" className="h-8 w-8 rounded-full" title="View 3D">
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="icon"
+                                      variant="secondary"
+                                      className="h-8 w-8 rounded-full"
+                                      title="Download"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const safeName = path.replace(/^\/+/, '').split('/').pop() || '';
+                                        const normalizedPath = path.replace(/\\/g, '/');
+                                        triggerDownload(normalizedPath, e.nativeEvent as any as MouseEvent, safeName);
+                                      }}
+                                    >
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* Filename Footer */}
+                                <div className="space-y-0.5">
+                                  <p className={`text-sm font-medium truncate ${isActive ? 'text-primary' : 'text-foreground'}`} title={path}>
+                                    {fileName}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {isViewable ? '3D Object' : (isImage ? 'Image' : 'File')}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-
-                            {/* Filename Footer */}
-                            <div className="space-y-0.5">
-                              <p className={`text-sm font-medium truncate ${isActive ? 'text-primary' : 'text-foreground'}`} title={path}>
-                                {fileName}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {isViewable ? '3D Object' : (isImage ? 'Image' : 'File')}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
+                            );
+                          })}
+                        </div>
+                        <ScrollBar orientation="horizontal" />
+                      </ScrollArea>
                     </div>
-                    <ScrollBar orientation="horizontal" />
-                  </ScrollArea>
-                </div>
-              </>
-            )}
-
-          {/* G-code Data Section (view mode only) */}
-          {!isEditing && (
-            <>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Codesandbox className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg text-card-foreground">G-code Analysis</h3>
-                </div>
-
-                {/* Hidden file input */}
-                <input
-                  ref={gcodeInputRef}
-                  type="file"
-                  accept=".gcode,.3mf"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      handleGcodeUpload(file);
-                      e.target.value = '';
-                    }
-                  }}
-                />
-
-                {currentModel.gcodeData ? (
-                  <>
-                    {/* Upload and Re-analyze buttons (when data exists) */}
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => gcodeInputRef.current?.click()}
-                        disabled={isUploadingGcode}
-                        className="gap-2"
-                      >
-                        <Upload className="h-4 w-4" />
-                        {isUploadingGcode ? 'Uploading...' : 'Upload New G-code'}
-                      </Button>
-                      {currentModel.gcodeData.gcodeFilePath && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleReanalyzeGcode}
-                          disabled={isUploadingGcode}
-                          className="gap-2"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                          Re-analyze
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Summary display */}
-                    <Collapsible open={isGcodeExpanded} onOpenChange={setIsGcodeExpanded}>
-                      <div className="p-4 bg-muted/30 rounded-lg border">
-                        <CollapsibleTrigger className="flex items-center justify-between w-full text-left">
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                              <Clock className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-medium">{currentModel.gcodeData.printTime || 'N/A'}</span>
-                            </div>
-                            <div className="text-muted-foreground">|</div>
-                            <div className="flex items-center gap-2">
-                              <Weight className="h-4 w-4 text-muted-foreground" />
-                              <span className="font-medium">{currentModel.gcodeData.totalFilamentWeight || 'N/A'}</span>
-                            </div>
-                          </div>
-                          {currentModel.gcodeData.filaments.length > 1 && (
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                              <span>{currentModel.gcodeData.filaments.length} filaments</span>
-                              {isGcodeExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                            </div>
-                          )}
-                        </CollapsibleTrigger>
-
-                        {/* Multi-filament details table */}
-                        {currentModel.gcodeData.filaments.length > 1 && (
-                          <CollapsibleContent className="mt-4">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="border-b">
-                                  <th className="text-left py-2 px-2">Color</th>
-                                  <th className="text-left py-2 px-2">Type</th>
-                                  <th className="text-right py-2 px-2">Length</th>
-                                  <th className="text-right py-2 px-2">Weight</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {currentModel.gcodeData.filaments.map((filament, idx) => (
-                                  <tr key={idx} className="border-b last:border-0">
-                                    <td className="py-2 px-2">
-                                      <div
-                                        className="w-6 h-6 rounded border"
-                                        style={{ backgroundColor: filament.color || '#888' }}
-                                        title={filament.color || 'No color data'}
-                                      />
-                                    </td>
-                                    <td className="py-2 px-2">{filament.type}</td>
-                                    <td className="text-right py-2 px-2">{filament.length}</td>
-                                    <td className="text-right py-2 px-2">{filament.weight}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </CollapsibleContent>
-                        )}
-                      </div>
-                    </Collapsible>
-                  </>
-                ) : (
-                  <>
-                    {/* Prominent drag-and-drop zone when no data exists */}
-                    <div
-                      className="border-2 border-dashed border-primary/50 rounded-lg p-8 text-center hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
-                      onDragOver={handleGcodeDragOver}
-                      onDrop={handleGcodeDrop}
-                      onClick={() => gcodeInputRef.current?.click()}
-                    >
-                      <Upload className="h-12 w-12 mx-auto mb-3 text-primary" />
-                      <p className="text-base font-medium mb-2">Upload G-code File</p>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Drag and drop a .gcode or .gcode.3mf file here
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isUploadingGcode}
-                        className="gap-2"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          gcodeInputRef.current?.click();
-                        }}
-                      >
-                        <Upload className="h-4 w-4" />
-                        {isUploadingGcode ? 'Uploading...' : 'Browse Files'}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground text-center">
-                      Analyze print time, filament usage, and multi-color information from your sliced G-code
-                    </p>
                   </>
                 )}
-              </div>
-            </>
-          )}
 
-          {currentModel.source && (
-            <>
-              <Separator />
-              {/* Source Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Globe className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg text-card-foreground">Source</h3>
-                </div>
-                <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                  <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
-                    <ExternalLink className="h-5 w-5 text-muted-foreground" />
+              {/* G-code Data Section (view mode only) */}
+              {!isEditing && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Codesandbox className="h-5 w-5 text-muted-foreground" />
+                      <h3 className="font-semibold text-lg text-card-foreground">G-code Analysis</h3>
+                    </div>
+
+                    {/* Hidden file input */}
+                    <input
+                      ref={gcodeInputRef}
+                      type="file"
+                      accept=".gcode,.3mf"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          handleGcodeUpload(file);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
+
+                    {currentModel.gcodeData ? (
+                      <>
+                        {/* Upload and Re-analyze buttons (when data exists) */}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => gcodeInputRef.current?.click()}
+                            disabled={isUploadingGcode}
+                            className="gap-2"
+                          >
+                            <Upload className="h-4 w-4" />
+                            {isUploadingGcode ? 'Uploading...' : 'Upload New G-code'}
+                          </Button>
+                          {currentModel.gcodeData.gcodeFilePath && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleReanalyzeGcode}
+                              disabled={isUploadingGcode}
+                              className="gap-2"
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                              Re-analyze
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Summary display */}
+                        <Collapsible open={isGcodeExpanded} onOpenChange={setIsGcodeExpanded}>
+                          <div className="p-4 bg-muted/30 rounded-lg border">
+                            <CollapsibleTrigger className="flex items-center justify-between w-full text-left">
+                              <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">{currentModel.gcodeData.printTime || 'N/A'}</span>
+                                </div>
+                                <div className="text-muted-foreground">|</div>
+                                <div className="flex items-center gap-2">
+                                  <Weight className="h-4 w-4 text-muted-foreground" />
+                                  <span className="font-medium">{currentModel.gcodeData.totalFilamentWeight || 'N/A'}</span>
+                                </div>
+                              </div>
+                              {currentModel.gcodeData.filaments.length > 1 && (
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                  <span>{currentModel.gcodeData.filaments.length} filaments</span>
+                                  {isGcodeExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                </div>
+                              )}
+                            </CollapsibleTrigger>
+
+                            {/* Multi-filament details table */}
+                            {currentModel.gcodeData.filaments.length > 1 && (
+                              <CollapsibleContent className="mt-4">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="border-b">
+                                      <th className="text-left py-2 px-2">Color</th>
+                                      <th className="text-left py-2 px-2">Type</th>
+                                      <th className="text-right py-2 px-2">Length</th>
+                                      <th className="text-right py-2 px-2">Weight</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {currentModel.gcodeData.filaments.map((filament, idx) => (
+                                      <tr key={idx} className="border-b last:border-0">
+                                        <td className="py-2 px-2">
+                                          <div
+                                            className="w-6 h-6 rounded border"
+                                            style={{ backgroundColor: filament.color || '#888' }}
+                                            title={filament.color || 'No color data'}
+                                          />
+                                        </td>
+                                        <td className="py-2 px-2">{filament.type}</td>
+                                        <td className="text-right py-2 px-2">{filament.length}</td>
+                                        <td className="text-right py-2 px-2">{filament.weight}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </CollapsibleContent>
+                            )}
+                          </div>
+                        </Collapsible>
+                      </>
+                    ) : (
+                      <>
+                        {/* Prominent drag-and-drop zone when no data exists */}
+                        <div
+                          className="border-2 border-dashed border-primary/50 rounded-lg p-8 text-center hover:border-primary hover:bg-primary/5 transition-all cursor-pointer"
+                          onDragOver={handleGcodeDragOver}
+                          onDrop={handleGcodeDrop}
+                          onClick={() => gcodeInputRef.current?.click()}
+                        >
+                          <Upload className="h-12 w-12 mx-auto mb-3 text-primary" />
+                          <p className="text-base font-medium mb-2">Upload G-code File</p>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Drag and drop a .gcode or .gcode.3mf file here
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isUploadingGcode}
+                            className="gap-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              gcodeInputRef.current?.click();
+                            }}
+                          >
+                            <Upload className="h-4 w-4" />
+                            {isUploadingGcode ? 'Uploading...' : 'Browse Files'}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground text-center">
+                          Analyze print time, filament usage, and multi-color information from your sliced G-code
+                        </p>
+                      </>
+                    )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-muted-foreground">Downloaded from:</p>
-                    <a
-                      href={currentModel.source}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-medium text-primary hover:text-primary/80 transition-colors break-all"
-                    >
-                      {currentModel.source}
-                    </a>
+                </>
+              )}
+
+              {currentModel.source && (
+                <>
+                  <Separator />
+                  {/* Source Section */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-5 w-5 text-muted-foreground" />
+                      <h3 className="font-semibold text-lg text-card-foreground">Source</h3>
+                    </div>
+                    <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
+                      <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
+                        <ExternalLink className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-muted-foreground">Downloaded from:</p>
+                        <a
+                          href={currentModel.source}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:text-primary/80 transition-colors break-all"
+                        >
+                          {currentModel.source}
+                        </a>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        asChild
+                        className="shrink-0"
+                      >
+                        <a
+                          href={currentModel.source}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="gap-2"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          Visit
+                        </a>
+                      </Button>
+                    </div>
                   </div>
+                </>
+              )}
+
+              {/* [NEW] In This Collection Carousel */}
+              {siblings.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <List className="h-5 w-5 text-muted-foreground" />
+                      <h3 className="font-semibold text-lg text-card-foreground">In this Collection <span className="text-sm font-normal text-muted-foreground ml-1">({siblings.length})</span></h3>
+                    </div>
+
+                    <ScrollArea className="w-full whitespace-nowrap rounded-md border bg-muted/10">
+                      <div className="flex w-max space-x-4 p-4">
+                        {siblings.map((sibling) => (
+                          <div
+                            key={sibling.id}
+                            className="w-[120px] space-y-2 cursor-pointer group"
+                            onClick={() => {
+                              // Switch model in drawer
+                              if (onModelUpdate) onModelUpdate(sibling);
+                              // Scroll to top
+                              detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                          >
+                            <div className="overflow-hidden rounded-md border bg-muted aspect-square relative">
+                              <ImageWithFallback
+                                src={resolveModelThumbnail(sibling)}
+                                alt={sibling.name}
+                                className="h-full w-full object-cover transition-all group-hover:scale-105"
+                              />
+                              {sibling.isPrinted && (
+                                <div className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full border border-white" />
+                              )}
+                            </div>
+                            <div className="space-y-1 text-sm">
+                              <h4 className="font-medium leading-tight truncate" title={sibling.name}>
+                                {sibling.name}
+                              </h4>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <ScrollBar orientation="horizontal" />
+                    </ScrollArea>
+                  </div>
+                </>
+              )}
+            </div>
+        </ScrollArea>
+
+        {/* Add to existing collection modal */}
+        {isAddToCollectionOpen && currentModel && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setIsAddToCollectionOpen(false)}>
+            <div className="bg-card border rounded shadow-lg w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+              <div className="font-semibold mb-3">Add to collection</div>
+              <div className="space-y-2">
+                <Select value={addTargetCollectionId || ''} onValueChange={(val) => setAddTargetCollectionId(val)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a collection" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(collections || []).map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2 justify-end pt-2">
+                  <Button variant="ghost" size="sm" onClick={() => setIsAddToCollectionOpen(false)}>Cancel</Button>
                   <Button
-                    variant="outline"
                     size="sm"
-                    asChild
-                    className="shrink-0"
+                    disabled={!addTargetCollectionId}
+                    onClick={async () => {
+                      try {
+                        const col = (collections || []).find(c => c.id === addTargetCollectionId);
+                        if (!col) return;
+                        const nextIds = Array.from(new Set([...(col.modelIds || []), currentModel.id]));
+                        const resp = await fetch('/api/collections', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: col.id, name: col.name, description: col.description || '', modelIds: nextIds, category: (col as any).category || '', tags: (col as any).tags || [], images: (col as any).images || [], coverModelId: (col as any).coverModelId })
+                        });
+                        if (resp.ok) {
+                          setIsAddToCollectionOpen(false);
+                          setAddTargetCollectionId(null);
+                          toast.success('Added to collection');
+                          // Optionally refresh collections/models for latest hidden flag
+                          try { await fetch('/api/collections', { cache: 'no-store' }); } catch { }
+                        } else {
+                          toast.error('Failed to add to collection');
+                        }
+                      } catch {
+                        toast.error('Failed to add to collection');
+                      }
+                    }}
                   >
-                    <a
-                      href={currentModel.source}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="gap-2"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Visit
-                    </a>
+                    Add
                   </Button>
                 </div>
               </div>
-            </>
-          )}
-
-          {/* [NEW] In This Collection Carousel */}
-          {siblings.length > 0 && (
-            <>
-              <Separator />
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <List className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="font-semibold text-lg text-card-foreground">In this Collection <span className="text-sm font-normal text-muted-foreground ml-1">({siblings.length})</span></h3>
-                </div>
-
-                <ScrollArea className="w-full whitespace-nowrap rounded-md border bg-muted/10">
-                  <div className="flex w-max space-x-4 p-4">
-                    {siblings.map((sibling) => (
-                      <div
-                        key={sibling.id}
-                        className="w-[120px] space-y-2 cursor-pointer group"
-                        onClick={() => {
-                          // Switch model in drawer
-                          if (onModelUpdate) onModelUpdate(sibling);
-                          // Scroll to top
-                          detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
-                      >
-                        <div className="overflow-hidden rounded-md border bg-muted aspect-square relative">
-                          <ImageWithFallback
-                            src={resolveModelThumbnail(sibling)}
-                            alt={sibling.name}
-                            className="h-full w-full object-cover transition-all group-hover:scale-105"
-                          />
-                          {sibling.isPrinted && (
-                            <div className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full border border-white" />
-                          )}
-                        </div>
-                        <div className="space-y-1 text-sm">
-                          <h4 className="font-medium leading-tight truncate" title={sibling.name}>
-                            {sibling.name}
-                          </h4>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <ScrollBar orientation="horizontal" />
-                </ScrollArea>
-              </div>
-            </>
-          )}
-        </div>
-      </ScrollArea>
-
-      {/* Add to existing collection modal */}
-      {isAddToCollectionOpen && currentModel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setIsAddToCollectionOpen(false)}>
-          <div className="bg-card border rounded shadow-lg w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="font-semibold mb-3">Add to collection</div>
-            <div className="space-y-2">
-              <Select value={addTargetCollectionId || ''} onValueChange={(val) => setAddTargetCollectionId(val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a collection" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(collections || []).map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex gap-2 justify-end pt-2">
-                <Button variant="ghost" size="sm" onClick={() => setIsAddToCollectionOpen(false)}>Cancel</Button>
-                <Button
-                  size="sm"
-                  disabled={!addTargetCollectionId}
-                  onClick={async () => {
-                    try {
-                      const col = (collections || []).find(c => c.id === addTargetCollectionId);
-                      if (!col) return;
-                      const nextIds = Array.from(new Set([...(col.modelIds || []), currentModel.id]));
-                      const resp = await fetch('/api/collections', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: col.id, name: col.name, description: col.description || '', modelIds: nextIds, category: (col as any).category || '', tags: (col as any).tags || [], images: (col as any).images || [], coverModelId: (col as any).coverModelId })
-                      });
-                      if (resp.ok) {
-                        setIsAddToCollectionOpen(false);
-                        setAddTargetCollectionId(null);
-                        toast.success('Added to collection');
-                        // Optionally refresh collections/models for latest hidden flag
-                        try { await fetch('/api/collections', { cache: 'no-store' }); } catch { }
-                      } else {
-                        toast.error('Failed to add to collection');
-                      }
-                    } catch {
-                      toast.error('Failed to add to collection');
-                    }
-                  }}
-                >
-                  Add
-                </Button>
-              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Remove from collection modal */}
-      {isRemoveFromCollectionOpen && currentModel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setIsRemoveFromCollectionOpen(false)}>
-          <div className="bg-card border rounded shadow-lg w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
-            <div className="font-semibold mb-3">Remove from collection</div>
-            <div className="space-y-2">
-              <Select value={removeTargetCollectionId || ''} onValueChange={(val) => setRemoveTargetCollectionId(val)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a collection" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(collections || []).filter(c => Array.isArray(c.modelIds) && c.modelIds.includes(currentModel.id)).map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex gap-2 justify-end pt-2">
-                <Button variant="ghost" size="sm" onClick={() => setIsRemoveFromCollectionOpen(false)}>Cancel</Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={!removeTargetCollectionId}
-                  onClick={async () => {
-                    try {
-                      const col = (collections || []).find(c => c.id === removeTargetCollectionId);
-                      if (!col) return;
-                      const nextIds = (col.modelIds || []).filter((id: string) => id !== currentModel.id);
-                      const resp = await fetch('/api/collections', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: col.id, name: col.name, description: col.description || '', modelIds: nextIds, category: (col as any).category || '', tags: (col as any).tags || [], images: (col as any).images || [], coverModelId: (col as any).coverModelId })
-                      });
-                      if (resp.ok) {
-                        setIsRemoveFromCollectionOpen(false);
-                        setRemoveTargetCollectionId(null);
-                        toast.success('Removed from collection');
-                        try { window.dispatchEvent(new CustomEvent('collection-updated', { detail: { id: col.id } })); } catch { }
-                      } else {
+        {/* Remove from collection modal */}
+        {isRemoveFromCollectionOpen && currentModel && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setIsRemoveFromCollectionOpen(false)}>
+            <div className="bg-card border rounded shadow-lg w-full max-w-sm p-4" onClick={(e) => e.stopPropagation()}>
+              <div className="font-semibold mb-3">Remove from collection</div>
+              <div className="space-y-2">
+                <Select value={removeTargetCollectionId || ''} onValueChange={(val) => setRemoveTargetCollectionId(val)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a collection" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(collections || []).filter(c => Array.isArray(c.modelIds) && c.modelIds.includes(currentModel.id)).map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2 justify-end pt-2">
+                  <Button variant="ghost" size="sm" onClick={() => setIsRemoveFromCollectionOpen(false)}>Cancel</Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={!removeTargetCollectionId}
+                    onClick={async () => {
+                      try {
+                        const col = (collections || []).find(c => c.id === removeTargetCollectionId);
+                        if (!col) return;
+                        const nextIds = (col.modelIds || []).filter((id: string) => id !== currentModel.id);
+                        const resp = await fetch('/api/collections', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ id: col.id, name: col.name, description: col.description || '', modelIds: nextIds, category: (col as any).category || '', tags: (col as any).tags || [], images: (col as any).images || [], coverModelId: (col as any).coverModelId })
+                        });
+                        if (resp.ok) {
+                          setIsRemoveFromCollectionOpen(false);
+                          setRemoveTargetCollectionId(null);
+                          toast.success('Removed from collection');
+                          try { window.dispatchEvent(new CustomEvent('collection-updated', { detail: { id: col.id } })); } catch { }
+                        } else {
+                          toast.error('Failed to remove from collection');
+                        }
+                      } catch {
                         toast.error('Failed to remove from collection');
                       }
-                    } catch {
-                      toast.error('Failed to remove from collection');
-                    }
-                  }}
-                >
-                  Remove
-                </Button>
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* G-code overwrite confirmation dialog */}
-      <AlertDialog open={gcodeOverwriteDialog.open} onOpenChange={(open) => !open && setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>G-code file already exists</AlertDialogTitle>
-            <AlertDialogDescription>
-              A G-code file already exists at: <strong>{gcodeOverwriteDialog.existingPath}</strong>
-              <br /><br />
-              Do you want to overwrite it with the new file?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' })}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
-              if (gcodeOverwriteDialog.file) {
-                handleGcodeUpload(gcodeOverwriteDialog.file, true);
-              }
-              setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' });
-            }}>
-              Overwrite
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Model</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete <strong>{currentModel.name}</strong>?
-              <br /><br />
-              This will permanently delete the model files and metadata from your library.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (onDelete) onDelete(currentModel);
-                setIsDeleteConfirmOpen(false);
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </SheetContent>
+        {/* G-code overwrite confirmation dialog */}
+        <AlertDialog open={gcodeOverwriteDialog.open} onOpenChange={(open) => !open && setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>G-code file already exists</AlertDialogTitle>
+              <AlertDialogDescription>
+                A G-code file already exists at: <strong>{gcodeOverwriteDialog.existingPath}</strong>
+                <br /><br />
+                Do you want to overwrite it with the new file?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' })}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={() => {
+                if (gcodeOverwriteDialog.file) {
+                  handleGcodeUpload(gcodeOverwriteDialog.file, true);
+                }
+                setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' });
+              }}>
+                Overwrite
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Model</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete <strong>{currentModel.name}</strong>?
+                <br /><br />
+                This will permanently delete the model files and metadata from your library.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (onDelete) onDelete(currentModel);
+                  setIsDeleteConfirmOpen(false);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </SheetContent>
     </Sheet >
   );
 }

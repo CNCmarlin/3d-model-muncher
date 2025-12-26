@@ -124,7 +124,32 @@ export class ConfigManager {
           ? config.filters.defaultSortBy
           : this.defaultConfig.filters.defaultSortBy
       },
-      integrations: config?.integrations || {},
+// [FIX] Explicitly map all integration fields so they persist
+      integrations: {
+        spoolman: {
+          url: config?.integrations?.spoolman?.url || ""
+        },
+        thingiverse: {
+          token: config?.integrations?.thingiverse?.token || ""
+        },
+        ai: {
+          provider: config?.integrations?.ai?.provider || "google"
+        },
+        google: {
+          provider: config?.integrations?.google?.provider || "vertex",
+          apiKey: config?.integrations?.google?.apiKey || "",
+          projectId: config?.integrations?.google?.projectId || "",
+          serviceAccountJson: config?.integrations?.google?.serviceAccountJson || ""
+        },
+        openai: {
+          apiKey: config?.integrations?.openai?.apiKey || "",
+          model: config?.integrations?.openai?.model || "gpt-4o"
+        },
+        ollama: {
+          url: config?.integrations?.ollama?.url || "http://localhost:11434",
+          model: config?.integrations?.ollama?.model || "llava"
+        }
+      },
       lastModified: config?.lastModified || new Date().toISOString()
     };
 

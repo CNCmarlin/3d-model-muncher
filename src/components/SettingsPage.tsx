@@ -3400,16 +3400,18 @@ export function SettingsPage({
             </Card>
           </TabsContent>
 
-          {/* [NEW] Integrations Tab */}
-          <TabsContent value="integrations" className="space-y-6 mt-0">
-            <IntegrationsSettings
+         {/* [NEW] Integrations Tab */}
+         <TabsContent value="integrations" className="space-y-6 mt-0">
+         <IntegrationsSettings
               config={localConfig}
               onConfigChange={(newConfig) => {
                 setLocalConfig(newConfig);
-                // Optional: if you want immediate persistence on every keystroke, handle here.
-                // But usually 'onSave' handles the actual persistence.
               }}
-              onSave={() => handleSaveConfig(localConfig)}
+              // [FIX] Accept the fresh config from the child to avoid race conditions
+              onSave={(freshConfig) => {
+                 setLocalConfig(freshConfig);
+                 handleSaveConfig(freshConfig);
+              }}
             />
           </TabsContent>
 
