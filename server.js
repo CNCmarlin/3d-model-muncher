@@ -401,8 +401,8 @@ app.post('/api/spoolman/use', async (req, res) => {
     const patchResponse = await fetch(`${url}/api/v1/spool/${spoolId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        remaining_weight: newWeight 
+      body: JSON.stringify({
+        remaining_weight: newWeight
       })
     });
 
@@ -412,7 +412,7 @@ app.post('/api/spoolman/use', async (req, res) => {
     }
 
     const updatedSpool = await patchResponse.json();
-    
+
     console.log(`[Spoolman] Deducted ${weight}g from spool ${spoolId}. Remaining: ${updatedSpool.remaining_weight}`);
     res.json({ success: true, spool: updatedSpool });
 
@@ -1523,21 +1523,25 @@ app.get('/api/models', async (req, res) => {
 // API endpoint to trigger model directory scan and JSON generation
 // API endpoint to get all model data
 app.get('/api/models', async (req, res) => {
+  // DEBUG LOG - Paste this right after "app.get('/api/models'..."
+  const currentPath = getAbsoluteModelsPath();
+  console.log('🔍 DEBUG: Server is scanning this folder:', currentPath);
+  console.log('📂 DEBUG: Does this folder exist?', require('fs').existsSync(currentPath));
   try {
     const absolutePath = getAbsoluteModelsPath();
     serverDebug(`API /models scanning directory: ${absolutePath}`);
-    
+
     let models = [];
-    
+
     // Function to recursively scan directories
     function scanForModels(directory) {
-  serverDebug(`Scanning directory: ${directory}`);
+      serverDebug(`Scanning directory: ${directory}`);
       const entries = fs.readdirSync(directory, { withFileTypes: true });
-  serverDebug(`Found ${entries.length} entries in ${directory}`);
-      
+      serverDebug(`Found ${entries.length} entries in ${directory}`);
+
       for (const entry of entries) {
         const fullPath = path.join(directory, entry.name);
-        
+
         if (entry.isDirectory()) {
           // Recursively scan subdirectories (debug only)
           serverDebug(`Scanning subdirectory: ${fullPath}`);
@@ -1550,14 +1554,14 @@ app.get('/api/models', async (req, res) => {
             const model = JSON.parse(fileContent);
             // Add relative path information for proper URL construction
             const relativePath = path.relative(absolutePath, fullPath);
-            
+
             // Handle both 3MF and STL file types
             let modelUrl, filePath;
             if (entry.name.endsWith('-stl-munchie.json')) {
               // STL file - check if corresponding .stl file exists
               // Only process files with proper naming format: [name]-stl-munchie.json
               const fileName = entry.name;
-              
+
               // Skip files with malformed names (e.g., containing duplicate suffixes)
               if (fileName.includes('-stl-munchie.json_')) {
                 serverDebug(`Skipping malformed STL JSON file: ${fullPath}`);
@@ -1566,20 +1570,20 @@ app.get('/api/models', async (req, res) => {
                 // Try both .stl and .STL extensions
                 let stlFilePath = baseFilePath + '.stl';
                 let absoluteStlPath = path.join(absolutePath, stlFilePath);
-                
+
                 if (!fs.existsSync(absoluteStlPath)) {
                   // Try uppercase extension
                   stlFilePath = baseFilePath + '.STL';
                   absoluteStlPath = path.join(absolutePath, stlFilePath);
                 }
-                
+
                 if (fs.existsSync(absoluteStlPath)) {
                   modelUrl = '/models/' + stlFilePath.replace(/\\/g, '/');
                   filePath = stlFilePath;
-                  
+
                   model.modelUrl = modelUrl;
                   model.filePath = filePath;
-                  
+
                   // console.log(`Added STL model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
                   models.push(model);
                 } else {
@@ -1590,21 +1594,21 @@ app.get('/api/models', async (req, res) => {
               // 3MF file - check if corresponding .3mf file exists
               // Only process files with proper naming format: [name]-munchie.json
               const fileName = entry.name;
-              
+
               // Skip files with malformed names
               if (fileName.includes('-munchie.json_')) {
                 serverDebug(`Skipping malformed 3MF JSON file: ${fullPath}`);
               } else {
                 const threeMfFilePath = relativePath.replace('-munchie.json', '.3mf');
                 const absoluteThreeMfPath = path.join(absolutePath, threeMfFilePath);
-                
+
                 if (fs.existsSync(absoluteThreeMfPath)) {
                   modelUrl = '/models/' + threeMfFilePath.replace(/\\/g, '/');
                   filePath = threeMfFilePath;
-                  
+
                   model.modelUrl = modelUrl;
                   model.filePath = filePath;
-                  
+
                   // console.log(`Added 3MF model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
                   models.push(model);
                 } else {
@@ -1613,19 +1617,19 @@ app.get('/api/models', async (req, res) => {
               }
             }
           } catch (error) {
-                console.error(`Error reading model file ${fullPath}:`, error);
+            console.error(`Error reading model file ${fullPath}:`, error);
           }
         }
       }
     }
-    
-  // Start the recursive scan
-  scanForModels(absolutePath);
 
-  // Summary: concise result for normal logs (debug contains per-directory details)
-  console.log(`API /models scan complete: found ${models.length} model(s)`);
+    // Start the recursive scan
+    scanForModels(absolutePath);
 
-  res.json(models);
+    // Summary: concise result for normal logs (debug contains per-directory details)
+    console.log(`API /models scan complete: found ${models.length} model(s)`);
+
+    res.json(models);
   } catch (error) {
     console.error('Error loading models:', error);
     res.status(500).json({ success: false, message: 'Failed to load models', error: error.message });
@@ -1642,7 +1646,7 @@ app.post('/api/scan-models', async (req, res) => {
     // After scanning, also run legacy image migration on munchie files so that
     // generated files do not contain top-level `thumbnail` or `images` fields.
     const modelsDir = getAbsoluteModelsPath();
-  const migrated = [];
+    const migrated = [];
     const skipped = [];
     const errors = [];
 
@@ -1789,7 +1793,7 @@ app.post('/api/scan-models', async (req, res) => {
         res.write(JSON.stringify({ type: 'error', error: String(e) }) + '\n');
       }
       // Final summary
-  res.write(JSON.stringify({ type: 'done', success: true, processed: result.processed, skipped: result.skipped, skippedFiles: skipped.length, errors }) + '\n');
+      res.write(JSON.stringify({ type: 'done', success: true, processed: result.processed, skipped: result.skipped, skippedFiles: skipped.length, errors }) + '\n');
       return res.end();
     } else {
       // Non-streaming: run migration and respond with final JSON
@@ -2426,7 +2430,7 @@ app.post('/api/thingiverse/verify', async (req, res) => {
       return res.json({ success: true, username: data.name || 'Unknown User' });
     }
     return res.status(resp.status).json({ success: false, error: `Verification failed (${resp.status})` });
-  } catch(e) {
+  } catch (e) {
     return res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -4257,21 +4261,55 @@ app.post('/api/printer/config', (req, res) => {
   res.json({ success: true });
 });
 
+// [UPDATE] Printer Status/Test Endpoint
+// Accepts query params for testing unsaved configs, or uses saved config if none provided
 app.get('/api/printer/status', async (req, res) => {
-  const config = ConfigManager.loadConfig();
-  const { type, url, apiKey } = config.integrations?.printer || {};
+  // 1. Try to get credentials from Query (for the "Test" button)
+  let { type, url, apiKey } = req.query;
+
+  // 2. If no query params, fallback to Saved Config (for the "Print" button)
+  if (!url) {
+    const config = ConfigManager.loadConfig();
+    const printerConfig = config.integrations?.printer || {};
+    type = printerConfig.type;
+    url = printerConfig.url;
+    apiKey = printerConfig.apiKey;
+  }
+
   if (!url) return res.json({ status: 'disabled' });
 
   try {
     const cleanUrl = url.replace(/\/$/, '');
-    let target = type === 'octoprint' ? `${cleanUrl}/api/version` : `${cleanUrl}/printer/info`;
+    let target = '';
+
+    // Port Hint: Klipper is usually port 7125, OctoPrint is 80 or 5000
+    if (type === 'moonraker') {
+      target = `${cleanUrl}/printer/info`; 
+    } else {
+      target = `${cleanUrl}/api/version`;
+    }
+
+    console.log(`[Printer Test] Pinging: ${target}`);
+
     let headers = {};
     if (apiKey) headers['X-Api-Key'] = apiKey;
 
-    const resp = await fetch(target, { headers });
-    if (resp.ok) res.json({ status: 'connected' });
-    else res.json({ status: 'error', code: resp.status });
+    // Set a short timeout (5 seconds) so the UI doesn't freeze
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const resp = await fetch(target, { headers, signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (resp.ok) {
+      res.json({ status: 'connected' });
+    } else {
+      // Return the specific HTTP error code (e.g., 401 Unauthorized, 404 Not Found)
+      res.json({ status: 'error', message: `HTTP ${resp.status}: ${resp.statusText}` });
+    }
   } catch (e) {
+    console.error(`[Printer Test] Failed: ${e.message}`);
+    // Return specific network error (e.g., "ECONNREFUSED" means wrong port/IP)
     res.json({ status: 'error', message: e.message });
   }
 });
@@ -4280,7 +4318,7 @@ app.post('/api/printer/print', async (req, res) => {
   const { filePath } = req.body; // Relative path in Muncher
   const config = ConfigManager.loadConfig();
   const { type, url, apiKey } = config.integrations?.printer || {};
-  
+
   if (!url || !filePath) return res.status(400).json({ error: "Printer not configured or file missing" });
 
   try {
@@ -4288,7 +4326,7 @@ app.post('/api/printer/print', async (req, res) => {
     const modelsDir = getAbsoluteModelsPath();
     const absPath = path.join(modelsDir, filePath);
     if (!fs.existsSync(absPath)) throw new Error("File not found on server");
-    
+
     const fileBuffer = fs.readFileSync(absPath);
     const fileName = path.basename(absPath);
     const cleanUrl = url.replace(/\/$/, '');
@@ -4299,25 +4337,25 @@ app.post('/api/printer/print', async (req, res) => {
       const { body, boundary } = createMultipartBody(fileBuffer, fileName);
       const resp = await fetch(`${cleanUrl}/server/files/upload`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': body.length 
+          'Content-Length': body.length
         },
         body: body
       });
       if (!resp.ok) throw new Error(`Klipper upload failed: ${resp.status}`);
-      
+
       // Optional: Start Print immediately (uncomment if desired)
       // await fetch(`${cleanUrl}/printer/print/start`, { method: 'POST', body: JSON.stringify({ filename: fileName }), headers: {'Content-Type':'application/json'} });
-      
+
       return res.json({ success: true, message: "Sent to Klipper" });
-    } 
+    }
     else if (type === 'octoprint') {
       // OctoPrint: POST /api/files/local
       const { body, boundary } = createMultipartBody(fileBuffer, fileName);
       const resp = await fetch(`${cleanUrl}/api/files/local`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
           'X-Api-Key': apiKey,
           'Content-Length': body.length
@@ -4327,7 +4365,7 @@ app.post('/api/printer/print', async (req, res) => {
       if (!resp.ok) throw new Error(`OctoPrint upload failed: ${resp.status}`);
       return res.json({ success: true, message: "Sent to OctoPrint" });
     }
-    
+
     res.json({ success: false, error: "Unknown printer type" });
 
   } catch (e) {

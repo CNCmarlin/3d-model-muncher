@@ -377,13 +377,43 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
                 })}
               />
               <Button variant="outline" onClick={async () => {
-                try {
-                  await fetch('/api/printer/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config.integrations?.printer) });
-                  const res = await fetch('/api/printer/status');
-                  const data = await res.json();
-                  if (data.status === 'connected') toast.success("Printer Connected!");
-                  else toast.error("Could not connect");
-                } catch (e) { toast.error("Connection Failed"); }
+                 // 1. Validate Input
+                 const currentUrl = config.integrations?.printer?.url || '';
+                 const currentType = config.integrations?.printer?.type || 'moonraker';
+                 const currentKey = config.integrations?.printer?.apiKey || '';
+
+                 if (!currentUrl) return toast.error("Enter an IP address first");
+
+                 const toastId = toast.loading("Testing connection...");
+
+                 try {
+                   // 2. Send values DIRECTLY via query params (bypassing save lag)
+                   const params = new URLSearchParams({
+                     type: currentType,
+                     url: currentUrl,
+                     apiKey: currentKey
+                   });
+
+                   const res = await fetch(`/api/printer/status?${params.toString()}`);
+                   const data = await res.json();
+                   
+                   toast.dismiss(toastId);
+
+                   if (data.status === 'connected') {
+                     toast.success("Printer Connected Successfully!");
+                   } else {
+                     // 3. Show the EXACT error from the server
+                     toast.error(`Connection Failed: ${data.message || 'Unknown Error'}`);
+                     
+                     // Helpful Hint for Klipper Users
+                     if (currentType === 'moonraker' && !currentUrl.includes(':')) {
+                        toast.info("Hint: Klipper/Moonraker often uses port 7125. Try adding :7125 to the IP.");
+                     }
+                   }
+                 } catch(e) { 
+                   toast.dismiss(toastId);
+                   toast.error("Network request failed"); 
+                 }
               }}>Test</Button>
             </div>
           </div>

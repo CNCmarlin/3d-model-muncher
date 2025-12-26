@@ -1490,11 +1490,10 @@ export default function App() {
   return (
     <ThemeProvider defaultTheme="system">
       <LayoutSettingsProvider>
-      <SpoolmanProvider> {/* [WRAP EVERYTHING INSIDE THIS] */}
-       <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        <AppContent />
-        <Toaster />
-        </div>
+        {/* [FIX] Just the Provider. No extra <div> here! */}
+        <SpoolmanProvider>
+          <AppContent />
+          <Toaster />
         </SpoolmanProvider>
       </LayoutSettingsProvider>
     </ThemeProvider>
