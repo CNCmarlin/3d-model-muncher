@@ -340,11 +340,11 @@ app.get('/api/spoolman/spools', async (req, res) => {
   try {
     // Fetch active spools (allow_archived=false)
     const response = await fetch(`${url}/api/v1/spool?allow_archived=false`);
-    
+
     if (!response.ok) throw new Error(`Spoolman Error: ${response.status}`);
-    
+
     const data = await response.json();
-    
+
     // Transform data slightly for our UI if needed, or pass raw
     // Spoolman returns a rich object: { id, filament: { vendor, name, material, price, weight... }, remaining_weight }
     res.json({ success: true, spools: data });
@@ -366,10 +366,10 @@ app.post('/api/spoolman/config', (req, res) => {
     const config = ConfigManager.loadConfig();
     if (!config.integrations) config.integrations = {};
     if (!config.integrations.spoolman) config.integrations.spoolman = {};
-    
+
     config.integrations.spoolman.url = url;
     config.lastModified = new Date().toISOString();
-    
+
     ConfigManager.saveConfig(config);
     res.json({ success: true });
   } catch (e) {
@@ -392,53 +392,53 @@ app.post('/api/collections', async (req, res) => {
 
     // [NEW] Logic for creating physical folder (Only if requested AND it's a new collection)
     if ((!finalId || finalId === '') && createOnDisk) {
-        const modelsDir = getAbsoluteModelsPath();
-        let parentDir = modelsDir;
+      const modelsDir = getAbsoluteModelsPath();
+      let parentDir = modelsDir;
 
-        // 1. Resolve Parent Path
-        if (parentId && parentId !== 'root') {
-            const currentCols = loadCollections();
-            const parentCol = currentCols.find(c => c.id === parentId);
-            if (parentCol) {
-                // Try to decode path from ID if it's an auto-collection (col_...)
-                if (parentCol.id.startsWith('col_')) {
-                    try {
-                        const b64 = parentCol.id.substring(4);
-                        // Decode base64 to get relative path
-                        const relPath = Buffer.from(b64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
-                        parentDir = path.join(modelsDir, relPath);
-                    } catch (e) {
-                        console.warn("Could not decode parent path from ID, defaulting to root");
-                    }
-                } else {
-                    // Manual collection parent: we can't physically nest inside a virtual collection
-                    console.log("Parent is manual collection, creating folder at root models dir.");
-                }
+      // 1. Resolve Parent Path
+      if (parentId && parentId !== 'root') {
+        const currentCols = loadCollections();
+        const parentCol = currentCols.find(c => c.id === parentId);
+        if (parentCol) {
+          // Try to decode path from ID if it's an auto-collection (col_...)
+          if (parentCol.id.startsWith('col_')) {
+            try {
+              const b64 = parentCol.id.substring(4);
+              // Decode base64 to get relative path
+              const relPath = Buffer.from(b64.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+              parentDir = path.join(modelsDir, relPath);
+            } catch (e) {
+              console.warn("Could not decode parent path from ID, defaulting to root");
             }
+          } else {
+            // Manual collection parent: we can't physically nest inside a virtual collection
+            console.log("Parent is manual collection, creating folder at root models dir.");
+          }
         }
+      }
 
-        // 2. Create the Directory on Disk
-        // Sanitize name for filesystem safety
-        const safeName = name.replace(/[^a-zA-Z0-9_\- ]/g, '').trim(); 
-        const newDirPath = path.join(parentDir, safeName);
-        
-        if (!fs.existsSync(newDirPath)) {
-            fs.mkdirSync(newDirPath, { recursive: true });
-            console.log(`[Collection] Created physical folder: ${newDirPath}`);
-        }
+      // 2. Create the Directory on Disk
+      // Sanitize name for filesystem safety
+      const safeName = name.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
+      const newDirPath = path.join(parentDir, safeName);
 
-        // 3. Generate ID consistent with Auto-Import Scanner
-        // This ensures that if the auto-scanner runs later, it will generate the SAME ID and match this collection.
-        const rel = path.relative(modelsDir, newDirPath);
-        const normalized = rel.replace(/\\/g, '/');
-        // 'col_' + base64(path)
-        finalId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
-        
-        // Force category to 'Auto-Imported' so it behaves like a system collection
-        finalCategory = 'Auto-Imported';
+      if (!fs.existsSync(newDirPath)) {
+        fs.mkdirSync(newDirPath, { recursive: true });
+        console.log(`[Collection] Created physical folder: ${newDirPath}`);
+      }
+
+      // 3. Generate ID consistent with Auto-Import Scanner
+      // This ensures that if the auto-scanner runs later, it will generate the SAME ID and match this collection.
+      const rel = path.relative(modelsDir, newDirPath);
+      const normalized = rel.replace(/\\/g, '/');
+      // 'col_' + base64(path)
+      finalId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
+
+      // Force category to 'Auto-Imported' so it behaves like a system collection
+      finalCategory = 'Auto-Imported';
     } else if (!finalId) {
-        // Fallback for standard manual collections
-        finalId = makeId();
+      // Fallback for standard manual collections
+      finalId = makeId();
     }
 
     // [EXISTING] The safe update task
@@ -473,7 +473,7 @@ app.post('/api/collections', async (req, res) => {
           id: finalId, // Use the ID we determined above
           name, description, modelIds: normalizedIds, childCollectionIds: normalizedChildren,
           parentId: (parentId === 'root' ? null : parentId),
-          coverModelId, 
+          coverModelId,
           category: finalCategory,
           tags, images,
           created: now, lastModified: now
@@ -549,29 +549,29 @@ app.post('/api/collections/auto-import', async (req, res) => {
     // Dynamic require to ensure we get the latest version if files changed
     delete require.cache[require.resolve('./server-utils/collectionScanner')];
     const { scanDirectory: scanCollections } = require('./server-utils/collectionScanner');
-    
+
     const discoveredCollections = scanCollections(scanRoot, modelsDir, { strategy });
 
     // 3. Queue the Merge Logic
     const mergeTask = (currentCols) => {
       let updatedCols = [...currentCols];
-      
+
       // Step A: If requested, prune old auto-collections
       if (clearPrevious) {
         const beforeCount = updatedCols.length;
         updatedCols = updatedCols.filter(c => {
-            // Check 1: Explicit Category match (case-insensitive)
-            const isAutoCategory = (c.category || '').trim().toLowerCase() === 'auto-imported';
-            
-            // Check 2: ID Pattern match
-            // Manual collections use "col-timestamp-random" (hyphens).
-            // Auto scanner uses "col_base64" (underscore).
-            // This catches legacy auto-collections that might be missing the category.
-            const isAutoId = c.id && typeof c.id === 'string' && c.id.startsWith('col_');
+          // Check 1: Explicit Category match (case-insensitive)
+          const isAutoCategory = (c.category || '').trim().toLowerCase() === 'auto-imported';
 
-            // If it matches either criteria, it is an auto-collection.
-            // We KEEP it only if it is NOT an auto-collection.
-            return !isAutoCategory && !isAutoId;
+          // Check 2: ID Pattern match
+          // Manual collections use "col-timestamp-random" (hyphens).
+          // Auto scanner uses "col_base64" (underscore).
+          // This catches legacy auto-collections that might be missing the category.
+          const isAutoId = c.id && typeof c.id === 'string' && c.id.startsWith('col_');
+
+          // If it matches either criteria, it is an auto-collection.
+          // We KEEP it only if it is NOT an auto-collection.
+          return !isAutoCategory && !isAutoId;
         });
         console.log(`[Auto-Import] Pruned ${beforeCount - updatedCols.length} old auto-collections.`);
       }
@@ -592,7 +592,7 @@ app.post('/api/collections/auto-import', async (req, res) => {
             ...existing,
             modelIds: mergedIds,
             // Force category to Auto-Imported so it can be cleaned up next time
-            category: 'Auto-Imported', 
+            category: 'Auto-Imported',
             parentId: existing.parentId || importCol.parentId,
             lastModified: new Date().toISOString()
           };
@@ -608,7 +608,7 @@ app.post('/api/collections/auto-import', async (req, res) => {
     };
 
     await collectionQueue.add(mergeTask);
-    
+
     try { reconcileHiddenFlags(); } catch (e) { console.warn('Auto-import reconcile failed', e); }
 
     res.json({
@@ -638,7 +638,7 @@ app.post('/api/collections/generate-covers', async (req, res) => {
     const modelsDir = getAbsoluteModelsPath();
     const dataDir = path.join(process.cwd(), 'data');
     const coversDir = path.join(dataDir, 'covers');
-    
+
     let generateCover;
     try {
       generateCover = require('./server-utils/coverGenerator').generateCover;
@@ -652,8 +652,8 @@ app.post('/api/collections/generate-covers', async (req, res) => {
     function scanIndex(dir) {
       if (signal.aborted) return;
       let entries = [];
-      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) {}
-      
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { }
+
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
@@ -663,12 +663,12 @@ app.post('/api/collections/generate-covers', async (req, res) => {
             const raw = fs.readFileSync(full, 'utf8');
             const data = JSON.parse(raw);
             if (data.id) idToPathMap[data.id] = full;
-          } catch(e) {}
+          } catch (e) { }
         }
       }
     }
     scanIndex(modelsDir);
-    
+
     // 2. Get Targets
     let collections = loadCollections();
     let targets = collections;
@@ -694,7 +694,7 @@ app.post('/api/collections/generate-covers', async (req, res) => {
       try {
         // Attempt 1: Generate 2x2 Mosaic
         const result = await generateCover(col, modelsDir, coversDir, idToPathMap);
-        
+
         // Find fresh index in case array mutated (rare but safe)
         const idx = collections.findIndex(c => c.id === col.id);
         if (idx === -1) continue;
@@ -709,31 +709,31 @@ app.post('/api/collections/generate-covers', async (req, res) => {
           // If < 4 models, pick the first available thumbnail from the member models
           let singleImage = null;
           const candidates = col.modelIds || [];
-          
+
           for (const mid of candidates) {
-             const jsonPath = idToPathMap[mid];
-             if (!jsonPath || !fs.existsSync(jsonPath)) continue;
-             try {
-                const mData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-                // Check standard image fields
-                const img = (mData.parsedImages && mData.parsedImages[0]) || 
-                            (mData.images && mData.images[0]) || 
-                            mData.thumbnail;
-                
-                // Use if it's a valid path (skip heavy data URIs for covers if possible)
-                if (img && typeof img === 'string' && !img.startsWith('data:')) {
-                   singleImage = img;
-                   break; // Found one!
-                }
-             } catch(e) {}
+            const jsonPath = idToPathMap[mid];
+            if (!jsonPath || !fs.existsSync(jsonPath)) continue;
+            try {
+              const mData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+              // Check standard image fields
+              const img = (mData.parsedImages && mData.parsedImages[0]) ||
+                (mData.images && mData.images[0]) ||
+                mData.thumbnail;
+
+              // Use if it's a valid path (skip heavy data URIs for covers if possible)
+              if (img && typeof img === 'string' && !img.startsWith('data:')) {
+                singleImage = img;
+                break; // Found one!
+              }
+            } catch (e) { }
           }
 
           if (singleImage) {
-             collections[idx].coverImage = singleImage;
-             collections[idx].lastModified = new Date().toISOString();
-             processed++;
+            collections[idx].coverImage = singleImage;
+            collections[idx].lastModified = new Date().toISOString();
+            processed++;
           } else {
-             skipped++; // Collection is truly empty or has no images
+            skipped++; // Collection is truly empty or has no images
           }
         }
       } catch (err) {
@@ -744,7 +744,7 @@ app.post('/api/collections/generate-covers', async (req, res) => {
 
     // 3. Save
     saveCollections(collections);
-    
+
     activeCoverJob = null;
     res.json({ success: true, processed, skipped, errors, aborted: signal.aborted });
 
@@ -769,7 +769,7 @@ app.get('/api/download', async (req, res) => {
         const fetch = (await import('node-fetch')).default; // Dynamic import if using ESM or native fetch in Node 18+
         const response = await fetch(targetPath);
         if (!response.ok) throw new Error(`Remote fetch failed: ${response.status}`);
-        
+
         res.setHeader('Content-Disposition', `attachment; filename="${path.basename(targetPath)}"`);
         return response.body.pipe(res);
       } catch (e) {
@@ -783,7 +783,7 @@ app.get('/api/download', async (req, res) => {
     let relPath = targetPath;
     if (relPath.startsWith('/models/')) relPath = relPath.substring(8);
     if (relPath.startsWith('models/')) relPath = relPath.substring(7);
-    
+
     // Security: Prevent traversal
     if (relPath.includes('..')) return res.status(403).send('Access denied');
 
@@ -794,7 +794,7 @@ app.get('/api/download', async (req, res) => {
       return res.status(404).send('File not found');
     }
 
-    res.download(absPath); 
+    res.download(absPath);
   } catch (e) {
     console.error('Download error:', e);
     if (!res.headersSent) res.status(500).send('Server error');
@@ -1476,8 +1476,6 @@ app.get('/api/models', async (req, res) => {
 });
 
 // API endpoint to trigger model directory scan and JSON generation
-// API endpoint to trigger model directory scan and JSON generation
-// API endpoint to trigger model directory scan and JSON generation
 app.post('/api/scan-models', async (req, res) => {
   try {
     // [FIX] Accept new boolean flags from frontend, fall back to legacy 'fileType'
@@ -1502,13 +1500,13 @@ app.post('/api/scan-models', async (req, res) => {
       result.processed += r.processed;
       result.skipped += r.skipped;
     }
-    
+
     if (doStl) {
       const r = await runScan('stl');
       result.processed += r.processed;
       result.skipped += r.skipped;
     }
-    
+
     // ... rest of the function (legacy migration logic) remains the same ...
 
     // --- ORIGINAL LEGACY MIGRATION LOGIC STARTS HERE ---
@@ -2028,19 +2026,19 @@ app.post('/api/generate-thumbnails', async (req, res) => {
   try {
     const { modelIds, force = false } = req.body;
     const modelsDir = getAbsoluteModelsPath();
-    
+
     // We need the server's own URL so Puppeteer can visit it
     const baseUrl = `http://127.0.0.1:${PORT}`;
-    
+
     const config = ConfigManager.loadConfig();
     // Robust check: try accessing it via .settings, or directly, or fallback
-    const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#6366f1'; 
-    
+    const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#6366f1';
+
     let processed = 0;
     let errors = [];
     let skipped = 0;
     let targets = [];
-    
+
     function findTargets(dir) {
       if (signal.aborted) return; // Stop recursion if cancelled
 
@@ -2050,24 +2048,24 @@ app.post('/api/generate-thumbnails', async (req, res) => {
         if (entry.isDirectory()) {
           findTargets(fullPath);
         } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
-            try {
-              const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-              // Filter by IDs if provided
-              if (modelIds && modelIds.length > 0 && !modelIds.includes(data.id)) continue;
-              
-              // Determine Source File (.3mf or .stl)
-              let sourceFile;
-              if (entry.name.endsWith('-stl-munchie.json')) {
-                  sourceFile = fullPath.replace('-stl-munchie.json', '.stl');
-                  if (!fs.existsSync(sourceFile)) sourceFile = fullPath.replace('-stl-munchie.json', '.STL');
-              } else {
-                  sourceFile = fullPath.replace('-munchie.json', '.3mf');
-              }
-              
-              if (fs.existsSync(sourceFile)) {
-                  targets.push({ jsonPath: fullPath, sourcePath: sourceFile, data });
-              }
-            } catch(e) {}
+          try {
+            const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+            // Filter by IDs if provided
+            if (modelIds && modelIds.length > 0 && !modelIds.includes(data.id)) continue;
+
+            // Determine Source File (.3mf or .stl)
+            let sourceFile;
+            if (entry.name.endsWith('-stl-munchie.json')) {
+              sourceFile = fullPath.replace('-stl-munchie.json', '.stl');
+              if (!fs.existsSync(sourceFile)) sourceFile = fullPath.replace('-stl-munchie.json', '.STL');
+            } else {
+              sourceFile = fullPath.replace('-munchie.json', '.3mf');
+            }
+
+            if (fs.existsSync(sourceFile)) {
+              targets.push({ jsonPath: fullPath, sourcePath: sourceFile, data });
+            }
+          } catch (e) { }
         }
       }
     }
@@ -2087,7 +2085,7 @@ app.post('/api/generate-thumbnails', async (req, res) => {
 
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
         console.warn(`🚨 Aborting thumbnail generation: ${MAX_CONSECUTIVE_ERRORS} consecutive errors detected.`);
-        break; 
+        break;
       }
       try {
         const thumbName = path.basename(target.sourcePath) + '-thumb.png';
@@ -2103,43 +2101,43 @@ app.post('/api/generate-thumbnails', async (req, res) => {
         const modelColor = target.data.userDefined?.color || target.data.color || globalDefaultColor;
 
         // 3. PASS THE SIGNAL TO THE GENERATOR
-        await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir, signal); 
-        
+        await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir, signal);
+
         // Update JSON to point to new image
         let json = target.data;
         let changed = false;
-        
+
         if (!json.images) json.images = [];
-        
+
         // Add if not present
         if (!json.images.includes(relativeThumbUrl)) {
-            json.images.unshift(relativeThumbUrl); // Make it first!
-            changed = true;
+          json.images.unshift(relativeThumbUrl); // Make it first!
+          changed = true;
         }
 
         if (changed) {
-            fs.writeFileSync(target.jsonPath, JSON.stringify(json, null, 2));
+          fs.writeFileSync(target.jsonPath, JSON.stringify(json, null, 2));
         }
-        
+
         processed++;
         consecutiveErrors = 0;
       } catch (err) {
         // Don't count manual cancellation as an error
         if (err.message && err.message.includes('cancelled')) {
-           break;
+          break;
         }
         console.error("Thumbnail error:", err);
         errors.push({ id: target.data.id, error: err.message });
         consecutiveErrors++;
       }
     }
-    
+
     activeThumbnailJob = null;
 
-    res.json({ 
-      success: true, 
-      processed, 
-      skipped, 
+    res.json({
+      success: true,
+      processed,
+      skipped,
       errors,
       aborted: signal.aborted || consecutiveErrors >= MAX_CONSECUTIVE_ERRORS
     });
@@ -2148,7 +2146,7 @@ app.post('/api/generate-thumbnails', async (req, res) => {
     activeThumbnailJob = null;
     console.error('General generation error:', error);
     if (error.message && error.message.includes('cancelled')) {
-        return res.json({ success: false, aborted: true, message: 'Cancelled by user' });
+      return res.json({ success: false, aborted: true, message: 'Cancelled by user' });
     }
     res.status(500).json({ success: false, error: error.message });
   }
@@ -2191,9 +2189,9 @@ app.get('/api/spoolman/spools', async (req, res) => {
   try {
     // Fetch active spools (allow_archived=false)
     const response = await fetch(`${url}/api/v1/spool?allow_archived=false`);
-    
+
     if (!response.ok) throw new Error(`Spoolman Error: ${response.status}`);
-    
+
     const data = await response.json();
     res.json({ success: true, spools: data });
   } catch (e) {
@@ -2214,10 +2212,10 @@ app.post('/api/spoolman/config', (req, res) => {
     const config = ConfigManager.loadConfig();
     if (!config.integrations) config.integrations = {};
     if (!config.integrations.spoolman) config.integrations.spoolman = {};
-    
+
     config.integrations.spoolman.url = url;
     config.lastModified = new Date().toISOString();
-    
+
     // Save to disk
     ConfigManager.saveConfig(config);
     res.json({ success: true });
@@ -2350,7 +2348,7 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
 
         if (!affectedFolders.has(destDir)) {
           affectedFolders.set(destDir, []);
-      }
+        }
 
         let targetPath = path.join(destDir, base);
         // avoid collisions by appending timestamp when necessary
@@ -2474,78 +2472,78 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
 
       // Iterate the Map: folderPath -> array of newModelIds
       for (const [folderPath, newModelIds] of affectedFolders.entries()) {
-          const rel = path.relative(modelsDir, folderPath);
-          if (!rel || rel === '' || rel === '.') continue; 
+        const rel = path.relative(modelsDir, folderPath);
+        if (!rel || rel === '' || rel === '.') continue;
 
-          // Generate standard ID
-          const normalized = rel.replace(/\\/g, '/');
-          const colId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
-          
-          const existingIdx = currentCols.findIndex(c => c.id === colId);
-          const folderName = path.basename(folderPath);
+        // Generate standard ID
+        const normalized = rel.replace(/\\/g, '/');
+        const colId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
 
-          if (createCollection || existingIdx === -1) {
-              // CASE 1: Create New or Overwrite Collection (Group Upload)
-              const newCol = existingIdx !== -1 ? currentCols[existingIdx] : {
-                  id: colId,
-                  name: folderName,
-                  modelIds: [],
-                  created: new Date().toISOString(),
-                  category: 'Auto-Imported'
-              };
+        const existingIdx = currentCols.findIndex(c => c.id === colId);
+        const folderName = path.basename(folderPath);
 
-              // [CRITICAL FIX] Add the new IDs immediately
-              const existingIds = new Set(newCol.modelIds || []);
-              newModelIds.forEach(id => existingIds.add(id));
-              newCol.modelIds = Array.from(existingIds);
+        if (createCollection || existingIdx === -1) {
+          // CASE 1: Create New or Overwrite Collection (Group Upload)
+          const newCol = existingIdx !== -1 ? currentCols[existingIdx] : {
+            id: colId,
+            name: folderName,
+            modelIds: [],
+            created: new Date().toISOString(),
+            category: 'Auto-Imported'
+          };
 
-              // Add Description/Tags if requested
-              if (createCollection && collectionDescription) {
-                  newCol.description = collectionDescription;
-              }
-              if (collectionTags.length > 0) {
-                  newCol.tags = Array.from(new Set([...(newCol.tags || []), ...collectionTags]));
-              }
+          // [CRITICAL FIX] Add the new IDs immediately
+          const existingIds = new Set(newCol.modelIds || []);
+          newModelIds.forEach(id => existingIds.add(id));
+          newCol.modelIds = Array.from(existingIds);
 
-              newCol.lastModified = new Date().toISOString();
-
-              if (existingIdx !== -1) currentCols[existingIdx] = newCol;
-              else currentCols.push(newCol);
-              
-              colsUpdated = true;
-          } else {
-              // CASE 2: Uploading to existing collection (Standard Upload)
-              // We must manually append the IDs here too, or they won't appear until a full re-scan
-              const existingCol = currentCols[existingIdx];
-              const existingIds = new Set(existingCol.modelIds || []);
-              
-              let changed = false;
-              newModelIds.forEach(id => {
-                  if (!existingIds.has(id)) {
-                      existingIds.add(id);
-                      changed = true;
-                  }
-              });
-              
-              if (changed) {
-                  existingCol.modelIds = Array.from(existingIds);
-                  existingCol.lastModified = new Date().toISOString();
-                  colsUpdated = true;
-              }
+          // Add Description/Tags if requested
+          if (createCollection && collectionDescription) {
+            newCol.description = collectionDescription;
           }
+          if (collectionTags.length > 0) {
+            newCol.tags = Array.from(new Set([...(newCol.tags || []), ...collectionTags]));
+          }
+
+          newCol.lastModified = new Date().toISOString();
+
+          if (existingIdx !== -1) currentCols[existingIdx] = newCol;
+          else currentCols.push(newCol);
+
+          colsUpdated = true;
+        } else {
+          // CASE 2: Uploading to existing collection (Standard Upload)
+          // We must manually append the IDs here too, or they won't appear until a full re-scan
+          const existingCol = currentCols[existingIdx];
+          const existingIds = new Set(existingCol.modelIds || []);
+
+          let changed = false;
+          newModelIds.forEach(id => {
+            if (!existingIds.has(id)) {
+              existingIds.add(id);
+              changed = true;
+            }
+          });
+
+          if (changed) {
+            existingCol.modelIds = Array.from(existingIds);
+            existingCol.lastModified = new Date().toISOString();
+            colsUpdated = true;
+          }
+        }
       }
 
       if (colsUpdated) {
-          saveCollections(currentCols);
+        saveCollections(currentCols);
       }
     }
 
-  // This ensures modelIds are populated before the frontend refreshes
-  await collectionQueue.add((cols) => {
+    // This ensures modelIds are populated before the frontend refreshes
+    await collectionQueue.add((cols) => {
       return collectionScanner.scanDirectory(getAbsoluteModelsPath(), getAbsoluteModelsPath(), { strategy: 'strict' });
-  });
+    });
 
-  try { reconcileHiddenFlags(); } catch (e) { console.warn('Post-upload reconcile failed', e); }
+    try { reconcileHiddenFlags(); } catch (e) { console.warn('Post-upload reconcile failed', e); }
 
 
     res.json({ success: errors.length === 0, saved, processed, errors });
@@ -2713,20 +2711,78 @@ app.post('/api/parse-gcode', upload.single('file'), async (req, res) => {
       return res.status(400).json({ success: false, error: 'No file uploaded or gcodeFilePath provided' });
     }
 
-    // Parse the G-code content
+    // 1. Parse the G-code
     let gcodeData;
     try {
-      gcodeData = parseGcode(gcodeContent);
+      const filenameForParser = targetGcodePath || (req.file ? req.file.originalname : 'unknown.gcode');
+      gcodeData = parseGcode(gcodeContent, filenameForParser);
     } catch (error) {
-      return res.status(400).json({
-        success: false,
-        error: `Failed to parse G-code: ${error.message}`
-      });
+      return res.status(400).json({ success: false, error: `Failed to parse G-code: ${error.message}` });
     }
 
     // Add gcodeFilePath to the result if we saved it
     if (targetGcodePath) {
       gcodeData.gcodeFilePath = targetGcodePath;
+    }
+
+    // 2. [CRITICAL FIX] Automatically update the munchie.json file with these new stats
+    // This ensures Layer Height, Infill, etc. are persisted to disk immediately.
+    if (storageMode === 'save-and-link' && (modelFilePath || modelFileUrl)) {
+      try {
+        const pathRef = modelFileUrl || modelFilePath;
+        // Normalize path to find the JSON file
+        let relativeModelPath = pathRef.replace(/^\/models\//, '').replace(/^models\//, '');
+        const absModelPath = path.resolve(modelsDir, relativeModelPath);
+
+        let jsonPath = null;
+        if (absModelPath.toLowerCase().endsWith('.stl')) {
+          jsonPath = absModelPath.replace(/\.stl$/i, '-stl-munchie.json');
+        } else if (absModelPath.toLowerCase().endsWith('.3mf')) {
+          jsonPath = absModelPath.replace(/\.3mf$/i, '-munchie.json');
+        }
+
+        if (jsonPath && fs.existsSync(jsonPath)) {
+          const raw = fs.readFileSync(jsonPath, 'utf8');
+          const modelData = JSON.parse(raw);
+          let changed = false;
+
+          // A. Update Print Settings (Layer Height, Infill, Nozzle, Printer)
+          if (gcodeData.printSettings) {
+            modelData.printSettings = {
+              ...(modelData.printSettings || {}), // Keep existing user edits
+              ...gcodeData.printSettings          // Overwrite with G-code data
+            };
+            // Ensure defaults to prevent UI "Unknown"
+            if (!modelData.printSettings.layerHeight) modelData.printSettings.layerHeight = 'Unknown';
+            if (!modelData.printSettings.infill) modelData.printSettings.infill = 'Unknown';
+            if (!modelData.printSettings.nozzle) modelData.printSettings.nozzle = 'Unknown';
+            changed = true;
+          }
+
+          // B. Update Top-Level Stats (Time, Weight)
+          if (gcodeData.printTime) {
+            modelData.printTime = gcodeData.printTime;
+            changed = true;
+          }
+          if (gcodeData.totalFilamentWeight) {
+            modelData.filamentUsed = gcodeData.totalFilamentWeight;
+            changed = true;
+          }
+
+          // C. Save Detailed G-code Data (for Spoolman Widget)
+          modelData.gcodeData = gcodeData;
+          changed = true;
+
+          if (changed) {
+            fs.writeFileSync(jsonPath, JSON.stringify(modelData, null, 2), 'utf8');
+            console.log(`[G-code Parser] Auto-updated metadata for: ${path.basename(jsonPath)}`);
+            console.log(`[G-code Parser] Saved Settings:`, JSON.stringify(gcodeData.printSettings));
+          }
+        }
+      } catch (err) {
+        console.error("[G-code Parser] Failed to auto-update model JSON:", err);
+        // Don't fail the request, just log the error
+      }
     }
 
     res.json({
@@ -2852,7 +2908,7 @@ app.post('/api/hash-check', async (req, res) => {
   try {
     const { fileType = "3mf" } = req.body; // "3mf" or "stl" only
     const modelsDir = getAbsoluteModelsPath();
-    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) {}
+    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) { }
     const { computeMD5 } = require('./dist-backend/utils/threeMFToJson');
     let result = [];
     let seenHashes = new Set();
@@ -2869,7 +2925,7 @@ app.post('/api/hash-check', async (req, res) => {
           scanDirectory(fullPath);
         } else {
           const relativePath = path.relative(modelsDir, fullPath);
-          
+
           if (fileType === "3mf") {
             // Only process 3MF files and their JSON companions
             const lowerPath = relativePath.toLowerCase();
@@ -2902,8 +2958,8 @@ app.post('/api/hash-check', async (req, res) => {
       }
     }
 
-  // Start recursive scan
-  scanDirectory(modelsDir);
+    // Start recursive scan
+    scanDirectory(modelsDir);
 
     // Clean up the modelMap to only include entries that have the expected file type
     const cleanedModelMap = {};
@@ -2919,7 +2975,7 @@ app.post('/api/hash-check', async (req, res) => {
     }
 
     // Process all found models
-    try { console.log('[debug] /api/hash-check base entries count=', Object.keys(cleanedModelMap).length); } catch (e) {}
+    try { console.log('[debug] /api/hash-check base entries count=', Object.keys(cleanedModelMap).length); } catch (e) { }
     for (const base in cleanedModelMap) {
       const entry = cleanedModelMap[base];
       const threeMFPath = entry.threeMF ? path.join(modelsDir, entry.threeMF) : null;
@@ -3969,6 +4025,64 @@ app.post('/api/restore-munchie-files/upload', upload.single('backupFile'), async
   } catch (error) {
     console.error('File upload restore error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// API endpoint to update model metadata (e.g., preferred spool, notes, tags)
+app.post('/api/model/metadata', async (req, res) => {
+  try {
+    const { filePath, updates } = req.body; // filePath e.g. "SciFi/Octopus.stl"
+
+    if (!filePath || !updates) {
+      return res.status(400).json({ success: false, message: 'Missing filePath or updates' });
+    }
+
+    const modelsDir = getAbsoluteModelsPath();
+    const absoluteModelPath = path.join(modelsDir, filePath);
+    const dirName = path.dirname(absoluteModelPath);
+    const baseName = path.basename(absoluteModelPath);
+
+    // Determine the JSON filename logic (matching your scan logic)
+    let jsonPath;
+
+    if (baseName.toLowerCase().endsWith('.stl')) {
+      // Logic: MyModel.stl -> MyModel-stl-munchie.json
+      const jsonName = baseName.replace(/\.stl$/i, '-stl-munchie.json');
+      jsonPath = path.join(dirName, jsonName);
+    } else if (baseName.toLowerCase().endsWith('.3mf')) {
+      // Logic: MyModel.3mf -> MyModel-munchie.json
+      const jsonName = baseName.replace(/\.3mf$/i, '-munchie.json');
+      jsonPath = path.join(dirName, jsonName);
+    } else {
+      // Fallback: try to guess or just append
+      const jsonName = baseName + '-munchie.json';
+      jsonPath = path.join(dirName, jsonName);
+    }
+
+    if (!fs.existsSync(jsonPath)) {
+      console.error(`[Metadata Update] Could not find JSON file at: ${jsonPath}`);
+      return res.status(404).json({ success: false, message: 'Metadata file not found' });
+    }
+
+    // Read, Update, Save
+    const raw = fs.readFileSync(jsonPath, 'utf8');
+    const data = JSON.parse(raw);
+
+    // Ensure userDefined exists
+    if (!data.userDefined) data.userDefined = {};
+
+    // Merge updates (e.g. { preferredSpoolId: "12" })
+    Object.assign(data.userDefined, updates);
+
+    // Write back
+    fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`[Metadata Update] Updated ${path.basename(jsonPath)} with keys: ${Object.keys(updates).join(', ')}`);
+
+    res.json({ success: true, model: data });
+
+  } catch (error) {
+    console.error('Metadata update error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

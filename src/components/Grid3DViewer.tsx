@@ -153,16 +153,19 @@ export function Grid3DViewer({ url, color = "#6366f1" }: { url: string; color?: 
       >
         <PerspectiveCamera makeDefault position={[-10, 10, 10]} fov={20} />
 
-        {/* [FIX] Manual Studio Lighting 
-            Replacing external Environment map with strong local lights 
-            so models are visible even without internet/HDRI.
-        */}
-        <ambientLight intensity={1.5} />
-        <hemisphereLight args={["#ffffff", "#444444", 2.0]} />
+        {/* [FIX] Updated Lighting with Shadow Bias */}
+        <ambientLight intensity={0.8} />
+        <hemisphereLight args={["#ffffff", "#444444", 0.6]} />
         
-        <directionalLight position={[5, 10, 5]} intensity={2.0} castShadow />
-        <directionalLight position={[-5, 5, -5]} intensity={1.5} />
-        <directionalLight position={[0, -5, 5]} intensity={0.5} />
+        <directionalLight 
+          position={[5, 10, 5]} 
+          intensity={2.0} 
+          castShadow 
+          shadow-mapSize={[1024, 1024]} // Makes shadows sharper
+          shadow-bias={-0.001}          // [CRITICAL] Fixes the diagonal lines artifact
+        />
+        {/* Fill light to soften harsh shadows */}
+        <directionalLight position={[-5, 5, -5]} intensity={0.8} />
         
         <Suspense fallback={null}>
           <Center>

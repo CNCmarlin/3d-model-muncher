@@ -59,7 +59,6 @@ export function ModelDetailsDrawer({
   const [relatedVerifyStatus, setRelatedVerifyStatus] = useState<Record<number, { loading: boolean; ok?: boolean; message?: string }>>({});
   // Track whether a related file has an associated munchie JSON we can view
   const [availableRelatedMunchie, setAvailableRelatedMunchie] = useState<Record<number, boolean>>({});
-  // ScrollArea viewport ref so we can programmatically scroll the drawer
   const detailsViewportRef = useRef<HTMLDivElement | null>(null);
   // Tag input state now managed by shared TagsInput
   const [focusRelatedIndex, setFocusRelatedIndex] = useState<number | null>(null);
@@ -891,10 +890,18 @@ export function ModelDetailsDrawer({
           filePath: currentModel.filePath,
           id: currentModel.id,
           gcodeData: result.gcodeData,
-          // Also update legacy fields for backward compatibility
+          // Legacy fields
           printTime: result.gcodeData.printTime || currentModel.printTime,
           filamentUsed: result.gcodeData.totalFilamentWeight || currentModel.filamentUsed
         };
+
+        // [FIX] Explicitly add printSettings to the changes so the UI updates immediately
+        if (result.gcodeData.printSettings) {
+          changes.printSettings = {
+            ...(currentModel.printSettings || {}), // Keep existing
+            ...result.gcodeData.printSettings      // Overwrite with new
+          };
+        }
 
         // If storage mode is save-and-link, add to related_files
         if (storageMode === 'save-and-link' && result.gcodeData.gcodeFilePath) {
@@ -902,7 +909,6 @@ export function ModelDetailsDrawer({
             ? [...currentModel.related_files]
             : [];
 
-          // Normalize paths for comparison to avoid duplicates with different separators
           const normalizePath = (p: string) => p.replace(/\\/g, '/').replace(/^\/+/, '');
           const normalizedNewPath = normalizePath(result.gcodeData.gcodeFilePath);
           const alreadyExists = relatedFiles.some(
@@ -915,7 +921,7 @@ export function ModelDetailsDrawer({
           }
         }
 
-        // Save updated model using the correct API format
+        // Save updated model
         const saveResp = await fetch('/api/save-model', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -979,6 +985,13 @@ export function ModelDetailsDrawer({
           printTime: result.gcodeData.printTime || currentModel.printTime,
           filamentUsed: result.gcodeData.totalFilamentWeight || currentModel.filamentUsed
         };
+
+        if (result.gcodeData.printSettings) {
+          changes.printSettings = {
+            ...(currentModel.printSettings || {}),
+            ...result.gcodeData.printSettings
+          };
+        }
 
         const saveResp = await fetch('/api/save-model', {
           method: 'POST',
@@ -2199,10 +2212,10 @@ export function ModelDetailsDrawer({
       : `${currentModel.name}.3mf`;
   // Defensive: ensure printSettings is always an object with string fields
   const safePrintSettings = {
-    layerHeight: currentModel.printSettings?.layerHeight || '',
-    infill: currentModel.printSettings?.infill || '',
-    nozzle: currentModel.printSettings?.nozzle || '',
-    printer: (currentModel.printSettings as any)?.printer || ''
+    layerHeight: model?.printSettings?.layerHeight || model?.userDefined?.printSettings?.layerHeight || 'Unknown',
+    infill: model?.printSettings?.infill || model?.userDefined?.printSettings?.infill || 'Unknown',
+    nozzle: model?.printSettings?.nozzle || model?.userDefined?.printSettings?.nozzle || 'Unknown',
+    printer: model?.printSettings?.printer || 'Unknown' 
   };
 
   // Determine if the underlying model is STL or 3MF using filePath/modelUrl
