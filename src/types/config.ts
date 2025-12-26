@@ -25,6 +25,11 @@ export interface IntegrationSettings {
       url?: string;
       model?: string;
     };
+    printer?: {
+      type?: 'moonraker' | 'octoprint' | 'bambu';
+      url?: string;
+      apiKey?: string;
+    };
 }
 
 export interface AppConfig {

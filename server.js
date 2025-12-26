@@ -4152,6 +4152,104 @@ app.post('/api/model/metadata', async (req, res) => {
   }
 });
 
+// --- Printer Integration (Zero-Dependency) ---
+
+// Helper: Build multipart body manually to avoid 'form-data' dependency
+function createMultipartBody(fileBuffer, fileName) {
+  const boundary = '----MuncherBoundary' + Date.now().toString(16);
+  const start = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${fileName}"\r\nContent-Type: application/octet-stream\r\n\r\n`;
+  const end = `\r\n--${boundary}--`;
+  const body = Buffer.concat([Buffer.from(start), fileBuffer, Buffer.from(end)]);
+  return { body, boundary };
+}
+
+app.post('/api/printer/config', (req, res) => {
+  const config = ConfigManager.loadConfig();
+  if (!config.integrations) config.integrations = {};
+  config.integrations.printer = req.body;
+  ConfigManager.saveConfig(config);
+  res.json({ success: true });
+});
+
+app.get('/api/printer/status', async (req, res) => {
+  const config = ConfigManager.loadConfig();
+  const { type, url, apiKey } = config.integrations?.printer || {};
+  if (!url) return res.json({ status: 'disabled' });
+
+  try {
+    const cleanUrl = url.replace(/\/$/, '');
+    let target = type === 'octoprint' ? `${cleanUrl}/api/version` : `${cleanUrl}/printer/info`;
+    let headers = {};
+    if (apiKey) headers['X-Api-Key'] = apiKey;
+
+    const resp = await fetch(target, { headers });
+    if (resp.ok) res.json({ status: 'connected' });
+    else res.json({ status: 'error', code: resp.status });
+  } catch (e) {
+    res.json({ status: 'error', message: e.message });
+  }
+});
+
+app.post('/api/printer/print', async (req, res) => {
+  const { filePath } = req.body; // Relative path in Muncher
+  const config = ConfigManager.loadConfig();
+  const { type, url, apiKey } = config.integrations?.printer || {};
+  
+  if (!url || !filePath) return res.status(400).json({ error: "Printer not configured or file missing" });
+
+  try {
+    // 1. Read File
+    const modelsDir = getAbsoluteModelsPath();
+    const absPath = path.join(modelsDir, filePath);
+    if (!fs.existsSync(absPath)) throw new Error("File not found on server");
+    
+    const fileBuffer = fs.readFileSync(absPath);
+    const fileName = path.basename(absPath);
+    const cleanUrl = url.replace(/\/$/, '');
+
+    // 2. Upload Logic
+    if (type === 'moonraker') {
+      // Moonraker: POST /server/files/upload
+      const { body, boundary } = createMultipartBody(fileBuffer, fileName);
+      const resp = await fetch(`${cleanUrl}/server/files/upload`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': body.length 
+        },
+        body: body
+      });
+      if (!resp.ok) throw new Error(`Klipper upload failed: ${resp.status}`);
+      
+      // Optional: Start Print immediately (uncomment if desired)
+      // await fetch(`${cleanUrl}/printer/print/start`, { method: 'POST', body: JSON.stringify({ filename: fileName }), headers: {'Content-Type':'application/json'} });
+      
+      return res.json({ success: true, message: "Sent to Klipper" });
+    } 
+    else if (type === 'octoprint') {
+      // OctoPrint: POST /api/files/local
+      const { body, boundary } = createMultipartBody(fileBuffer, fileName);
+      const resp = await fetch(`${cleanUrl}/api/files/local`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'X-Api-Key': apiKey,
+          'Content-Length': body.length
+        },
+        body: body
+      });
+      if (!resp.ok) throw new Error(`OctoPrint upload failed: ${resp.status}`);
+      return res.json({ success: true, message: "Sent to OctoPrint" });
+    }
+    
+    res.json({ success: false, error: "Unknown printer type" });
+
+  } catch (e) {
+    console.error("Print error:", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // [FIX] Explicitly serve the capture.html file for Puppeteer
 // Check if it's in 'public' (standard) or root
 app.get('/capture.html', (req, res) => {

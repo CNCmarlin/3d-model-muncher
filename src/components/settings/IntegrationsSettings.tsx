@@ -5,7 +5,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { CheckCircle2, XCircle, Save, ExternalLink, Cpu, Cloud, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Save, ExternalLink, Cpu, Cloud, Loader2, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { AppConfig } from '../../types/config';
 
@@ -47,17 +47,17 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
   useEffect(() => {
     setSpoolmanUrl(prev => config.integrations?.spoolman?.url ?? prev);
     setThingiverseToken(prev => config.integrations?.thingiverse?.token ?? prev);
-    
+
     // AI Smart Default
     let active = (config.integrations?.ai?.provider as any) || 'google';
     const hasGoogle = !!config.integrations?.google?.apiKey || !!config.integrations?.google?.serviceAccountJson;
     const hasOpenAI = !!config.integrations?.openai?.apiKey;
-    
+
     if (active === 'google' && !hasGoogle && hasOpenAI) {
       active = 'openai';
     }
     setAiProvider(active);
-    
+
     // Load fields
     if (config.integrations?.google?.provider) setGoogleType(config.integrations.google.provider);
     if (config.integrations?.google?.apiKey) setGoogleKey(config.integrations.google.apiKey);
@@ -84,7 +84,7 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
       const statusResp = await fetch('/api/spoolman/status');
       const statusData = await statusResp.json();
       setSpoolmanStatus(statusData.status === 'connected' ? 'connected' : 'error');
-      if(statusData.status === 'connected') toast.success("Spoolman Connected");
+      if (statusData.status === 'connected') toast.success("Spoolman Connected");
     } catch (e) {
       setSpoolmanStatus('error');
     }
@@ -117,25 +117,25 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
     setAiTestStatus('loading');
     const testConfig: any = {};
     if (aiProvider === 'google') {
-       testConfig.apiKey = googleKey;
-       testConfig.provider = googleType;
-       testConfig.serviceAccountJson = googleJson;
+      testConfig.apiKey = googleKey;
+      testConfig.provider = googleType;
+      testConfig.serviceAccountJson = googleJson;
     } else if (aiProvider === 'openai') {
-       testConfig.apiKey = openaiKey;
-       testConfig.model = openaiModel;
+      testConfig.apiKey = openaiKey;
+      testConfig.model = openaiModel;
     } else if (aiProvider === 'ollama') {
-       testConfig.url = ollamaUrl;
-       testConfig.model = ollamaModel;
+      testConfig.url = ollamaUrl;
+      testConfig.model = ollamaModel;
     }
 
     try {
       const res = await fetch('/api/gemini-suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            prompt: "Say hello", 
-            provider: aiProvider,
-            config: testConfig 
+        body: JSON.stringify({
+          prompt: "Say hello",
+          provider: aiProvider,
+          config: testConfig
         })
       });
       const data = await res.json();
@@ -180,17 +180,17 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
 
     // 2. Update parent state
     onConfigChange(newConfig);
-    
+
     // 3. Trigger save with the FRESH config (bypassing race conditions)
     onSave(newConfig);
-    
+
     // 4. Show Feedback
     toast.success("Integrations saved successfully");
   };
 
   return (
     <div className="space-y-8 pb-8">
-      
+
       {/* 1. Spoolman */}
       <Card>
         <CardHeader>
@@ -208,8 +208,8 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2">
-            <Input 
-              placeholder="http://192.168.1.50:7912" 
+            <Input
+              placeholder="http://192.168.1.50:7912"
               value={spoolmanUrl}
               onChange={(e) => setSpoolmanUrl(e.target.value)}
             />
@@ -230,7 +230,7 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
           <CardDescription>Select the AI "Brain" for auto-tagging and descriptions.</CardDescription>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
-          
+
           <div className="flex gap-4 items-end">
             <div className="grid gap-2 flex-1">
               <Label>Active Provider</Label>
@@ -247,9 +247,9 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
               </Select>
             </div>
             {aiProvider !== 'none' && (
-               <Button variant="outline" onClick={handleTestAI} disabled={aiTestStatus === 'loading'}>
-                 {aiTestStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
-               </Button>
+              <Button variant="outline" onClick={handleTestAI} disabled={aiTestStatus === 'loading'}>
+                {aiTestStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test Connection'}
+              </Button>
             )}
           </div>
 
@@ -274,11 +274,11 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
                 ) : (
                   <div className="grid gap-2">
                     <Label>Service Account JSON</Label>
-                    <Textarea 
-                      className="font-mono text-xs h-24" 
-                      value={googleJson} 
-                      onChange={(e) => setGoogleJson(e.target.value)} 
-                      placeholder='{ "type": "service_account", ... }' 
+                    <Textarea
+                      className="font-mono text-xs h-24"
+                      value={googleJson}
+                      onChange={(e) => setGoogleJson(e.target.value)}
+                      placeholder='{ "type": "service_account", ... }'
                     />
                   </div>
                 )}
@@ -318,12 +318,12 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-             <div className="flex items-center gap-2">
-                <Cloud className="w-5 h-5 text-muted-foreground" />
-                <CardTitle>Content Repositories</CardTitle>
-             </div>
-             {thingiverseStatus === 'success' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-             {thingiverseStatus === 'error' && <XCircle className="w-5 h-5 text-red-500" />}
+            <div className="flex items-center gap-2">
+              <Cloud className="w-5 h-5 text-muted-foreground" />
+              <CardTitle>Content Repositories</CardTitle>
+            </div>
+            {thingiverseStatus === 'success' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+            {thingiverseStatus === 'error' && <XCircle className="w-5 h-5 text-red-500" />}
           </div>
           <CardDescription>Integrate with public model repositories.</CardDescription>
         </CardHeader>
@@ -331,12 +331,74 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
           <div className="grid gap-2">
             <Label>Thingiverse Token</Label>
             <div className="flex gap-2">
-                <Input type="password" value={thingiverseToken} onChange={(e) => setThingiverseToken(e.target.value)} placeholder="App Token" />
-                <Button onClick={handleTestThingiverse} variant="outline" disabled={thingiverseStatus === 'loading'}>
-                    {thingiverseStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify'}
-                </Button>
+              <Input type="password" value={thingiverseToken} onChange={(e) => setThingiverseToken(e.target.value)} placeholder="App Token" />
+              <Button onClick={handleTestThingiverse} variant="outline" disabled={thingiverseStatus === 'loading'}>
+                {thingiverseStatus === 'loading' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify'}
+              </Button>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* [NEW] 3D Printer Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Printer className="w-5 h-5 text-orange-500" />
+            <CardTitle>Printer Link</CardTitle>
+          </div>
+          <CardDescription>Send G-code directly to your printer.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2">
+            <Label>Printer Type</Label>
+            <Select
+              value={config.integrations?.printer?.type || 'moonraker'}
+              onValueChange={(v: any) => onConfigChange({
+                ...config, integrations: { ...config.integrations, printer: { ...config.integrations?.printer, type: v } }
+              })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="moonraker">Klipper (Moonraker/Mainsail)</SelectItem>
+                <SelectItem value="octoprint">OctoPrint (Legacy)</SelectItem>
+                <SelectItem value="bambu">Bambu Lab (Basic)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>IP Address / URL</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="http://192.168.1.50"
+                value={config.integrations?.printer?.url || ''}
+                onChange={(e) => onConfigChange({
+                  ...config, integrations: { ...config.integrations, printer: { ...config.integrations?.printer, url: e.target.value } }
+                })}
+              />
+              <Button variant="outline" onClick={async () => {
+                try {
+                  await fetch('/api/printer/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config.integrations?.printer) });
+                  const res = await fetch('/api/printer/status');
+                  const data = await res.json();
+                  if (data.status === 'connected') toast.success("Printer Connected!");
+                  else toast.error("Could not connect");
+                } catch (e) { toast.error("Connection Failed"); }
+              }}>Test</Button>
+            </div>
+          </div>
+          {config.integrations?.printer?.type === 'octoprint' && (
+            <div className="grid gap-2">
+              <Label>API Key</Label>
+              <Input
+                type="password"
+                value={config.integrations?.printer?.apiKey || ''}
+                onChange={(e) => onConfigChange({
+                  ...config, integrations: { ...config.integrations, printer: { ...config.integrations?.printer, apiKey: e.target.value } }
+                })}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
