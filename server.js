@@ -4131,7 +4131,6 @@ app.post('/api/model/metadata', async (req, res) => {
   }
 });
 
-// --- Printer Integration (Zero-Dependency) ---
 
 // Helper: Build multipart body manually to avoid 'form-data' dependency
 function createMultipartBody(fileBuffer, fileName) {
@@ -4150,79 +4149,85 @@ app.post('/api/printer/config', (req, res) => {
   res.json({ success: true });
 });
 
-// [UPDATE] Printer Status/Test Endpoint
-// Accepts query params for testing unsaved configs, or uses saved config if none provided
 app.get('/api/printer/status', async (req, res) => {
-  // 1. Try to get credentials from Query (for the "Test" button)
-  let { type, url, apiKey } = req.query;
+  const { type, url, apiKey } = req.query;
 
-  // 2. If no query params, fallback to Saved Config (for the "Print" button)
-  if (!url) {
-    const config = ConfigManager.loadConfig();
-    const printerConfig = config.integrations?.printer || {};
-    type = printerConfig.type;
-    url = printerConfig.url;
-    apiKey = printerConfig.apiKey;
+  // CASE 1: Test specific credentials (from Settings)
+  if (url) {
+    try {
+      const cleanUrl = url.replace(/\/$/, '');
+      const target = type === 'moonraker' ? `${cleanUrl}/printer/info` : `${cleanUrl}/api/version`;
+      
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const headers = apiKey ? { 'X-Api-Key': apiKey } : {};
+      
+      const resp = await fetch(target, { headers, signal: controller.signal });
+      clearTimeout(timeout);
+      
+      return resp.ok ? res.json({ status: 'connected' }) : res.json({ status: 'error', message: resp.statusText });
+    } catch (e) {
+      return res.json({ status: 'error', message: e.message });
+    }
   }
 
-  if (!url) return res.json({ status: 'disabled' });
+  // CASE 2: Return list of all configured printers (for Drawer)
+  const config = ConfigManager.loadConfig();
+  const printers = config.integrations?.printers || (config.integrations?.printer ? [config.integrations.printer] : []);
+  
+  // Filter out empty slots
+  const validPrinters = printers.map((p, index) => ({ ...p, index })).filter(p => p.url);
 
-  try {
-    const cleanUrl = url.replace(/\/$/, '');
-    let target = '';
+  if (validPrinters.length === 0) return res.json({ status: 'disabled', printers: [] });
 
-    // Port Hint: Klipper is usually port 7125, OctoPrint is 80 or 5000
-    if (type === 'moonraker') {
-      target = `${cleanUrl}/printer/info`; 
-    } else {
-      target = `${cleanUrl}/api/version`;
+  // Quick ping for all of them to see which are online
+  const results = await Promise.all(validPrinters.map(async (p) => {
+    try {
+      const cleanUrl = p.url.replace(/\/$/, '');
+      const target = p.type === 'moonraker' ? `${cleanUrl}/printer/info` : `${cleanUrl}/api/version`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000); // Fast 2s timeout
+      const headers = p.apiKey ? { 'X-Api-Key': p.apiKey } : {};
+      
+      const resp = await fetch(target, { headers, signal: controller.signal });
+      clearTimeout(timeout);
+      return { 
+        index: p.index, 
+        name: p.name || `Printer ${p.index + 1}`, 
+        type: p.type,
+        status: resp.ok ? 'connected' : 'error' 
+      };
+    } catch (e) {
+      return { index: p.index, name: p.name || `Printer ${p.index + 1}`, status: 'offline' };
     }
+  }));
 
-    console.log(`[Printer Test] Pinging: ${target}`);
-
-    let headers = {};
-    if (apiKey) headers['X-Api-Key'] = apiKey;
-
-    // Set a short timeout (5 seconds) so the UI doesn't freeze
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const resp = await fetch(target, { headers, signal: controller.signal });
-    clearTimeout(timeout);
-
-    if (resp.ok) {
-      res.json({ status: 'connected' });
-    } else {
-      // Return the specific HTTP error code (e.g., 401 Unauthorized, 404 Not Found)
-      res.json({ status: 'error', message: `HTTP ${resp.status}: ${resp.statusText}` });
-    }
-  } catch (e) {
-    console.error(`[Printer Test] Failed: ${e.message}`);
-    // Return specific network error (e.g., "ECONNREFUSED" means wrong port/IP)
-    res.json({ status: 'error', message: e.message });
-  }
+  res.json({ status: 'active', printers: results });
 });
 
 app.post('/api/printer/print', async (req, res) => {
-  const { filePath } = req.body; // Relative path in Muncher
+  const { filePath, printerIndex } = req.body; // Expect printerIndex (0, 1, 2...)
   const config = ConfigManager.loadConfig();
-  const { type, url, apiKey } = config.integrations?.printer || {};
+  
+  // Get the specific printer config
+  const printerList = config.integrations?.printers || (config.integrations?.printer ? [config.integrations.printer] : []);
+  
+  // Default to index 0 if not provided (legacy fallback), but prefer explicit index
+  const targetIndex = (typeof printerIndex === 'number') ? printerIndex : 0;
+  const p = printerList[targetIndex];
 
-  if (!url || !filePath) return res.status(400).json({ error: "Printer not configured or file missing" });
+  if (!p || !p.url || !filePath) return res.status(400).json({ error: "Invalid printer selection or missing file" });
 
   try {
-    // 1. Read File
     const modelsDir = getAbsoluteModelsPath();
     const absPath = path.join(modelsDir, filePath);
     if (!fs.existsSync(absPath)) throw new Error("File not found on server");
 
     const fileBuffer = fs.readFileSync(absPath);
     const fileName = path.basename(absPath);
-    const cleanUrl = url.replace(/\/$/, '');
+    const cleanUrl = p.url.replace(/\/$/, '');
 
-    // 2. Upload Logic
-    if (type === 'moonraker') {
-      // Moonraker: POST /server/files/upload
+    if (p.type === 'moonraker') {
       const { body, boundary } = createMultipartBody(fileBuffer, fileName);
       const resp = await fetch(`${cleanUrl}/server/files/upload`, {
         method: 'POST',
@@ -4233,26 +4238,21 @@ app.post('/api/printer/print', async (req, res) => {
         body: body
       });
       if (!resp.ok) throw new Error(`Klipper upload failed: ${resp.status}`);
-
-      // Optional: Start Print immediately (uncomment if desired)
-      // await fetch(`${cleanUrl}/printer/print/start`, { method: 'POST', body: JSON.stringify({ filename: fileName }), headers: {'Content-Type':'application/json'} });
-
-      return res.json({ success: true, message: "Sent to Klipper" });
+      return res.json({ success: true, message: `Sent to ${p.name || 'Klipper'}` });
     }
-    else if (type === 'octoprint') {
-      // OctoPrint: POST /api/files/local
+    else if (p.type === 'octoprint') {
       const { body, boundary } = createMultipartBody(fileBuffer, fileName);
       const resp = await fetch(`${cleanUrl}/api/files/local`, {
         method: 'POST',
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'X-Api-Key': apiKey,
+          'X-Api-Key': p.apiKey,
           'Content-Length': body.length
         },
         body: body
       });
       if (!resp.ok) throw new Error(`OctoPrint upload failed: ${resp.status}`);
-      return res.json({ success: true, message: "Sent to OctoPrint" });
+      return res.json({ success: true, message: `Sent to ${p.name || 'OctoPrint'}` });
     }
 
     res.json({ success: false, error: "Unknown printer type" });
@@ -4260,6 +4260,80 @@ app.post('/api/printer/print', async (req, res) => {
   } catch (e) {
     console.error("Print error:", e);
     res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// TARGETED UPDATE: server.js - Replace the previous /api/printer/job-status endpoint
+
+app.get('/api/printer/job-status', async (req, res) => {
+  const config = ConfigManager.loadConfig();
+  // Support both legacy single printer and new array
+  const printerList = config.integrations?.printers || (config.integrations?.printer ? [config.integrations.printer] : []);
+  
+  if (printerList.length === 0) return res.json({ printers: [] });
+
+  // Helper to fetch status for one printer
+  const checkPrinter = async (p, index) => {
+    if (!p || !p.url) return null;
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000); // Short 2s timeout per printer
+    
+    try {
+      const cleanUrl = p.url.replace(/\/$/, '');
+      let status = 'idle';
+      let progress = 0;
+      let timeLeft = null;
+      let filename = '';
+
+      if (p.type === 'moonraker') {
+        const queryUrl = `${cleanUrl}/printer/objects/query?print_stats&display_status`;
+        const resp = await fetch(queryUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!resp.ok) throw new Error('Unreachable');
+        const data = await resp.json();
+        const stats = data.result?.status?.print_stats || {};
+        const display = data.result?.status?.display_status || {};
+        
+        const kState = stats.state || 'standby';
+        if (kState === 'printing') status = 'printing';
+        else if (kState === 'paused') status = 'paused';
+        else if (kState === 'error') status = 'error';
+        
+        progress = (display.progress || 0) * 100;
+        filename = stats.filename || '';
+      } 
+      else {
+        // OctoPrint
+        const headers = p.apiKey ? { 'X-Api-Key': p.apiKey } : {};
+        const resp = await fetch(`${cleanUrl}/api/job`, { headers, signal: controller.signal });
+        clearTimeout(timeout);
+        if (!resp.ok) throw new Error('Unreachable');
+        const data = await resp.json();
+        const state = (data.state || '').toLowerCase();
+        
+        if (state.includes('printing')) status = 'printing';
+        else if (state.includes('paused')) status = 'paused';
+        else if (state.includes('error') || state.includes('offline')) status = 'error';
+        
+        progress = data.progress?.completion || 0;
+        timeLeft = data.progress?.printTimeLeft || null;
+        filename = data.job?.file?.name || '';
+      }
+
+      return { index, status, progress, timeLeft, filename, name: p.name || `Printer ${index + 1}` };
+    } catch (e) {
+      clearTimeout(timeout);
+      // Return error state so UI knows it's offline
+      return { index, status: 'disconnected', error: e.message, name: p.name || `Printer ${index + 1}` };
+    }
+  };
+
+  try {
+    const results = await Promise.all(printerList.map((p, idx) => checkPrinter(p, idx)));
+    res.json({ printers: results.filter(r => r !== null) });
+  } catch (e) {
+    res.json({ printers: [] });
   }
 });
 

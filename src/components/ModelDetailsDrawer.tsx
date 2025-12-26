@@ -13,17 +13,21 @@ import { LICENSES, isKnownLicense } from '../constants/licenses';
 import { Switch } from "./ui/switch";
 import { Separator } from "./ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, 
-AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
+} from "./ui/alert-dialog";
 import { AspectRatio } from "./ui/aspect-ratio";
 import { ModelViewer3D } from "./ModelViewer3D";
 import { ModelViewerErrorBoundary } from "./ErrorBoundary";
 import { compressImageFile } from "../utils/imageUtils";
 import { ImageWithFallback } from "./ImageWithFallback";
-import { Clock, Weight, HardDrive, Layers, Droplet, Diameter, Edit3, Save, X, FileText, Tag, 
-Box, Images, ChevronLeft, ChevronRight, Maximize2, StickyNote, ExternalLink, Globe, DollarSign, 
-Store, CheckCircle, Ban, User, RefreshCw, Plus, List, MinusCircle, Upload, ChevronDown, ChevronUp, 
-Codesandbox, Trash2, Loader2, Printer } from "lucide-react"; import TagsInput from "./TagsInput";
+import {
+  Clock, Weight, HardDrive, Layers, Droplet, Diameter, Edit3, Save, X, FileText, Tag,
+  Box, Images, ChevronLeft, ChevronRight, Maximize2, StickyNote, ExternalLink, Globe, DollarSign,
+  Store, CheckCircle, Ban, User, RefreshCw, Plus, List, MinusCircle, Upload, ChevronDown, ChevronUp,
+  Codesandbox, Trash2, Loader2, Printer
+} from "lucide-react"; import TagsInput from "./TagsInput";
 import { Download } from "lucide-react";
 import { toast } from 'sonner';
 import type { Collection } from "../types/collection";
@@ -33,6 +37,9 @@ import { downloadAllFiles } from '../utils/downloadUtils';
 import { ScrollBar } from "./ui/scroll-area";
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils";
 import { SpoolmanWidget } from './SpoolmanWidget';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
+} from "./ui/dialog";
 
 
 interface ModelDetailsDrawerProps {
@@ -86,7 +93,8 @@ export function ModelDetailsDrawer({
   const [allModelsForSiblings, setAllModelsForSiblings] = useState<Model[]>([]);
 
   // Printer Integration UI state
-  const [printerConnected, setPrinterConnected] = useState(false);
+  const [availablePrinters, setAvailablePrinters] = useState<any[]>([]);
+  const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
   // G-code upload state
@@ -140,29 +148,40 @@ export function ModelDetailsDrawer({
     if (isOpen) {
       fetch('/api/printer/status')
         .then(r => r.json())
-        .then(d => setPrinterConnected(d.status === 'connected'))
-        .catch(() => setPrinterConnected(false));
+        .then(d => {
+          if (d.printers && Array.isArray(d.printers)) {
+            setAvailablePrinters(d.printers);
+          } else {
+            setAvailablePrinters([]);
+          }
+        })
+        .catch(() => setAvailablePrinters([]));
     }
   }, [isOpen]);
 
-  const handleSendToPrinter = async () => {
-    // [FIX] Add explicit check for currentModel and its nested properties
-    if (!currentModel || !currentModel.gcodeData?.gcodeFilePath) return; 
-    
+  const handleSendToPrinter = async (printerIndex: number) => {
+    if (!currentModel || !currentModel.gcodeData?.gcodeFilePath) return;
+
     setIsSending(true);
     try {
-        const res = await fetch('/api/printer/print', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ filePath: currentModel.gcodeData.gcodeFilePath })
-        });
-        const data = await res.json();
-        if (data.success) toast.success("Sent to Printer!");
-        else toast.error("Failed: " + data.error);
-    } catch(e) {
-        toast.error("Network error");
+      const res = await fetch('/api/printer/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: currentModel.gcodeData.gcodeFilePath,
+          printerIndex: printerIndex // Send the selected index
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message || "Sent to Printer!");
+        setIsPrintDialogOpen(false); // Close modal on success
+      }
+      else toast.error("Failed: " + data.error);
+    } catch (e) {
+      toast.error("Network error");
     } finally {
-        setIsSending(false);
+      setIsSending(false);
     }
   };
 
@@ -2372,16 +2391,17 @@ export function ModelDetailsDrawer({
                       <Download className="h-4 w-4" />
                       Download
                     </Button>
-                    {/* Only show if Printer is Connected AND we have a G-code file parsed */}
-                    {printerConnected && currentModel.gcodeData?.gcodeFilePath && (
+                    {availablePrinters.some(p => p.status === 'connected') && (
                       <Button
-                        onClick={handleSendToPrinter}
-                        disabled={isSending}
+                        // Open the dialog instead of sending directly
+                        onClick={() => setIsPrintDialogOpen(true)}
+                        // Disable if no G-code
+                        disabled={isSending || !currentModel.gcodeData?.gcodeFilePath}
                         variant="outline"
                         className="gap-2 border-orange-200 text-orange-700 hover:bg-orange-50 dark:border-orange-900 dark:text-orange-400 dark:hover:bg-orange-950/30"
                       >
                         {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
-                        Print
+                        Print...
                       </Button>
                     )}
                     {/* [UPDATE] Themed Delete Button (Ghost style, turns red on hover) */}
@@ -3863,7 +3883,7 @@ export function ModelDetailsDrawer({
           </div>
         )}
 
-        {/* G-code overwrite confirmation dialog */}
+        {/* 1. G-code overwrite confirmation dialog */}
         <AlertDialog open={gcodeOverwriteDialog.open} onOpenChange={(open) => !open && setGcodeOverwriteDialog({ open: false, file: null, existingPath: '' })}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -3889,7 +3909,8 @@ export function ModelDetailsDrawer({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        {/* Delete Confirmation Dialog */}
+
+        {/* 2. Delete Confirmation Dialog */}
         <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
@@ -3914,7 +3935,49 @@ export function ModelDetailsDrawer({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* 3. Printer Selection Dialog (SIBLING, not child) */}
+        <Dialog open={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Select Printer</DialogTitle>
+              <DialogDescription>
+                Choose which printer to send <strong>{currentModel.gcodeData?.gcodeFilePath?.split('/').pop()}</strong> to.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid gap-3 py-4">
+              {availablePrinters.map((p) => (
+                <Button
+                  key={p.index}
+                  variant="outline"
+                  className="justify-between h-auto py-3 px-4"
+                  disabled={p.status !== 'connected' || isSending}
+                  onClick={() => handleSendToPrinter(p.index)}
+                >
+                  <div className="flex items-center gap-3">
+                    <Printer className={`h-5 w-5 ${p.status === 'connected' ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{p.name}</span>
+                      <span className="text-xs text-muted-foreground capitalize">{p.type}</span>
+                    </div>
+                  </div>
+                  {p.status === 'connected' ? (
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full dark:bg-green-900/30 dark:text-green-400">
+                      Online
+                    </span>
+                  ) : (
+                    <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full dark:bg-red-900/30 dark:text-red-400">
+                      Offline
+                    </span>
+                  )}
+                </Button>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </SheetContent>
-    </Sheet >
+    </Sheet>
   );
 }

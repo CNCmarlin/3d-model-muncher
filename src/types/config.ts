@@ -1,5 +1,14 @@
 import { Category } from "./category";
 
+export interface PrinterConfig {
+  type: 'moonraker' | 'octoprint' | 'bambu';
+  url: string;
+  apiKey?: string;
+  color?: string; // Icon color
+  name?: string;  // Optional custom name
+  enabled?: boolean;
+}
+
 export interface IntegrationSettings {
   spoolman?: {
     url?: string;
@@ -11,25 +20,24 @@ export interface IntegrationSettings {
   ai?: {
     provider?: 'google' | 'openai' | 'ollama' | 'none';
   };
-    google?: {
-      provider?: 'vertex' | 'studio';
-      apiKey?: string;
-      projectId?: string;
-      serviceAccountJson?: string;
-    };
-    openai?: {
-      apiKey?: string;
-      model?: string;
-    };
-    ollama?: {
-      url?: string;
-      model?: string;
-    };
-    printer?: {
-      type?: 'moonraker' | 'octoprint' | 'bambu';
-      url?: string;
-      apiKey?: string;
-    };
+  google?: {
+    provider?: 'vertex' | 'studio';
+    apiKey?: string;
+    projectId?: string;
+    serviceAccountJson?: string;
+  };
+  openai?: {
+    apiKey?: string;
+    model?: string;
+  };
+  ollama?: {
+    url?: string;
+    model?: string;
+  };
+  printers?: PrinterConfig[];
+
+  // [DEPRECATED] Legacy single printer support (keep for safe migration)
+  printer?: PrinterConfig;
 }
 
 export interface AppConfig {

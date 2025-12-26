@@ -7,12 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { CheckCircle2, XCircle, Save, ExternalLink, Cpu, Cloud, Loader2, Printer } from 'lucide-react';
 import { toast } from 'sonner';
-import { AppConfig } from '../../types/config';
+import { AppConfig, PrinterConfig } from '../../types/config';
 
 interface IntegrationsSettingsProps {
   config: AppConfig;
   onConfigChange: (updated: AppConfig) => void;
-  // [FIX] Update onSave signature to accept the config directly
   onSave: (config: AppConfig) => void;
 }
 
@@ -42,6 +41,9 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
   // Ollama Config
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
   const [ollamaModel, setOllamaModel] = useState('llava');
+
+  // Printer Slot variables
+  const [activePrinterIndex, setActivePrinterIndex] = useState(0);
 
   // Sync with incoming config
   useEffect(() => {
@@ -152,8 +154,38 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
     }
   };
 
+  // --- PRINTER LOGIC ---
+  const currentPrinterConfig: PrinterConfig = config.integrations?.printers?.[activePrinterIndex] || {
+    type: 'moonraker',
+    url: '',
+    apiKey: '',
+    color: '#3b82f6'
+  };
+
+  const handlePrinterUpdate = (field: string, value: any) => {
+    const currentPrinters = [...(config.integrations?.printers || [])];
+    
+    // Ensure array exists up to this index
+    for (let i = 0; i <= activePrinterIndex; i++) {
+        if (!currentPrinters[i]) currentPrinters[i] = { type: 'moonraker', url: '', color: '#3b82f6' };
+    }
+
+    currentPrinters[activePrinterIndex] = {
+        ...currentPrinters[activePrinterIndex],
+        [field]: value
+    };
+    
+    const newConfig = {
+        ...config,
+        integrations: {
+            ...config.integrations,
+            printers: currentPrinters
+        }
+    };
+    onConfigChange(newConfig);
+  };
+
   const handleSaveAll = () => {
-    // 1. Create the NEW config object immediately from local state
     const newConfig: AppConfig = {
       ...config,
       integrations: {
@@ -174,17 +206,14 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
         ollama: {
           url: ollamaUrl,
           model: ollamaModel
-        }
+        },
+        // IMPORTANT: Ensure the printers array is preserved
+        printers: config.integrations?.printers || []
       }
     };
 
-    // 2. Update parent state
     onConfigChange(newConfig);
-
-    // 3. Trigger save with the FRESH config (bypassing race conditions)
     onSave(newConfig);
-
-    // 4. Show Feedback
     toast.success("Integrations saved successfully");
   };
 
@@ -340,95 +369,115 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
         </CardContent>
       </Card>
 
-      {/* [NEW] 3D Printer Section */}
+      {/* 4. Multi-Printer Integration (FIXED) */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-orange-500" />
-            <CardTitle>Printer Link</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div className="space-y-1">
+             <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-orange-500" />
+                <CardTitle>Printer Links</CardTitle>
+             </div>
+             <CardDescription>Configure up to 6 printers.</CardDescription>
           </div>
-          <CardDescription>Send G-code directly to your printer.</CardDescription>
+          
+          <Select 
+            value={activePrinterIndex.toString()} 
+            onValueChange={(v) => setActivePrinterIndex(parseInt(v))}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Select Printer" />
+            </SelectTrigger>
+            <SelectContent>
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <SelectItem key={i} value={i.toString()}>
+                  Printer {i + 1}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </CardHeader>
+
         <CardContent className="space-y-4">
-          <div className="grid gap-2">
-            <Label>Printer Type</Label>
-            <Select
-              value={config.integrations?.printer?.type || 'moonraker'}
-              onValueChange={(v: any) => onConfigChange({
-                ...config, integrations: { ...config.integrations, printer: { ...config.integrations?.printer, type: v } }
-              })}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="moonraker">Klipper (Moonraker/Mainsail)</SelectItem>
-                <SelectItem value="octoprint">OctoPrint (Legacy)</SelectItem>
-                <SelectItem value="bambu">Bambu Lab (Basic)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2">
-            <Label>IP Address / URL</Label>
-            <div className="flex gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-lg bg-muted/20">
+            
+            <div className="space-y-2">
+              <Label>Printer Type</Label>
+              <Select
+                value={currentPrinterConfig.type || 'moonraker'}
+                onValueChange={(val) => handlePrinterUpdate('type', val)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="moonraker">Klipper (Moonraker)</SelectItem>
+                  <SelectItem value="octoprint">OctoPrint</SelectItem>
+                  <SelectItem value="bambu">Bambu Lab</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Printer URL</Label>
               <Input
-                placeholder="http://192.168.1.50"
-                value={config.integrations?.printer?.url || ''}
-                onChange={(e) => onConfigChange({
-                  ...config, integrations: { ...config.integrations, printer: { ...config.integrations?.printer, url: e.target.value } }
-                })}
+                placeholder="http://192.168.1.100"
+                value={currentPrinterConfig.url || ''}
+                onChange={(e) => handlePrinterUpdate('url', e.target.value)}
               />
-              <Button variant="outline" onClick={async () => {
-                 // 1. Validate Input
-                 const currentUrl = config.integrations?.printer?.url || '';
-                 const currentType = config.integrations?.printer?.type || 'moonraker';
-                 const currentKey = config.integrations?.printer?.apiKey || '';
+            </div>
 
-                 if (!currentUrl) return toast.error("Enter an IP address first");
+            {currentPrinterConfig.type === 'octoprint' && (
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <Input
+                  type="password"
+                  value={currentPrinterConfig.apiKey || ''}
+                  onChange={(e) => handlePrinterUpdate('apiKey', e.target.value)}
+                />
+              </div>
+            )}
 
-                 const toastId = toast.loading("Testing connection...");
+            <div className="space-y-2">
+                <Label>Icon Color</Label>
+                <div className="flex items-center gap-2">
+                    <Input
+                        type="color"
+                        className="w-12 h-9 p-1 px-1"
+                        value={currentPrinterConfig.color || '#3b82f6'}
+                        onChange={(e) => handlePrinterUpdate('color', e.target.value)}
+                    />
+                    <span className="text-xs text-muted-foreground">For top bar status</span>
+                </div>
+            </div>
 
-                 try {
-                   // 2. Send values DIRECTLY via query params (bypassing save lag)
-                   const params = new URLSearchParams({
-                     type: currentType,
-                     url: currentUrl,
-                     apiKey: currentKey
-                   });
-
-                   const res = await fetch(`/api/printer/status?${params.toString()}`);
-                   const data = await res.json();
-                   
-                   toast.dismiss(toastId);
-
-                   if (data.status === 'connected') {
-                     toast.success("Printer Connected Successfully!");
-                   } else {
-                     // 3. Show the EXACT error from the server
-                     toast.error(`Connection Failed: ${data.message || 'Unknown Error'}`);
+            <div className="col-span-1 md:col-span-2 pt-2">
+               <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  className="w-full"
+                  onClick={async () => {
+                     const p = currentPrinterConfig;
+                     if (!p.url) return toast.error("Enter a URL first");
                      
-                     // Helpful Hint for Klipper Users
-                     if (currentType === 'moonraker' && !currentUrl.includes(':')) {
-                        toast.info("Hint: Klipper/Moonraker often uses port 7125. Try adding :7125 to the IP.");
+                     const params = new URLSearchParams({
+                         type: p.type || 'moonraker',
+                         url: p.url,
+                         apiKey: p.apiKey || ''
+                     });
+                     
+                     toast.info(`Testing Printer ${activePrinterIndex + 1}...`);
+                     try {
+                         const res = await fetch(`/api/printer/status?${params.toString()}`);
+                         const data = await res.json();
+                         if(data.status === 'connected') toast.success("Connection Successful!");
+                         else toast.error(`Error: ${data.message || 'Unknown'}`);
+                     } catch(e) {
+                         toast.error("Network Error");
                      }
-                   }
-                 } catch(e) { 
-                   toast.dismiss(toastId);
-                   toast.error("Network request failed"); 
-                 }
-              }}>Test</Button>
+                  }}
+               >
+                  Test Connection (Printer {activePrinterIndex + 1})
+               </Button>
             </div>
           </div>
-          {config.integrations?.printer?.type === 'octoprint' && (
-            <div className="grid gap-2">
-              <Label>API Key</Label>
-              <Input
-                type="password"
-                value={config.integrations?.printer?.apiKey || ''}
-                onChange={(e) => onConfigChange({
-                  ...config, integrations: { ...config.integrations, printer: { ...config.integrations?.printer, apiKey: e.target.value } }
-                })}
-              />
-            </div>
-          )}
         </CardContent>
       </Card>
 
