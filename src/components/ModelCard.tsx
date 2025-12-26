@@ -7,6 +7,8 @@ import { ImageWithFallback } from "./ImageWithFallback";
 import { resolveModelThumbnail } from "../utils/thumbnailUtils";
 import { HardDrive, Box } from "lucide-react";
 import { Grid3DViewer } from "./Grid3DViewer";
+import { useSpoolman } from '../context/SpoolmanContext';
+import { AlertTriangle, Droplet } from 'lucide-react';
 
 interface ModelCardProps {
   model: Model;
@@ -25,6 +27,7 @@ export function ModelCard({
   onSelectionChange,
   config,
 }: ModelCardProps) {
+  const { getSpoolById } = useSpoolman();
   const [isHovered, setIsHovered] = useState(false);
   const [show3D, setShow3D] = useState(false);
   const hoverTimer = useRef<NodeJS.Timeout | null>(null);
@@ -56,6 +59,25 @@ export function ModelCard({
       hoverTimer.current = null;
     }
   };
+
+  let stockStatus: 'ok' | 'low' | 'empty' | null = null;
+  
+  const preferredSpoolId = model.userDefined?.preferredSpoolId;
+  const neededWeightStr = model.gcodeData?.totalFilamentWeight || model.filamentUsed;
+  
+  if (preferredSpoolId && neededWeightStr) {
+    const match = neededWeightStr.match(/([\d.]+)\s*g/i);
+    const needed = match ? parseFloat(match[1]) : 0;
+    const spool = getSpoolById(preferredSpoolId);
+
+    if (spool && needed > 0) {
+      if (spool.remaining_weight < needed) {
+        stockStatus = 'empty'; // Not enough to print
+      } else if (spool.remaining_weight < (needed * 1.2)) {
+        stockStatus = 'low'; // Enough, but barely (20% buffer)
+      }
+    }
+  }
 
   return (
     <div
@@ -137,6 +159,19 @@ export function ModelCard({
              <HardDrive className="h-3 w-3" />
              <span>{model.fileSize}</span>
           </div>
+          {/* [NEW] Stock Warning Indicator */}
+          {stockStatus === 'empty' && (
+               <div className="flex items-center gap-1 text-destructive font-medium" title="Not enough filament in preferred spool">
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>Stock</span>
+               </div>
+            )}
+            {stockStatus === 'low' && (
+               <div className="flex items-center gap-1 text-amber-500 font-medium" title="Low filament stock">
+                  <Droplet className="w-3 h-3" />
+                  <span>Low</span>
+               </div>
+            )}
         </div>
       </div>
     </div>

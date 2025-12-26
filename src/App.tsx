@@ -49,6 +49,7 @@ import { LayoutSettingsProvider } from "./components/LayoutSettingsContext";
 import { CollectionListRow } from "./components/CollectionListRow";
 import { useLayoutSettings } from "./components/LayoutSettingsContext";
 import { LayoutControls } from "./components/LayoutControls";
+import { SpoolmanProvider } from "./context/SpoolmanContext";
 
 // Initial type for view
 type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view';
@@ -1489,8 +1490,12 @@ export default function App() {
   return (
     <ThemeProvider defaultTheme="system">
       <LayoutSettingsProvider>
+      <SpoolmanProvider> {/* [WRAP EVERYTHING INSIDE THIS] */}
+       <div className="flex h-screen bg-background text-foreground overflow-hidden">
         <AppContent />
         <Toaster />
+        </div>
+        </SpoolmanProvider>
       </LayoutSettingsProvider>
     </ThemeProvider>
   );

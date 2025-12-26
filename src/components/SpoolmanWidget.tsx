@@ -63,26 +63,37 @@ export const SpoolmanWidget: React.FC<SpoolmanWidgetProps> = ({ model, onUpdateM
         if (data.success && Array.isArray(data.spools)) {
           let loadedSpools = data.spools;
 
-          // --- SMART SORTING START ---
-          // Attempt to find the material type from the G-code
+          // --- SMART SORTING ---
           const gcodeMaterial = model.gcodeData?.filaments?.[0]?.type?.toLowerCase();
-          
-          if (gcodeMaterial) {
-            loadedSpools = loadedSpools.sort((a: Spool, b: Spool) => {
-              // [FIX] Access .name since material is an object in the Spool interface
-              const matA = (a.filament.material?.name || '').toLowerCase();
-              const matB = (b.filament.material?.name || '').toLowerCase();
-              
-              // If A matches and B doesn't, A comes first (-1)
+          const gcodeColor = model.gcodeData?.filaments?.[0]?.color?.toLowerCase(); // e.g. "#ff0000"
+
+          loadedSpools = loadedSpools.sort((a: Spool, b: Spool) => {
+            const matA = (a.filament.material?.name || '').toLowerCase();
+            const matB = (b.filament.material?.name || '').toLowerCase();
+            
+            // Check Color Match (if available)
+            // Note: Spoolman stores hex like "FF0000", parser might be "#FF0000"
+            const colA = (a.filament.color_hex || '').toLowerCase();
+            const colB = (b.filament.color_hex || '').toLowerCase();
+            const targetColor = (gcodeColor || '').replace('#', ''); // strip hash for comparison
+
+            if (targetColor) {
+               const matchA = colA === targetColor;
+               const matchB = colB === targetColor;
+               if (matchA && !matchB) return -1;
+               if (matchB && !matchA) return 1;
+            }
+
+            // Check Material Match (if color didn't decide it)
+            if (gcodeMaterial) {
               if (matA === gcodeMaterial && matB !== gcodeMaterial) return -1;
-              // If B matches and A doesn't, B comes first (1)
               if (matB === gcodeMaterial && matA !== gcodeMaterial) return 1;
-              
-              // Secondary sort: Available weight (highest first)
-              return b.remaining_weight - a.remaining_weight;
-            });
-          }
-          // --- SMART SORTING END ---
+            }
+            
+            // Fallback: Remaining Weight
+            return b.remaining_weight - a.remaining_weight;
+          });
+          // --- END SORTING ---
 
           setSpools(loadedSpools);
           
