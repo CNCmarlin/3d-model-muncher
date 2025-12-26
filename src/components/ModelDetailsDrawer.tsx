@@ -2391,12 +2391,10 @@ export function ModelDetailsDrawer({
                       <Download className="h-4 w-4" />
                       Download
                     </Button>
-                    {availablePrinters.some(p => p.status === 'connected') && (
+                    {availablePrinters.some(p => p.status === 'connected') && currentModel.gcodeData?.gcodeFilePath && (
                       <Button
-                        // Open the dialog instead of sending directly
                         onClick={() => setIsPrintDialogOpen(true)}
-                        // Disable if no G-code
-                        disabled={isSending || !currentModel.gcodeData?.gcodeFilePath}
+                        disabled={isSending}
                         variant="outline"
                         className="gap-2 border-orange-200 text-orange-700 hover:bg-orange-50 dark:border-orange-900 dark:text-orange-400 dark:hover:bg-orange-950/30"
                       >

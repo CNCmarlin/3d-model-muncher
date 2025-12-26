@@ -3,7 +3,7 @@ import { Card, CardContent } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Loader2, AlertTriangle, CheckCircle2, DollarSign, Star, Printer, GripVertical } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle2, Printer } from 'lucide-react';
 import { Model } from '../types/model';
 import { toast } from 'sonner';
 
