@@ -2625,18 +2625,32 @@ export function ModelDetailsDrawer({
               {/* [FIX] Updated grid to 4 columns for large screens to fit Material */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-                {/* [NEW] Material Card */}
+                {/* [FIXED] Material Card - Consistent Aesthetic */}
                 <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
-                  <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">
+                  <div className="flex shrink-0 items-center justify-center w-10 h-10 bg-background rounded-lg border">
                     <Layers className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <div className="min-w-0"> {/* min-w-0 ensures truncation works */}
+                  <div className="min-w-0">
                     <p className="text-sm text-muted-foreground">Material</p>
-                    <p className="font-semibold text-foreground truncate" title={currentModel.gcodeData?.filaments?.[0]?.type || 'Unknown'}>
-                      {currentModel.gcodeData?.filaments?.[0]?.type || 'Unknown'}
+                    <p className="font-semibold text-foreground truncate" title={
+                      // Tooltip shows full list if truncated
+                      Array.from(new Set(currentModel.gcodeData?.filaments?.map(f => f.type).filter(Boolean)))
+                      .join(', ') || 'Unknown'
+                    }>
+                      {/* Logic: Get unique types, join with commas, fallback to Unknown */}
+                      {(() => {
+                        const types = currentModel.gcodeData?.filaments?.map(f => f.type).filter(Boolean) || [];
+                        const uniqueTypes = Array.from(new Set(types));
+                        
+                        if (uniqueTypes.length === 0) return 'Unknown';
+                        // If it's just one type repeated (e.g. 4x PLA), show "PLA"
+                        if (uniqueTypes.length === 1) return uniqueTypes[0];
+                        // If multiple, show "PLA, PETG"
+                        return uniqueTypes.join(', ');
+                      })()}
                     </p>
                   </div>
-                </div>
+                  </div>
 
                   <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg border">
                     <div className="flex items-center justify-center w-10 h-10 bg-background rounded-lg border">

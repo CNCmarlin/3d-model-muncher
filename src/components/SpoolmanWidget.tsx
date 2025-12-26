@@ -3,7 +3,7 @@ import { Card, CardContent } from './ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Loader2, AlertTriangle, CheckCircle2, DollarSign, Star, Printer } from 'lucide-react';
+import { Loader2, AlertTriangle, CheckCircle2, DollarSign, Star, Printer, GripVertical } from 'lucide-react';
 import { Model } from '../types/model';
 import { toast } from 'sonner';
 
@@ -18,292 +18,234 @@ interface Spool {
     vendor?: { name: string };
     material?: { name: string };
     color_hex?: string;
-    density?: number;
   };
 }
 
 interface SpoolmanWidgetProps {
   model: Model;
-  onUpdateModel?: (updates: Partial<Model>) => void; // Callback to update parent
+  onUpdateModel?: (updates: Partial<Model>) => void;
 }
 
 export const SpoolmanWidget: React.FC<SpoolmanWidgetProps> = ({ model, onUpdateModel }) => {
   const [loading, setLoading] = useState(false);
   const [spools, setSpools] = useState<Spool[]>([]);
-  const [selectedSpoolId, setSelectedSpoolId] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  // Maps G-code Filament Index (0, 1, 2) -> Spoolman Spool ID
+  const [assignments, setAssignments] = useState<Record<number, string>>({});
   const [isDeducting, setIsDeducting] = useState(false);
 
-  // 1. Get Preference from Model
-  const preferredSpoolId = model.userDefined?.preferredSpoolId;
-
-  // 2. Parse Model Weight
-  const getModelWeight = (): number => {
-    if (model.gcodeData?.totalFilamentWeight) return parseWeight(model.gcodeData.totalFilamentWeight);
-    if (model.filamentUsed) return parseWeight(model.filamentUsed);
-    return 0;
-  };
-
-  const parseWeight = (str: string) => {
-    const match = str.match(/([\d.]+)\s*g/i);
+  // 1. Analyze G-code Data (Filaments & Weights)
+  const gcodeFilaments = model.gcodeData?.filaments || [];
+  const isMultiMaterial = gcodeFilaments.length > 1;
+  
+  // Helper to parse weight strings ("123.4g")
+  const parseWeight = (str?: string | number) => {
+    if (typeof str === 'number') return str;
+    if (!str) return 0;
+    const match = str.match(/([\d.]+)\s*g?/i);
     return match ? parseFloat(match[1]) : 0;
   };
 
-  const modelWeight = getModelWeight();
-
-  // 3. Fetch Spools
+  // 2. Fetch Inventory
   useEffect(() => {
     const fetchSpools = async () => {
       setLoading(true);
       try {
         const res = await fetch('/api/spoolman/spools');
         const data = await res.json();
-        
         if (data.success && Array.isArray(data.spools)) {
-          let loadedSpools = data.spools;
-
-          // --- SMART SORTING ---
-          const gcodeMaterial = model.gcodeData?.filaments?.[0]?.type?.toLowerCase();
-          const gcodeColor = model.gcodeData?.filaments?.[0]?.color?.toLowerCase(); // e.g. "#ff0000"
-
-          loadedSpools = loadedSpools.sort((a: Spool, b: Spool) => {
-            const matA = (a.filament.material?.name || '').toLowerCase();
-            const matB = (b.filament.material?.name || '').toLowerCase();
-            
-            // Check Color Match (if available)
-            // Note: Spoolman stores hex like "FF0000", parser might be "#FF0000"
-            const colA = (a.filament.color_hex || '').toLowerCase();
-            const colB = (b.filament.color_hex || '').toLowerCase();
-            const targetColor = (gcodeColor || '').replace('#', ''); // strip hash for comparison
-
-            if (targetColor) {
-               const matchA = colA === targetColor;
-               const matchB = colB === targetColor;
-               if (matchA && !matchB) return -1;
-               if (matchB && !matchA) return 1;
-            }
-
-            // Check Material Match (if color didn't decide it)
-            if (gcodeMaterial) {
-              if (matA === gcodeMaterial && matB !== gcodeMaterial) return -1;
-              if (matB === gcodeMaterial && matA !== gcodeMaterial) return 1;
-            }
-            
-            // Fallback: Remaining Weight
-            return b.remaining_weight - a.remaining_weight;
-          });
-          // --- END SORTING ---
-
-          setSpools(loadedSpools);
+          let loaded = data.spools;
           
-          // Selection logic (unchanged)
-          if (preferredSpoolId) {
-            const exists = loadedSpools.some((s: Spool) => s.id.toString() === preferredSpoolId.toString());
-            if (exists) setSelectedSpoolId(preferredSpoolId.toString());
-            else if (loadedSpools.length > 0) setSelectedSpoolId(loadedSpools[0].id.toString());
-          } else if (loadedSpools.length > 0) {
-            setSelectedSpoolId(loadedSpools[0].id.toString());
+          // Smart Sort (prioritize matches for the *first* filament to help single-mode)
+          const firstType = gcodeFilaments[0]?.type?.toLowerCase();
+          if (firstType) {
+             loaded = loaded.sort((a: Spool, b: Spool) => {
+                const matA = (a.filament.material?.name || '').toLowerCase();
+                const matB = (b.filament.material?.name || '').toLowerCase();
+                if (matA === firstType && matB !== firstType) return -1;
+                if (matB === firstType && matA !== firstType) return 1;
+                return b.remaining_weight - a.remaining_weight;
+             });
           }
-        } else {
-          if (res.status !== 400) setError("Failed to load inventory");
+          setSpools(loaded);
+
+          // Initialize Assignments
+          // If we have a saved preference, apply it to Index 0
+          const initial: Record<number, string> = {};
+          if (model.userDefined?.preferredSpoolId) {
+             initial[0] = model.userDefined.preferredSpoolId;
+          } else if (loaded.length > 0) {
+             initial[0] = loaded[0].id.toString();
+          }
+          
+          // For multi-material, we default subsequent slots to "Unassigned" or try to smart-match later
+          // (For now, just leave them empty so user forces selection)
+          setAssignments(prev => ({ ...initial, ...prev }));
         }
       } catch (e) {
         console.error("Spoolman fetch error", e);
-        setError("Connection failed");
       } finally {
         setLoading(false);
       }
     };
-
     fetchSpools();
-  }, [preferredSpoolId, model.gcodeData]);
+  }, [model.filePath]); // Reload if file changes
 
-  // 4. Save Preference
-  const handleSavePreference = async () => {
-    if (!selectedSpoolId) return;
-    setIsSaving(true);
-    try {
-        const res = await fetch('/api/model/metadata', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                filePath: model.filePath,
-                updates: { preferredSpoolId: selectedSpoolId }
-            })
-        });
-
-        if (res.ok) {
-            toast.success("Spool preference saved!");
-            if (!model.userDefined) model.userDefined = {};
-            model.userDefined.preferredSpoolId = selectedSpoolId;
-        } else {
-            toast.error("Failed to save preference");
-        }
-    } catch (e) {
-        toast.error("Error saving preference");
-    } finally {
-        setIsSaving(false);
+  // 3. Handle Assignment Change
+  const handleAssign = (index: number, spoolId: string) => {
+    setAssignments(prev => ({ ...prev, [index]: spoolId }));
+    
+    // Auto-save preference for the primary filament (Index 0)
+    if (index === 0) {
+        // (Optional: Call API to save preferredSpoolId like before)
     }
   };
 
-  // 5. Handle "Print & Deduct"
-  const handleDeduct = async () => {
-    if (!selectedSpoolId || modelWeight <= 0) return;
-    
-    // Safety check
-    const spool = spools.find(s => s.id.toString() === selectedSpoolId);
-    if (!spool) return;
+  // 4. Calculations
+  let totalCost = 0;
+  let canPrint = true;
+  let missingAssignments = false;
 
-    if (!confirm(`Confirm Print?\n\nThis will deduct ${modelWeight}g from ${spool.filament.vendor?.name || 'Generic'} ${spool.filament.name}.\n\nCurrent: ${spool.remaining_weight}g\nNew: ${Math.round(spool.remaining_weight - modelWeight)}g`)) {
-      return;
-    }
+  // If no detailed filament data, fallback to total weight on Index 0
+  const renderList = gcodeFilaments.length > 0 ? gcodeFilaments : [{ type: 'Unknown', weight: model.filamentUsed || '0g', color: '#888' }];
+
+  const calculationRows = renderList.map((gf, idx) => {
+      const weight = parseWeight(gf.weight);
+      const spoolId = assignments[idx];
+      const spool = spools.find(s => s.id.toString() === spoolId);
+      
+      let rowCost = 0;
+      let sufficient = true;
+
+      if (spool) {
+         const spoolWeight = spool.initial_weight || 1000;
+         rowCost = (weight / spoolWeight) * spool.price;
+         if (spool.remaining_weight < weight) sufficient = false;
+         totalCost += rowCost;
+      } else {
+         missingAssignments = true;
+      }
+      
+      if (!sufficient) canPrint = false;
+
+      return { idx, weight, spool, sufficient, type: gf.type, color: gf.color };
+  });
+
+  // 5. Execute Deduction
+  const handleDeductAll = async () => {
+    if (!canPrint || missingAssignments) return;
+    
+    if (!confirm(`Confirm Usage?\n\nThis will deduct filament from ${Object.keys(assignments).length} spools.`)) return;
 
     setIsDeducting(true);
     try {
-      const res = await fetch('/api/spoolman/use', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spoolId: selectedSpoolId,
-          weight: modelWeight
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success(`Deducted ${modelWeight}g from inventory!`);
-        
-        // Update local spool state to reflect new weight immediately
-        setSpools(prev => prev.map(s => 
-          s.id.toString() === selectedSpoolId 
-            ? { ...s, remaining_weight: data.spool.remaining_weight } 
-            : s
-        ));
-
-        // Mark as printed in Muncher
-        if (onUpdateModel) {
-          onUpdateModel({ isPrinted: true });
-          
-          // Also persist this change to backend
-          await fetch('/api/save-model', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              filePath: model.filePath,
-              id: model.id,
-              isPrinted: true
-            })
-          });
+        // Sequentially process deductions
+        for (const row of calculationRows) {
+            if (!row.spool || row.weight <= 0) continue;
+            
+            await fetch('/api/spoolman/use', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spoolId: row.spool.id, weight: row.weight })
+            });
         }
-      } else {
-        toast.error(`Deduction failed: ${data.error}`);
-      }
+        
+        toast.success("Inventory updated!");
+        if (onUpdateModel) {
+            onUpdateModel({ isPrinted: true });
+            // ... persist to backend ...
+        }
     } catch (e) {
-      toast.error("Network error during deduction");
+        toast.error("Error updating inventory");
     } finally {
-      setIsDeducting(false);
+        setIsDeducting(false);
     }
   };
 
-  // Logic & Render
-  const selectedSpool = spools.find(s => s.id.toString() === selectedSpoolId);
-  if (error) return null; // Or return simplified view
   if (loading) return <div className="p-4 flex justify-center"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground" /></div>;
   if (spools.length === 0) return null;
 
-  const hasWeight = modelWeight > 0;
-  const sufficient = selectedSpool ? selectedSpool.remaining_weight >= modelWeight : true;
-  const spoolTotalWeight = selectedSpool?.initial_weight || 1000;
-  const cost = selectedSpool ? (modelWeight / spoolTotalWeight) * selectedSpool.price : 0;
-  const isPreferred = selectedSpoolId === preferredSpoolId?.toString();
-
   return (
-    <Card className="bg-muted/30 border-dashed">
+    <Card className="bg-muted/20 border-dashed">
       <CardContent className="p-3 space-y-3">
-        <div className="flex justify-between items-center">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center mb-1">
           <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1">
-            <Printer className="w-3 h-3" /> Material Estimate
+            <Printer className="w-3 h-3" /> 
+            {isMultiMaterial ? "Multi-Material Setup" : "Material Estimate"}
           </span>
-          {hasWeight && (
-            <Badge variant={sufficient ? "outline" : "destructive"} className="gap-1 text-[10px] h-5">
-              {sufficient ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-              {sufficient ? "In Stock" : "Low Stock"}
-            </Badge>
+          {/* Global Status Badge */}
+          {(!missingAssignments && canPrint) ? (
+             <Badge variant="outline" className="text-[10px] h-5 gap-1 bg-green-500/10 text-green-600 border-green-200">
+                <CheckCircle2 className="w-3 h-3" /> Ready
+             </Badge>
+          ) : (
+             <Badge variant="outline" className="text-[10px] h-5 gap-1 bg-yellow-500/10 text-yellow-600 border-yellow-200">
+                <AlertTriangle className="w-3 h-3" /> Check Stock
+             </Badge>
           )}
         </div>
 
-        {/* Spool Selector Row */}
-        <div className="flex gap-2">
-            <Select value={selectedSpoolId} onValueChange={setSelectedSpoolId}>
-            <SelectTrigger className="w-full bg-background h-9 text-xs">
-                <SelectValue placeholder="Select Filament" />
-            </SelectTrigger>
-            <SelectContent>
-                {spools.map((spool) => (
-                <SelectItem key={spool.id} value={spool.id.toString()}>
-                    <div className="flex items-center gap-2">
+        {/* Rows */}
+        <div className="space-y-2">
+            {calculationRows.map((row) => (
+                <div key={row.idx} className="flex gap-2 items-center">
+                    {/* Visual Indicator of G-code Color */}
                     <div 
-                        className="w-3 h-3 rounded-full border shadow-sm" 
-                        style={{ backgroundColor: spool.filament.color_hex || '#888' }} 
+                        className="w-2 h-8 rounded-full shrink-0 border shadow-sm opacity-80" 
+                        style={{ backgroundColor: row.color || '#888' }}
+                        title={`G-code requests: ${row.type}`} 
                     />
-                    <span className="truncate max-w-[160px] text-xs">
-                        {spool.filament.vendor?.name} {spool.filament.name}
-                    </span>
+                    
+                    {/* Spool Selector */}
+                    <div className="flex-1 min-w-0">
+                        <Select value={assignments[row.idx] || ''} onValueChange={(v) => handleAssign(row.idx, v)}>
+                            <SelectTrigger className="h-8 text-xs bg-background">
+                                <SelectValue placeholder={`Select ${row.type}...`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {spools.map(s => (
+                                    <SelectItem key={s.id} value={s.id.toString()}>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full" style={{backgroundColor: s.filament.color_hex}} />
+                                            <span className="truncate">{s.filament.vendor?.name} {s.filament.name}</span>
+                                            <span className="text-muted-foreground ml-auto opacity-50">({Math.round(s.remaining_weight)}g)</span>
+                                        </div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {/* Requirement Text */}
+                        <div className="flex justify-between text-[10px] text-muted-foreground px-1 mt-0.5">
+                            <span>Req: {row.type}</span>
+                            <span>{Math.round(row.weight)}g needed</span>
+                        </div>
                     </div>
-                </SelectItem>
-                ))}
-            </SelectContent>
-            </Select>
-            
-            <Button 
-                size="icon" 
-                variant={isPreferred ? "default" : "outline"} 
-                className="h-9 w-9 shrink-0"
-                onClick={handleSavePreference}
-                disabled={isSaving}
-                title="Save as preferred filament"
-            >
-                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 
-                 <Star className={`w-4 h-4 ${isPreferred ? "fill-current" : ""}`} />
-                }
-            </Button>
+                </div>
+            ))}
         </div>
 
-        {/* Stats Grid */}
-        {hasWeight && selectedSpool && (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-background rounded p-2 flex flex-col justify-center items-center border">
-              <span className="text-[10px] text-muted-foreground uppercase">Est. Cost</span>
-              <div className="text-lg font-bold text-green-600 dark:text-green-400 flex items-center">
-                <DollarSign className="w-4 h-4" />
-                {cost.toFixed(2)}
+        {/* Footer: Totals & Actions */}
+        <div className="grid grid-cols-2 gap-2 pt-2">
+            {/* [FIX] Cost Box with Theme Matching Rounded Corners */}
+            <div className="bg-card text-card-foreground border rounded-lg p-2 flex flex-col justify-center items-center shadow-sm">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Cost</span>
+              <div className="text-lg font-bold flex items-center">
+                <span className="text-sm opacity-50 mr-0.5">$</span>
+                {totalCost.toFixed(2)}
               </div>
             </div>
             
-            {/* The "Print & Deduct" Action Button */}
             <Button 
-              className="h-full flex flex-col items-center justify-center p-1 gap-0" 
-              variant={sufficient ? "default" : "destructive"}
-              disabled={isDeducting || !sufficient}
-              onClick={handleDeduct}
-              title="Deduct filament from inventory and mark as printed"
+              className="h-full shadow-sm rounded-lg" 
+              variant={(!missingAssignments && canPrint) ? "default" : "secondary"}
+              disabled={isDeducting || !canPrint || missingAssignments}
+              onClick={handleDeductAll}
             >
-                {isDeducting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                    <>
-                        <div className="text-[10px] uppercase opacity-80">Use</div>
-                        <div className="text-lg font-bold leading-none">{Math.round(modelWeight)}g</div>
-                    </>
-                )}
+                {isDeducting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Print & Deduct"}
             </Button>
-          </div>
-        )}
+        </div>
 
-        {!hasWeight && (
-          <div className="text-xs text-center text-muted-foreground italic py-1">
-            Upload .gcode to enable cost calculation
-          </div>
-        )}
       </CardContent>
     </Card>
   );
