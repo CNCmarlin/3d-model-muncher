@@ -20,6 +20,8 @@ import { ThingiverseImportDialog } from './ThingiverseImportDialog';
 import { useLayoutSettings } from "./LayoutSettingsContext";
 import { LayoutControls } from "./LayoutControls";
 import { downloadMultipleModels } from "../utils/downloadUtils";
+import { CollectionEditorDialog } from './CollectionEditorDialog';
+import { FolderPlus } from "lucide-react"; // Add FolderPlus
 
 interface ModelGridProps {
   models: Model[];
@@ -42,11 +44,11 @@ interface ModelGridProps {
 
 
 
-export function ModelGrid({ 
+export function ModelGrid({
   models,
   collections = [],
-  allCollections = [], 
-  onModelClick, 
+  allCollections = [],
+  onModelClick,
   onOpenCollection,
   onCollectionChanged,
   isSelectionMode = false,
@@ -66,6 +68,9 @@ export function ModelGrid({
 
   const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [createCollectionMode, setCreateCollectionMode] = useState<'manual' | 'folder'>('manual');
 
   const handleModelInteraction = (e: React.MouseEvent, model: Model, index: number) => {
     if (isSelectionMode && onModelSelection) {
@@ -139,19 +144,19 @@ export function ModelGrid({
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 lg:p-6 border-b bg-card shadow-sm shrink-0">
-          <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
             <p className="text-muted-foreground text-sm font-medium">
               {models.length > 0
                 ? `${models.length} model${models.length !== 1 ? 's' : ''} found`
                 : collections.length > 0
-                ? `${collections.length} collection${collections.length !== 1 ? 's' : ''}`
-                : 'No items found'}
+                  ? `${collections.length} collection${collections.length !== 1 ? 's' : ''}`
+                  : 'No items found'}
             </p>
 
 
             {!isSelectionMode && (
-               <LayoutControls />
+              <LayoutControls />
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -168,16 +173,27 @@ export function ModelGrid({
               onDeselectAll={onDeselectAll}
             />
             {!isSelectionMode && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsImportOpen(true)}
-                className="gap-2"
-                title="Import from Thingiverse"
-              >
-                <CloudDownload className="h-4 w-4" />
-                <span className="hidden sm:inline">Thingiverse Import</span>
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setCreateCollectionMode('folder'); setIsEditorOpen(true); }}
+                  className="gap-2 hidden sm:flex"
+                >
+                  <FolderPlus className="h-4 w-4" />
+                  New Collection
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsImportOpen(true)}
+                  className="gap-2"
+                  title="Import from Thingiverse"
+                >
+                  <CloudDownload className="h-4 w-4" />
+                  <span className="hidden sm:inline">Thingiverse Import</span>
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -205,8 +221,7 @@ export function ModelGrid({
                         categories={config.categories || []}
                         onOpen={(id) => onOpenCollection?.(id)}
                         onChanged={() => onCollectionChanged?.()}
-                        onDeleted={() => onCollectionChanged?.()}
-                      />
+                        onDeleted={() => onCollectionChanged?.()} collections={[]}                      />
                     );
                   }
                   const model = it.data;
@@ -232,8 +247,7 @@ export function ModelGrid({
                       categories={config.categories || []}
                       onOpen={(id) => onOpenCollection?.(id)}
                       onChanged={() => onCollectionChanged?.()}
-                      onDeleted={() => onCollectionChanged?.()}
-                    />
+                      onDeleted={() => onCollectionChanged?.()} collections={[]}                    />
                   ))}
                   {models.map((model, index) => (
                     <ModelCard
@@ -262,8 +276,7 @@ export function ModelGrid({
                         categories={config.categories || []}
                         onOpen={(id) => onOpenCollection?.(id)}
                         onChanged={() => onCollectionChanged?.()}
-                        onDeleted={() => onCollectionChanged?.()}
-                      />
+                        onDeleted={() => onCollectionChanged?.()} collections={[]}                      />
                     );
                   }
                   const model = it.data;
@@ -276,11 +289,10 @@ export function ModelGrid({
                       onMouseDown={(e) => {
                         if (isSelectionMode && e.shiftKey) e.preventDefault();
                       }}
-                      className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${
-                        isSelectionMode && selectedModelIds.includes(model.id) 
-                          ? 'border-primary bg-primary/5' 
-                          : ''
-                      }`}
+                      className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
+                        ? 'border-primary bg-primary/5'
+                        : ''
+                        }`}
                     >
                       {isSelectionMode && (
                         <div className="flex-shrink-0 pl-1">
@@ -294,15 +306,14 @@ export function ModelGrid({
                         </div>
                       )}
                       <div className="flex-shrink-0">
-                          <div className="relative">
+                        <div className="relative">
                           <ImageWithFallback
                             src={resolveModelThumbnail(model)}
                             alt={model.name}
-                            className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${
-                              isSelectionMode && selectedModelIds.includes(model.id) 
-                                ? 'border-primary' 
-                                : ''
-                            }`}
+                            className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
+                              ? 'border-primary'
+                              : ''
+                              }`}
                           />
                           {(() => {
                             const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
@@ -320,11 +331,10 @@ export function ModelGrid({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between">
                           <div className="min-w-0 flex-1">
-                            <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${
-                              isSelectionMode && selectedModelIds.includes(model.id) 
-                                ? 'text-primary' 
-                                : 'text-card-foreground'
-                            }`}>
+                            <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${isSelectionMode && selectedModelIds.includes(model.id)
+                              ? 'text-primary'
+                              : 'text-card-foreground'
+                              }`}>
                               {model.name}
                             </h3>
                             <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
@@ -359,7 +369,7 @@ export function ModelGrid({
                               const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
                               if (!showBadge) return null;
                               return (
-                                <Badge 
+                                <Badge
                                   variant={model.isPrinted ? "default" : "secondary"}
                                   className="font-medium"
                                 >
@@ -396,8 +406,7 @@ export function ModelGrid({
                       categories={config.categories || []}
                       onOpen={(id) => onOpenCollection?.(id)}
                       onChanged={() => onCollectionChanged?.()}
-                      onDeleted={() => onCollectionChanged?.()}
-                    />
+                      onDeleted={() => onCollectionChanged?.()} collections={[]}                    />
                   ))}
                   {models.map((model, index) => (
                     <div
@@ -407,11 +416,10 @@ export function ModelGrid({
                       onMouseDown={(e) => {
                         if (isSelectionMode && e.shiftKey) e.preventDefault();
                       }}
-                      className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${
-                        isSelectionMode && selectedModelIds.includes(model.id) 
-                          ? 'border-primary bg-primary/5' 
-                          : ''
-                      }`}
+                      className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
+                        ? 'border-primary bg-primary/5'
+                        : ''
+                        }`}
                     >
                       {/* Selection Checkbox - Only show in selection mode */}
                       {isSelectionMode && (
@@ -426,18 +434,17 @@ export function ModelGrid({
                           />
                         </div>
                       )}
-                      
+
                       {/* Thumbnail */}
                       <div className="flex-shrink-0">
-                          <div className="relative">
+                        <div className="relative">
                           <ImageWithFallback
                             src={resolveModelThumbnail(model)}
                             alt={model.name}
-                            className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${
-                              isSelectionMode && selectedModelIds.includes(model.id) 
-                                ? 'border-primary' 
-                                : ''
-                            }`}
+                            className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
+                              ? 'border-primary'
+                              : ''
+                              }`}
                           />
                           {/* Print status overlay (hideable via config.showPrintedBadge) */}
                           {(() => {
@@ -458,22 +465,21 @@ export function ModelGrid({
                           })()}
                         </div>
                       </div>
-                      
+
                       {/* Model Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between">
                           <div className="min-w-0 flex-1">
-                            <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${
-                              isSelectionMode && selectedModelIds.includes(model.id) 
-                                ? 'text-primary' 
-                                : 'text-card-foreground'
-                            }`}>
+                            <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${isSelectionMode && selectedModelIds.includes(model.id)
+                              ? 'text-primary'
+                              : 'text-card-foreground'
+                              }`}>
                               {model.name}
                             </h3>
                             <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
                               {model.description}
                             </p>
-                            
+
                             {/* Category */}
                             <div className="mt-2 flex flex-wrap gap-2">
                               <Badge variant="outline" className="text-xs font-medium">
@@ -485,7 +491,7 @@ export function ModelGrid({
                                 </Badge>
                               )}
                             </div>
-                            
+
                             {/* Tags */}
                             <div className="flex flex-wrap gap-1 mt-2">
                               {(model.tags || []).slice(0, 4).map((tag) => (
@@ -500,7 +506,7 @@ export function ModelGrid({
                               )}
                             </div>
                           </div>
-                          
+
                           {/* Status and Stats */}
                           <div className="flex flex-col items-end gap-3 ml-6">
                             {(() => {
@@ -509,7 +515,7 @@ export function ModelGrid({
                               if (!showBadge) return null;
 
                               return (
-                                <Badge 
+                                <Badge
                                   variant={model.isPrinted ? "default" : "secondary"}
                                   className="font-medium"
                                 >
@@ -517,7 +523,7 @@ export function ModelGrid({
                                 </Badge>
                               );
                             })()}
-                            
+
                             <div className="text-xs text-muted-foreground text-right space-y-1">
                               <div className="flex items-center gap-1">
                                 <Clock className="h-3 w-3" />
@@ -543,6 +549,34 @@ export function ModelGrid({
           )}
         </div>
       </ScrollArea>
+
+      <CollectionEditorDialog
+        open={isEditorOpen}
+        onOpenChange={setIsEditorOpen}
+        collection={null}
+        collections={allCollections}
+        categories={config.categories || []}
+        models={models}
+        initialMode={createCollectionMode}
+        defaultParentId="root"
+        onSave={async (colData) => {
+          try {
+            const response = await fetch('/api/collections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(colData),
+            });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error);
+            onCollectionChanged?.();
+            setIsEditorOpen(false);
+          } catch (e) {
+            console.error(e); // Dialog handles error toast
+          }
+        }}
+        onDelete={async () => { }}
+      />
+
       {/* [NEW] Thingiverse Import Dialog */}
       <ThingiverseImportDialog
         isOpen={isImportOpen}
@@ -552,6 +586,7 @@ export function ModelGrid({
           onCollectionChanged?.();
         }}
       />
+
       {/* Create Collection Drawer (uses CollectionEditDrawer) */}
       <CollectionEditDrawer
         open={isCreateCollectionOpen}
@@ -560,9 +595,7 @@ export function ModelGrid({
           else setIsCreateCollectionOpen(true);
         }}
         collection={null}
-        
         collections={allCollections} // <--- [ADDED] THIS IS THE MISSING PIECE!
-        
         categories={config.categories || []}
         initialModelIds={selectedModelIds}
         onSaved={() => {
@@ -571,6 +604,7 @@ export function ModelGrid({
           onCollectionChanged?.();
         }}
       />
+
     </div>
   );
 }

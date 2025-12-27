@@ -788,6 +788,91 @@ app.post('/api/collections/generate-covers', async (req, res) => {
   }
 });
 
+const COLLECTION_IMAGES_DIR = path.join(DATA_DIR, 'images', 'collections');
+if (!fs.existsSync(COLLECTION_IMAGES_DIR)) fs.mkdirSync(COLLECTION_IMAGES_DIR, { recursive: true });
+
+// [NEW] Endpoint: Upload Image for Collection
+app.post('/api/collections/:id/images', upload.single('image'), async (req, res) => {
+  const collectionId = req.params.id;
+  const file = req.file;
+
+  if (!file) return res.status(400).json({ success: false, error: "No image file provided" });
+  if (!collectionId) return res.status(400).json({ success: false, error: "No collection ID" });
+
+  try {
+    // 1. Load Collections
+    const collectionsFile = path.join(DATA_DIR, 'collections.json');
+    if (!fs.existsSync(collectionsFile)) return res.status(404).json({ success: false, error: "Collections DB not found" });
+    
+    const collectionsData = JSON.parse(fs.readFileSync(collectionsFile, 'utf8'));
+    let collections = collectionsData.collections || [];
+    
+    // 2. Find Collection
+    const colIndex = collections.findIndex(c => c.id === collectionId);
+    if (colIndex === -1) {
+        // Clean up uploaded file if collection invalid
+        fs.unlinkSync(file.path);
+        return res.status(404).json({ success: false, error: "Collection not found" });
+    }
+
+    // 3. Move File to Permanent Location
+    // We store it as: data/images/collections/<col_id>/<timestamp>_<filename>
+    const targetDir = path.join(COLLECTION_IMAGES_DIR, collectionId);
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+    const ext = path.extname(file.originalname);
+    const filename = `${Date.now()}_${Math.round(Math.random()*1000)}${ext}`;
+    const targetPath = path.join(targetDir, filename);
+
+    // Move from temp (multer) to target
+    fs.renameSync(file.path, targetPath);
+
+    // 4. Update Database
+    // Store relative path accessible via web
+    const publicPath = `/api/images/collections/${collectionId}/${filename}`;
+    
+    if (!collections[colIndex].images) collections[colIndex].images = [];
+    collections[colIndex].images.push(publicPath);
+    
+    // Auto-set cover image if none exists
+    if (!collections[colIndex].coverImage) {
+        collections[colIndex].coverImage = publicPath;
+    }
+    
+    collections[colIndex].lastModified = new Date().toISOString();
+
+    // 5. Save
+    collectionsData.collections = collections;
+    fs.writeFileSync(collectionsFile, JSON.stringify(collectionsData, null, 2));
+
+    res.json({ 
+        success: true, 
+        imagePath: publicPath, 
+        collection: collections[colIndex] 
+    });
+
+  } catch (e) {
+    console.error("Collection image upload failed:", e);
+    if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path); // cleanup
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// [NEW] Serve Collection Images
+app.get('/api/images/collections/:colId/:filename', (req, res) => {
+    const { colId, filename } = req.params;
+    // Security: sanitize params to prevent traversal
+    const safeColId = colId.replace(/[^a-zA-Z0-9_\-]/g, '');
+    const safeFilename = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '');
+    
+    const filePath = path.join(COLLECTION_IMAGES_DIR, safeColId, safeFilename);
+    if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+    } else {
+        res.status(404).send('Not found');
+    }
+});
+
 // --- API: Secure File Download (Fixes Bulk/Zip Issues) ---
 app.get('/api/download', async (req, res) => {
   try {

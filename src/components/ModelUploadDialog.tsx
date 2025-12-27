@@ -273,15 +273,15 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
 
   useEffect(() => {
     if (isGroupUpload) {
-        // Mode: New Folder/Collection
-        // Path = Parent + / + Name
-        const cleanParent = parentFolder === 'root' ? '' : parentFolder;
-        const cleanName = newCollectionName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
-        const fullPath = cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
-        setSingleDestination(fullPath || 'uploads');
+      // Mode: New Folder/Collection
+      // Path = Parent + / + Name
+      const cleanParent = parentFolder === 'root' ? '' : parentFolder;
+      const cleanName = newCollectionName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
+      const fullPath = cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
+      setSingleDestination(fullPath || 'uploads');
     } else {
-        // Mode: Direct Upload -> Destination is just the selected folder
-        setSingleDestination(parentFolder);
+      // Mode: Direct Upload -> Destination is just the selected folder
+      setSingleDestination(parentFolder);
     }
   }, [isGroupUpload, parentFolder, newCollectionName]);
 
@@ -338,89 +338,115 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
               <p className="text-xs text-muted-foreground mt-2">Files will be saved to the configured models/ directory and processed automatically.</p>
               <input ref={inputRef} type="file" multiple accept=".3mf,.stl" onChange={onFileChange} className="hidden" />
             </div>
-
+            <div className="mt-4"></div>
+            {files.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No files selected</div>
+            ) : (
+              <ScrollArea className="h-40">
+                <ul className="space-y-2">
+                  {files.map((f, i) => (
+                    <li key={i} className={`flex items-center justify-between p-2 rounded bg-muted/20`}>
+                      <div className="text-sm w-3/4">
+                        <div className="font-medium">{f.name}</div>
+                        <div className="text-xs text-muted-foreground">{Math.round(f.size / 1024)} KB</div>
+                        <div className="mt-2 text-xs text-muted-foreground">Destination: {singleDestination || 'uploads'}</div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => removeFile(i)}>
+                          <Trash className="h-4 w-4" />
+                          Remove
+                        </Button>
+                        <div className="text-xs text-muted-foreground">{i + 1}/{files.length}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea>
+            )}
             <div className="mt-4">
 
-{/* 2. Destination & Grouping */}
-<div className="grid gap-4 border p-4 rounded-lg bg-card mb-4">
-                
+              {/* 2. Destination & Grouping */}
+              <div className="grid gap-4 border p-4 rounded-lg bg-card mb-4">
+
                 {/* Mode Toggle */}
                 <div className="flex items-start space-x-2 mb-2">
-                    <Checkbox 
-                        id="group-upload" 
-                        checked={isGroupUpload} 
-                        onCheckedChange={(v) => setIsGroupUpload(!!v)} 
-                    />
-                    <div className="grid gap-1.5 leading-none">
-                        <Label htmlFor="group-upload" className="flex items-center gap-2 cursor-pointer font-semibold">
-                            <Layers className="h-4 w-4 text-primary" />
-                            Create as New Collection
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                            {isGroupUpload 
-                                ? "Files will be uploaded into a NEW folder created inside the path below."
-                                : "Useful for uploading of muliple related models. Eg. a unzipped download from Printables."
-                            }
-                        </p>
-                    </div>
+                  <Checkbox
+                    id="group-upload"
+                    checked={isGroupUpload}
+                    onCheckedChange={(v) => setIsGroupUpload(!!v)}
+                  />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="group-upload" className="flex items-center gap-2 cursor-pointer font-semibold">
+                      <Layers className="h-4 w-4 text-primary" />
+                      Create as New Collection
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {isGroupUpload
+                        ? "Files will be uploaded into a NEW folder created inside the path below."
+                        : "Useful for uploading of muliple related models. Eg. a unzipped download from Printables."
+                      }
+                    </p>
+                  </div>
                 </div>
 
                 <div className="space-y-4 pt-2 border-t">
-                    {/* Parent Folder Selector */}
-                    <div className="space-y-2">
-                        <Label className="text-xs uppercase text-muted-foreground font-bold">
-                            {isGroupUpload ? "Create Inside (Parent)" : "Upload To (Target)"}
-                        </Label>
-                        <Select value={parentFolder} onValueChange={setParentFolder}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select folder..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="uploads">/uploads (Root)</SelectItem>
-                                {(folders || []).filter(f => f !== 'uploads').map(f => (
-                                    <SelectItem key={f} value={f}>{f}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                  {/* Parent Folder Selector */}
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase text-muted-foreground font-bold">
+                      {isGroupUpload ? "Create Inside (Parent)" : "Upload To (Target)"}
+                    </Label>
+                    <Select value={parentFolder} onValueChange={setParentFolder}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select folder..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="uploads">/uploads (Root)</SelectItem>
+                        {(folders || []).filter(f => f !== 'uploads').map(f => (
+                          <SelectItem key={f} value={f}>{f}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* New Collection Name Input (Only visible when checked) */}
+                  {isGroupUpload && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                      <Label className="text-xs uppercase text-muted-foreground font-bold text-primary">
+                        New Collection Name
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <FolderPlus className="h-4 w-4 text-muted-foreground" />
+                        <Input
+                          value={newCollectionName}
+                          onChange={(e) => setNewCollectionName(e.target.value)}
+                          placeholder="e.g. Red Race Car"
+                          autoFocus
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Final Path: <code>models/{singleDestination}</code>
+                      </p>
                     </div>
+                  )}
 
-                    {/* New Collection Name Input (Only visible when checked) */}
-                    {isGroupUpload && (
-                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                            <Label className="text-xs uppercase text-muted-foreground font-bold text-primary">
-                                New Collection Name
-                            </Label>
-                            <div className="flex items-center gap-2">
-                                <FolderPlus className="h-4 w-4 text-muted-foreground" />
-                                <Input 
-                                    value={newCollectionName} 
-                                    onChange={(e) => setNewCollectionName(e.target.value)} 
-                                    placeholder="e.g. Red Race Car" 
-                                    autoFocus
-                                />
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                                Final Path: <code>models/{singleDestination}</code>
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Description (Only visible when checked) */}
-                    {isGroupUpload && (
-                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                            <Label className="text-xs uppercase text-muted-foreground font-bold">
-                                Description (Optional)
-                            </Label>
-                            <Textarea 
-                                value={groupDescription} 
-                                onChange={(e) => setGroupDescription(e.target.value)} 
-                                placeholder="Describe this collection..." 
-                                rows={2}
-                            />
-                        </div>
-                    )}
+                  {/* Description (Only visible when checked) */}
+                  {isGroupUpload && (
+                    <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                      <Label className="text-xs uppercase text-muted-foreground font-bold">
+                        Description (Optional)
+                      </Label>
+                      <Textarea
+                        value={groupDescription}
+                        onChange={(e) => setGroupDescription(e.target.value)}
+                        placeholder="Describe this collection..."
+                        // [FIX] Taller default, max height constraint, vertical resize only
+                        rows={4}
+                        className="max-h-[150px] min-h-[80px] resize-y"
+                      />
+                    </div>
+                  )}
                 </div>
-            </div>
+              </div>
 
               {/* Metadata & Tagging */}
               <div className="grid gap-4 border p-4 rounded-lg bg-card mb-4">
@@ -455,31 +481,6 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
                   <Label htmlFor="gen-previews" className="text-sm text-foreground">Generate preview images after upload</Label>
                 </div>
               </div>
-
-              {files.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No files selected</div>
-              ) : (
-                <ScrollArea className="h-40">
-                  <ul className="space-y-2">
-                    {files.map((f, i) => (
-                      <li key={i} className={`flex items-center justify-between p-2 rounded bg-muted/20`}>
-                        <div className="text-sm w-3/4">
-                          <div className="font-medium">{f.name}</div>
-                          <div className="text-xs text-muted-foreground">{Math.round(f.size / 1024)} KB</div>
-                          <div className="mt-2 text-xs text-muted-foreground">Destination: {singleDestination || 'uploads'}</div>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => removeFile(i)}>
-                            <Trash className="h-4 w-4" />
-                            Remove
-                          </Button>
-                          <div className="text-xs text-muted-foreground">{i + 1}/{files.length}</div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </ScrollArea>
-              )}
             </div>
 
             {previewGenerating && (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Printer, Clock, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Printer, Loader2 } from 'lucide-react';
 import { AppConfig, PrinterConfig } from '../types/config';
 
 interface PrinterStatusHubProps {

@@ -65,7 +65,7 @@ const buildFolderTree = (models: Model[]): FolderNode => {
     pathStr = pathStr.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
     if (!pathStr) return;
     const parts = pathStr.split('/');
-    parts.pop(); 
+    parts.pop();
     if (parts.length === 0) return;
     let current = root;
     let currentPath = '';
@@ -86,7 +86,7 @@ const FolderTreeItem = ({ node, level, onSelect }: { node: FolderNode, level: nu
   const hasChildren = Object.keys(node.children).length > 0;
   return (
     <div className="w-full select-none">
-      <div 
+      <div
         className={`flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer ${level > 0 ? 'ml-3 border-l border-border/50' : ''}`}
         onClick={(e) => { e.stopPropagation(); onSelect(node); }}
       >
@@ -101,7 +101,7 @@ const FolderTreeItem = ({ node, level, onSelect }: { node: FolderNode, level: nu
       </div>
       {isOpen && hasChildren && (
         <div className="mt-1">
-          {Object.values(node.children).sort((a,b) => a.name.localeCompare(b.name)).map((child) => (
+          {Object.values(node.children).sort((a, b) => a.name.localeCompare(b.name)).map((child) => (
             <FolderTreeItem key={child.fullPath} node={child} level={level + 1} onSelect={onSelect} />
           ))}
         </div>
@@ -124,7 +124,7 @@ export function CollectionEditorDialog({
 }: CollectionEditorDialogProps) {
   const [localCollection, setLocalCollection] = useState<Collection>(collection || defaultCollectionState);
   const [isLoading, setIsLoading] = useState(false);
-  
+
   // [NEW] Local state for enhanced features
   const [createOnDisk, setCreateOnDisk] = useState(false);
   const [parentId, setParentId] = useState<string>("root");
@@ -133,53 +133,53 @@ export function CollectionEditorDialog({
   // This solves the "Which 'Test' folder is this?" problem
   const formattedCollections = useMemo(() => {
     return collections
-        .filter(c => !collection || c.id !== collection.id) // Exclude self
-        .map(c => {
-            let displayName = c.name;
-            let path = c.name;
-            
-            // Try to decode physical path from ID (col_...)
-            if (c.id && c.id.startsWith('col_')) {
-                try {
-                    const b64 = c.id.substring(4);
-                    // Standard base64url decoding
-                    path = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-                    displayName = path.replace(/\//g, ' / '); 
-                } catch (e) { /* ignore */ }
-            }
-            
-            return {
-                id: c.id,
-                name: c.name,
-                displayName: displayName,
-                path: path
-            };
-        })
-        .sort((a, b) => a.path.localeCompare(b.path));
+      .filter(c => !collection || c.id !== collection.id) // Exclude self
+      .map(c => {
+        let displayName = c.name;
+        let path = c.name;
+
+        // Try to decode physical path from ID (col_...)
+        if (c.id && c.id.startsWith('col_')) {
+          try {
+            const b64 = c.id.substring(4);
+            // Standard base64url decoding
+            path = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+            displayName = path.replace(/\//g, ' / ');
+          } catch (e) { /* ignore */ }
+        }
+
+        return {
+          id: c.id,
+          name: c.name,
+          displayName: displayName,
+          path: path
+        };
+      })
+      .sort((a, b) => a.path.localeCompare(b.path));
   }, [collections, collection]);
 
   // Sync external prop changes & Initialize
   useEffect(() => {
     setLocalCollection(collection || { ...defaultCollectionState, id: '' });
-    
+
     if (collection) {
-        // Edit Mode
-        setParentId(collection.parentId || "root");
-        setCreateOnDisk(false);
+      // Edit Mode
+      setParentId(collection.parentId || "root");
+      setCreateOnDisk(false);
     } else {
-        // Create Mode
-        setParentId(defaultParentId || "root");
-        if (initialMode === 'folder') {
-            setCreateOnDisk(true);
-        } else {
-            setCreateOnDisk(false);
-        }
+      // Create Mode
+      setParentId(defaultParentId || "root");
+      if (initialMode === 'folder') {
+        setCreateOnDisk(true);
+      } else {
+        setCreateOnDisk(false);
+      }
     }
   }, [collection, initialMode, defaultParentId, open]);
 
   const isEditing = !!collection;
   const folderTree = useMemo(() => buildFolderTree(models), [models]);
-  
+
   // Filter out self to avoid circular parents
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -195,9 +195,9 @@ export function CollectionEditorDialog({
   const handleFolderSelect = (node: FolderNode) => {
     const folderPrefix = node.fullPath + '/';
     const modelsInFolder = models.filter(m => {
-        let path = m.modelUrl || m.filePath || '';
-        path = path.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
-        return path.startsWith(folderPrefix) || path === node.fullPath;
+      let path = m.modelUrl || m.filePath || '';
+      path = path.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
+      return path.startsWith(folderPrefix) || path === node.fullPath;
     });
     const ids = modelsInFolder.map(m => m.id);
     setLocalCollection(prev => ({ ...prev, name: node.name, modelIds: ids }));
@@ -212,39 +212,39 @@ export function CollectionEditorDialog({
     setIsLoading(true);
 
     const dataToSave = {
-        ...localCollection,
-        // If creating folder, send empty ID so server generates the path-based ID
-        id: (createOnDisk && !isEditing) ? "" : (localCollection.id || crypto.randomUUID()), 
-        modelIds: localCollection.modelIds || [],
-        tags: localCollection.tags || [],
-        // [NEW] Send parent and flag
-        parentId: parentId === "root" ? null : parentId,
-        createOnDisk: !isEditing && createOnDisk
+      ...localCollection,
+      // If creating folder, send empty ID so server generates the path-based ID
+      id: (createOnDisk && !isEditing) ? "" : (localCollection.id || crypto.randomUUID()),
+      modelIds: localCollection.modelIds || [],
+      tags: localCollection.tags || [],
+      // [NEW] Send parent and flag
+      parentId: parentId === "root" ? null : parentId,
+      createOnDisk: !isEditing && createOnDisk
     };
-    
+
     try {
-        await onSave(dataToSave as Collection);
-        toast.success(`${isEditing ? 'Updated' : 'Created'} collection: ${dataToSave.name}`);
-        onOpenChange(false);
+      await onSave(dataToSave as Collection);
+      toast.success(`${isEditing ? 'Updated' : 'Created'} collection: ${dataToSave.name}`);
+      onOpenChange(false);
     } catch (e: any) {
-        toast.error(`Save failed: ${e.message || 'Unknown error'}`);
+      toast.error(`Save failed: ${e.message || 'Unknown error'}`);
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
-  
+
   const handleDelete = async () => {
     if (!isEditing || !localCollection.id) return;
     if (!window.confirm(`Delete "${localCollection.name}"? This cannot be undone.`)) return;
     setIsLoading(true);
     try {
-        await onDelete(localCollection.id);
-        toast.success(`Collection deleted.`);
-        onOpenChange(false);
+      await onDelete(localCollection.id);
+      toast.success(`Collection deleted.`);
+      onOpenChange(false);
     } catch (e: any) {
-        toast.error(`Delete failed: ${e.message}`);
+      toast.error(`Delete failed: ${e.message}`);
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -256,121 +256,129 @@ export function CollectionEditorDialog({
             {isEditing ? `Edit: ${collection?.name}` : (initialMode === 'folder' ? 'New Collection Folder' : 'Manual Import')}
           </DialogTitle>
           <DialogDescription>
-             {isEditing ? 'Update collection details.' : (initialMode === 'folder' ? 'Create a physical folder and collection.' : 'Group models into a collection.')}
+            {isEditing ? 'Update collection details.' : (initialMode === 'folder' ? 'Create a physical folder and collection.' : 'Group models into a collection.')}
           </DialogDescription>
         </DialogHeader>
-        
+
         <ScrollArea className="flex-1 pr-4 -mr-4">
-            <div className="grid gap-4 py-4 px-1">
+          <div className="grid gap-4 py-4 px-1">
             <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                    id="name"
-                    value={localCollection.name}
-                    onChange={handleInputChange}
-                    required
-                    disabled={isLoading}
-                    placeholder="My Collection"
-                />
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={localCollection.name}
+                onChange={handleInputChange}
+                required
+                disabled={isLoading}
+                placeholder="My Collection"
+              />
             </div>
 
             {/* [NEW] Smart Parent Selector */}
             <div className="space-y-2">
-                <Label>Parent Collection</Label>
-                <Select value={parentId} onValueChange={setParentId} disabled={isLoading}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Select parent..." />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[250px]">
-                        <SelectItem value="root">
-                            <span className="text-muted-foreground italic font-medium">Root Directory (No Parent)</span>
-                        </SelectItem>
-                        {formattedCollections.map((col) => (
-                            <SelectItem key={col.id} value={col.id} title={col.path}>
-                                {truncateMiddle(col.displayName, 45)}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+              <Label>Parent Collection</Label>
+              <Select value={parentId} onValueChange={setParentId} disabled={isLoading}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select parent..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-[250px]">
+                  <SelectItem value="root">
+                    <span className="text-muted-foreground italic font-medium">Root Directory (No Parent)</span>
+                  </SelectItem>
+                  {formattedCollections.map((col) => (
+                    <SelectItem key={col.id} value={col.id} title={col.path}>
+                      {truncateMiddle(col.displayName, 45)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* [NEW] Create Folder Checkbox (Only for New + Folder Mode) */}
             {!isEditing && initialMode === 'folder' && (
-                <div className="flex items-start space-x-2 border p-3 rounded-md bg-muted/20">
-                    <Checkbox 
-                        id="create-disk" 
-                        checked={createOnDisk} 
-                        onCheckedChange={(c) => setCreateOnDisk(!!c)} 
-                    />
-                    <div className="grid gap-1.5 leading-none">
-                        <Label 
-                            htmlFor="create-disk" 
-                            className="text-sm font-medium leading-none flex items-center gap-2 cursor-pointer"
-                        >
-                            <FolderPlus className="h-3.5 w-3.5 text-primary" />
-                            Create Physical Folder
-                        </Label>
-                        <p className="text-xs text-muted-foreground">
-                            Creates a folder on disk at <code>/{parentId !== 'root' ? '.../' : ''}{localCollection.name || '...'}</code>
-                        </p>
-                    </div>
+              <div className="flex items-start space-x-2 border p-3 rounded-md bg-muted/20">
+                <Checkbox
+                  id="create-disk"
+                  checked={createOnDisk}
+                  onCheckedChange={(c) => setCreateOnDisk(!!c)}
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label
+                    htmlFor="create-disk"
+                    className="text-sm font-medium leading-none flex items-center gap-2 cursor-pointer"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5 text-primary" />
+                    Create Physical Folder
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Creates a folder on disk at <code>/{parentId !== 'root' ? '.../' : ''}{localCollection.name || '...'}</code>
+                  </p>
                 </div>
+              </div>
             )}
-            
+
             {/* Folder Import (Manual Mode Only) */}
             {(!isEditing && initialMode === 'manual') && (
-                <Accordion type="single" collapsible className="w-full border rounded-md px-2">
-                    <AccordionItem value="folder-import" className="border-0">
-                        <AccordionTrigger className="hover:no-underline py-2">
-                            <div className="flex items-center gap-2 text-sm font-medium">
-                                <Folder className="h-4 w-4 text-blue-500" />
-                                Select from Existing Folder
-                            </div>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                            <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
-                                {Object.values(folderTree.children).map(node => (
-                                    <FolderTreeItem key={node.fullPath} node={node} level={0} onSelect={handleFolderSelect} />
-                                ))}
-                            </div>
-                        </AccordionContent>
-                    </AccordionItem>
-                </Accordion>
+              <Accordion type="single" collapsible className="w-full border rounded-md px-2">
+                <AccordionItem value="folder-import" className="border-0">
+                  <AccordionTrigger className="hover:no-underline py-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Folder className="h-4 w-4 text-blue-500" />
+                      Select from Existing Folder
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
+                      {Object.values(folderTree.children).map(node => (
+                        <FolderTreeItem key={node.fullPath} node={node} level={0} onSelect={handleFolderSelect} />
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             )}
 
             <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea id="description" value={localCollection.description} onChange={handleInputChange} rows={3} disabled={isLoading} />
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={localCollection.description}
+                onChange={handleInputChange}
+                // [FIX] Increased default size but added max-height constraints
+                rows={6}
+                className="max-h-[200px] min-h-[100px] resize-y"
+                disabled={isLoading}
+              />
             </div>
-            
+
             <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <Select value={localCollection.category || '--none--'} onValueChange={handleCategoryChange} disabled={isLoading}>
+              <Label htmlFor="category">Category</Label>
+              <Select value={localCollection.category || '--none--'} onValueChange={handleCategoryChange} disabled={isLoading}>
                 <SelectTrigger id="category"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
-                    <SelectItem value="--none--">(Uncategorized)</SelectItem>
-                    {categories.filter(c => c.label).map((c) => (
-                        <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
-                    ))}
+                  <SelectItem value="--none--">(Uncategorized)</SelectItem>
+                  {categories.filter(c => c.label).map((c) => (
+                    <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
+                  ))}
                 </SelectContent>
-                </Select>
+              </Select>
             </div>
-            </div>
+          </div>
         </ScrollArea>
 
         <DialogFooter className="flex justify-between items-center pt-4">
-            {isEditing && (
-                <Button variant="destructive" onClick={handleDelete} disabled={isLoading}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                </Button>
-            )}
-            <div className="flex space-x-2 ml-auto">
-                <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
-                <Button onClick={handleSave} disabled={isLoading}>
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                    {isEditing ? "Save Changes" : "Create"}
-                </Button>
-            </div>
+          {isEditing && (
+            <Button variant="destructive" onClick={handleDelete} disabled={isLoading}>
+              <Trash2 className="mr-2 h-4 w-4" /> Delete
+            </Button>
+          )}
+          <div className="flex space-x-2 ml-auto">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
+            <Button onClick={handleSave} disabled={isLoading}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {isEditing ? "Save Changes" : "Create"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
