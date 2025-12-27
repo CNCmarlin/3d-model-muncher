@@ -18,6 +18,16 @@ let activeThumbnailJob = null; // Stores the AbortController for cancellation
 
 const collectionQueue = new CollectionQueue(loadCollections, saveCollections);
 
+// 1. Define Global Data Directory
+const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+
+// 2. Define Collection Images Directory
+const COLLECTION_IMAGES_DIR = path.join(DATA_DIR, 'images', 'collections');
+if (!fs.existsSync(COLLECTION_IMAGES_DIR)) fs.mkdirSync(COLLECTION_IMAGES_DIR, { recursive: true });
+
+// 3. Define Uploads Directory (optional, but good for consistency)
+const UPLOADS_DIR = path.join(getAbsoluteModelsPath(), 'uploads');
+
 // Startup diagnostic: show which GenAI env vars are present (sanitized)
 safeLog('GenAI env presence:', {
   GEMINI_PROVIDER: !!process.env.GEMINI_PROVIDER,
@@ -167,7 +177,7 @@ const collectionsFilePath = (() => {
     if (process.env.NODE_ENV === 'test') {
       return path.join(process.cwd(), 'data', 'collections.test.json');
     }
-  } catch {}
+  } catch { }
   return defaultPath;
 })();
 
@@ -413,7 +423,10 @@ app.post('/api/spoolman/use', async (req, res) => {
 // Create or update a collection
 app.post('/api/collections', async (req, res) => {
   try {
-    const { id, name, description = '', modelIds = [], childCollectionIds = [], parentId = null, coverModelId, category = '', tags = [], images = [], createOnDisk } = req.body || {};
+    const { id, name, description = '', modelIds = [], childCollectionIds = [],
+      parentId = null, coverModelId, category = '', tags = [], images = [],
+      createOnDisk, type, buildPlates
+    } = req.body || {};
 
     if (!name || typeof name !== 'string' || name.trim() === '') {
       return res.status(400).json({ success: false, error: 'Name is required' });
@@ -470,11 +483,8 @@ app.post('/api/collections', async (req, res) => {
       // Force category to 'Auto-Imported' so it behaves like a system collection
       finalCategory = 'Auto-Imported';
     } else if (!finalId) {
-      // Fallback for standard manual collections
       finalId = makeId();
     }
-
-    // [EXISTING] The safe update task
     const updateTask = (currentCols) => {
       const now = new Date().toISOString();
       const normalizedIds = Array.from(new Set(modelIds.filter(x => typeof x === 'string' && x.trim() !== '')));
@@ -485,33 +495,37 @@ app.post('/api/collections', async (req, res) => {
       // Check if ID exists (using our calculated finalId)
       const idx = updatedCols.findIndex(c => c.id === finalId);
 
-      if (idx !== -1) {
-        // UPDATE Existing
-        const prev = updatedCols[idx];
-        const updated = {
+      // Helper to construct the object (Used for both Create and Update)
+      const buildObject = (prev = {}) => {
+        const obj = {
           ...prev,
-          name, description, modelIds: normalizedIds, childCollectionIds: normalizedChildren,
-          parentId: (parentId === 'root' ? null : parentId), // Ensure 'root' becomes null
-          coverModelId, lastModified: now
-        };
-        // Only update these if provided (or if forced by folder creation)
-        if (finalCategory) updated.category = finalCategory;
-        if (tags) updated.tags = tags;
-        if (images) updated.images = images;
-
-        updatedCols[idx] = updated;
-      } else {
-        // CREATE New
-        const newCol = {
-          id: finalId, // Use the ID we determined above
-          name, description, modelIds: normalizedIds, childCollectionIds: normalizedChildren,
+          id: finalId,
+          name,
+          description,
+          modelIds: normalizedIds,
+          childCollectionIds: normalizedChildren,
           parentId: (parentId === 'root' ? null : parentId),
           coverModelId,
-          category: finalCategory,
-          tags, images,
-          created: now, lastModified: now
+          lastModified: now,
+          // [NEW] Persist Project Fields
+          type: type || prev.type,
+          buildPlates: buildPlates || prev.buildPlates
         };
-        updatedCols.push(newCol);
+        // Optional fields
+        if (finalCategory) obj.category = finalCategory;
+        if (tags) obj.tags = tags;
+        if (images) obj.images = images;
+        if (!obj.created) obj.created = now;
+
+        return obj;
+      };
+
+      if (idx !== -1) {
+        // UPDATE Existing
+        updatedCols[idx] = buildObject(updatedCols[idx]);
+      } else {
+        // CREATE New
+        updatedCols.push(buildObject({}));
       }
 
       return updatedCols;
@@ -532,6 +546,140 @@ app.post('/api/collections', async (req, res) => {
     console.error('/api/collections error:', e);
     const status = e.message === 'Collection not found' ? 404 : 500;
     res.status(status).json({ success: false, error: e.message || 'Server error' });
+  }
+});
+
+// [FIXED] --- Build Plate Management (Queue-Based & Safe) ---
+
+// 1. Create a new Build Plate
+app.post('/api/collections/:id/build-plates', async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+
+  if (!id || !name) return res.status(400).json({ success: false, error: "Missing ID or Name" });
+
+  try {
+    const updateTask = (currentCols) => {
+      const idx = currentCols.findIndex(c => c.id === id);
+      if (idx === -1) throw new Error("Collection not found");
+
+      // Clone collection to modify
+      const updatedCol = { ...currentCols[idx] };
+      
+      // Initialize array if missing
+      if (!updatedCol.buildPlates) updatedCol.buildPlates = [];
+
+      const newPlate = {
+        id: `bp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        name: name.trim(),
+        modelIds: [],
+        status: 'draft',
+        lastModified: new Date().toISOString()
+      };
+
+      // Ensure type is project
+      if (!updatedCol.type) updatedCol.type = 'project';
+
+      updatedCol.buildPlates.push(newPlate);
+      updatedCol.lastModified = new Date().toISOString();
+
+      // Update the list
+      const newCols = [...currentCols];
+      newCols[idx] = updatedCol;
+      return newCols;
+    };
+
+    // Run via Queue
+    await collectionQueue.add(updateTask);
+
+    // Fetch updated state to return
+    const freshCols = loadCollections();
+    const col = freshCols.find(c => c.id === id);
+    const newPlate = col.buildPlates[col.buildPlates.length - 1];
+
+    res.json({ success: true, buildPlate: newPlate, collection: col });
+  } catch (e) {
+    console.error("Add Plate Error:", e);
+    const status = e.message === "Collection not found" ? 404 : 500;
+    res.status(status).json({ success: false, error: e.message });
+  }
+});
+
+// 2. Update a Build Plate
+app.put('/api/collections/:id/build-plates/:plateId', async (req, res) => {
+  const { id, plateId } = req.params;
+  const updates = req.body;
+
+  try {
+    const updateTask = (currentCols) => {
+      const idx = currentCols.findIndex(c => c.id === id);
+      if (idx === -1) throw new Error("Collection not found");
+
+      const updatedCol = { ...currentCols[idx] };
+      if (!updatedCol.buildPlates) updatedCol.buildPlates = [];
+
+      const plateIndex = updatedCol.buildPlates.findIndex(bp => bp.id === plateId);
+      if (plateIndex === -1) throw new Error("Plate not found");
+
+      // Merge updates
+      const currentPlate = updatedCol.buildPlates[plateIndex];
+      updatedCol.buildPlates[plateIndex] = {
+        ...currentPlate,
+        ...updates,
+        id: plateId, // Protect ID
+        lastModified: new Date().toISOString()
+      };
+
+      updatedCol.lastModified = new Date().toISOString();
+      
+      const newCols = [...currentCols];
+      newCols[idx] = updatedCol;
+      return newCols;
+    };
+
+    await collectionQueue.add(updateTask);
+
+    const freshCols = loadCollections();
+    const col = freshCols.find(c => c.id === id);
+    const updatedPlate = col.buildPlates.find(bp => bp.id === plateId);
+
+    res.json({ success: true, buildPlate: updatedPlate });
+  } catch (e) {
+    const status = (e.message === "Collection not found" || e.message === "Plate not found") ? 404 : 500;
+    res.status(status).json({ success: false, error: e.message });
+  }
+});
+
+// 3. Delete a Build Plate
+app.delete('/api/collections/:id/build-plates/:plateId', async (req, res) => {
+  const { id, plateId } = req.params;
+
+  try {
+    const deleteTask = (currentCols) => {
+      const idx = currentCols.findIndex(c => c.id === id);
+      if (idx === -1) throw new Error("Collection not found");
+
+      const updatedCol = { ...currentCols[idx] };
+      
+      if (!updatedCol.buildPlates) throw new Error("No plates found");
+
+      const originalLen = updatedCol.buildPlates.length;
+      updatedCol.buildPlates = updatedCol.buildPlates.filter(bp => bp.id !== plateId);
+
+      if (updatedCol.buildPlates.length === originalLen) throw new Error("Plate not found");
+
+      updatedCol.lastModified = new Date().toISOString();
+
+      const newCols = [...currentCols];
+      newCols[idx] = updatedCol;
+      return newCols;
+    };
+
+    await collectionQueue.add(deleteTask);
+    res.json({ success: true });
+  } catch (e) {
+    const status = (e.message === "Collection not found" || e.message === "Plate not found") ? 404 : 500;
+    res.status(status).json({ success: false, error: e.message });
   }
 });
 
@@ -788,89 +936,66 @@ app.post('/api/collections/generate-covers', async (req, res) => {
   }
 });
 
-const COLLECTION_IMAGES_DIR = path.join(DATA_DIR, 'images', 'collections');
-if (!fs.existsSync(COLLECTION_IMAGES_DIR)) fs.mkdirSync(COLLECTION_IMAGES_DIR, { recursive: true });
 
-// [NEW] Endpoint: Upload Image for Collection
-app.post('/api/collections/:id/images', upload.single('image'), async (req, res) => {
-  const collectionId = req.params.id;
-  const file = req.file;
-
-  if (!file) return res.status(400).json({ success: false, error: "No image file provided" });
-  if (!collectionId) return res.status(400).json({ success: false, error: "No collection ID" });
-
-  try {
-    // 1. Load Collections
-    const collectionsFile = path.join(DATA_DIR, 'collections.json');
-    if (!fs.existsSync(collectionsFile)) return res.status(404).json({ success: false, error: "Collections DB not found" });
-    
-    const collectionsData = JSON.parse(fs.readFileSync(collectionsFile, 'utf8'));
-    let collections = collectionsData.collections || [];
-    
-    // 2. Find Collection
-    const colIndex = collections.findIndex(c => c.id === collectionId);
-    if (colIndex === -1) {
-        // Clean up uploaded file if collection invalid
-        fs.unlinkSync(file.path);
-        return res.status(404).json({ success: false, error: "Collection not found" });
-    }
-
-    // 3. Move File to Permanent Location
-    // We store it as: data/images/collections/<col_id>/<timestamp>_<filename>
-    const targetDir = path.join(COLLECTION_IMAGES_DIR, collectionId);
-    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
-
-    const ext = path.extname(file.originalname);
-    const filename = `${Date.now()}_${Math.round(Math.random()*1000)}${ext}`;
-    const targetPath = path.join(targetDir, filename);
-
-    // Move from temp (multer) to target
-    fs.renameSync(file.path, targetPath);
-
-    // 4. Update Database
-    // Store relative path accessible via web
-    const publicPath = `/api/images/collections/${collectionId}/${filename}`;
-    
-    if (!collections[colIndex].images) collections[colIndex].images = [];
-    collections[colIndex].images.push(publicPath);
-    
-    // Auto-set cover image if none exists
-    if (!collections[colIndex].coverImage) {
-        collections[colIndex].coverImage = publicPath;
-    }
-    
-    collections[colIndex].lastModified = new Date().toISOString();
-
-    // 5. Save
-    collectionsData.collections = collections;
-    fs.writeFileSync(collectionsFile, JSON.stringify(collectionsData, null, 2));
-
-    res.json({ 
-        success: true, 
-        imagePath: publicPath, 
-        collection: collections[colIndex] 
-    });
-
-  } catch (e) {
-    console.error("Collection image upload failed:", e);
-    if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path); // cleanup
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
 
 // [NEW] Serve Collection Images
 app.get('/api/images/collections/:colId/:filename', (req, res) => {
-    const { colId, filename } = req.params;
-    // Security: sanitize params to prevent traversal
-    const safeColId = colId.replace(/[^a-zA-Z0-9_\-]/g, '');
-    const safeFilename = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '');
+  const { colId, filename } = req.params;
+  // Security: sanitize params to prevent traversal
+  const safeColId = colId.replace(/[^a-zA-Z0-9_\-]/g, '');
+  const safeFilename = filename.replace(/[^a-zA-Z0-9_\-\.]/g, '');
+
+  const filePath = path.join(COLLECTION_IMAGES_DIR, safeColId, safeFilename);
+  if (fs.existsSync(filePath)) {
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('Not found');
+  }
+});
+
+// [NEW] Delete Collection Image
+app.delete('/api/collections/:id/images/:filename', async (req, res) => {
+  const { id, filename } = req.params;
+
+  try {
+    const collectionsFile = path.join(DATA_DIR, 'collections.json');
+    const data = JSON.parse(fs.readFileSync(collectionsFile, 'utf8'));
+    let collections = Array.isArray(data) ? data : (data.collections || []);
     
-    const filePath = path.join(COLLECTION_IMAGES_DIR, safeColId, safeFilename);
+    const idx = collections.findIndex(c => c.id === id);
+    if (idx === -1) return res.status(404).json({ success: false, error: "Collection not found" });
+
+    // 1. Remove file from disk
+    const filePath = path.join(COLLECTION_IMAGES_DIR, id, filename);
     if (fs.existsSync(filePath)) {
-        res.sendFile(filePath);
-    } else {
-        res.status(404).send('Not found');
+      fs.unlinkSync(filePath);
     }
+
+    // 2. Update DB
+    const relativePath = `/api/images/collections/${id}/${filename}`;
+    if (collections[idx].images) {
+      collections[idx].images = collections[idx].images.filter(img => img !== relativePath);
+    }
+    
+    // Unset cover image if it was this one
+    if (collections[idx].coverImage === relativePath) {
+      collections[idx].coverImage = collections[idx].images[0] || null;
+    }
+
+    collections[idx].lastModified = new Date().toISOString();
+
+    // Save
+    if (Array.isArray(data)) {
+        fs.writeFileSync(collectionsFile, JSON.stringify(collections, null, 2));
+    } else {
+        data.collections = collections;
+        fs.writeFileSync(collectionsFile, JSON.stringify(data, null, 2));
+    }
+
+    res.json({ success: true, collection: collections[idx] });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // --- API: Secure File Download (Fixes Bulk/Zip Issues) ---
@@ -1824,13 +1949,13 @@ app.post('/api/save-config', (req, res) => {
     }
 
     // During tests, prefer writing to a per-worker config to avoid clobbering the real config.json
-    let configPath = (function() {
+    let configPath = (function () {
       try {
         const vitestWorkerId = process.env.VITEST_WORKER_ID;
         if (vitestWorkerId) return path.join(dataDir, `config.vitest-${vitestWorkerId}.json`);
         const jestWorkerId = process.env.JEST_WORKER_ID;
         if (jestWorkerId) return path.join(dataDir, `config.jest-${jestWorkerId}.json`);
-      } catch {}
+      } catch { }
       return path.join(dataDir, 'config.json');
     })();
     // Ensure lastModified is updated on server-side save
@@ -1863,7 +1988,7 @@ app.get('/api/load-config', (req, res) => {
           if (fs.existsSync(workerPath)) configPath = workerPath;
         }
       }
-    } catch {}
+    } catch { }
     if (!configPath) configPath = path.join(dataDir, 'config.json');
     if (!fs.existsSync(configPath)) {
       return res.status(404).json({ success: false, error: 'No server-side config found' });
@@ -2658,6 +2783,75 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
   }
 });
 
+if (!fs.existsSync(COLLECTION_IMAGES_DIR)) fs.mkdirSync(COLLECTION_IMAGES_DIR, { recursive: true });
+
+// [NEW] Endpoint: Upload Image for Collection
+app.post('/api/collections/:id/images', upload.single('image'), async (req, res) => {
+  const collectionId = req.params.id;
+  const file = req.file;
+
+  if (!file) return res.status(400).json({ success: false, error: "No image file provided" });
+  if (!collectionId) return res.status(400).json({ success: false, error: "No collection ID" });
+
+  try {
+    // 1. Load Collections
+    const collectionsFile = path.join(DATA_DIR, 'collections.json');
+    if (!fs.existsSync(collectionsFile)) return res.status(404).json({ success: false, error: "Collections DB not found" });
+
+    const collectionsData = JSON.parse(fs.readFileSync(collectionsFile, 'utf8'));
+    let collections = collectionsData.collections || [];
+
+    // 2. Find Collection
+    const colIndex = collections.findIndex(c => c.id === collectionId);
+    if (colIndex === -1) {
+      // Clean up uploaded file if collection invalid
+      fs.unlinkSync(file.path);
+      return res.status(404).json({ success: false, error: "Collection not found" });
+    }
+
+    // 3. Move File to Permanent Location
+    // We store it as: data/images/collections/<col_id>/<timestamp>_<filename>
+    const targetDir = path.join(COLLECTION_IMAGES_DIR, collectionId);
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+    const ext = path.extname(file.originalname);
+    const filename = `${Date.now()}_${Math.round(Math.random() * 1000)}${ext}`;
+    const targetPath = path.join(targetDir, filename);
+
+    // Move from temp (multer) to target
+    fs.renameSync(file.path, targetPath);
+
+    // 4. Update Database
+    // Store relative path accessible via web
+    const publicPath = `/api/images/collections/${collectionId}/${filename}`;
+
+    if (!collections[colIndex].images) collections[colIndex].images = [];
+    collections[colIndex].images.push(publicPath);
+
+    // Auto-set cover image if none exists
+    if (!collections[colIndex].coverImage) {
+      collections[colIndex].coverImage = publicPath;
+    }
+
+    collections[colIndex].lastModified = new Date().toISOString();
+
+    // 5. Save
+    collectionsData.collections = collections;
+    fs.writeFileSync(collectionsFile, JSON.stringify(collectionsData, null, 2));
+
+    res.json({
+      success: true,
+      imagePath: publicPath,
+      collection: collections[colIndex]
+    });
+
+  } catch (e) {
+    console.error("Collection image upload failed:", e);
+    if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path); // cleanup
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // API endpoint to parse G-code files and extract metadata
 app.post('/api/parse-gcode', upload.single('file'), async (req, res) => {
   try {
@@ -2967,7 +3161,7 @@ app.post('/api/create-model-folder', express.json(), (req, res) => {
 // --- API: Get all -munchie.json files and their hashes ---
 app.get('/api/munchie-files', (req, res) => {
   const modelsDir = getAbsoluteModelsPath();
-  try { console.log('[debug] /api/munchie-files scanning modelsDir=', modelsDir); } catch (e) {}
+  try { console.log('[debug] /api/munchie-files scanning modelsDir=', modelsDir); } catch (e) { }
   let result = [];
 
   function scanDirectory(dir) {
@@ -2988,7 +3182,7 @@ app.get('/api/munchie-files', (req, res) => {
               hash: json.hash,
               modelUrl: '/models/' + relativePath.replace(/\\/g, '/')
             };
-            try { console.log('[debug] /api/munchie-files item', { fileName: item.fileName, hash: item.hash, modelUrl: item.modelUrl }); } catch (e) {}
+            try { console.log('[debug] /api/munchie-files item', { fileName: item.fileName, hash: item.hash, modelUrl: item.modelUrl }); } catch (e) { }
             result.push(item);
           } catch (e) {
             // skip unreadable or invalid files
@@ -3003,7 +3197,7 @@ app.get('/api/munchie-files', (req, res) => {
 
   try {
     scanDirectory(modelsDir);
-    try { console.log('[debug] /api/munchie-files found', Array.isArray(result) ? result.length : 0, 'items'); } catch (e) {}
+    try { console.log('[debug] /api/munchie-files found', Array.isArray(result) ? result.length : 0, 'items'); } catch (e) { }
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: 'Failed to read models directory' });
@@ -3015,7 +3209,7 @@ app.post('/api/hash-check', async (req, res) => {
   try {
     const { fileType = "3mf" } = req.body; // "3mf" or "stl" only
     const modelsDir = getAbsoluteModelsPath();
-    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) {}
+    try { console.log('[debug] /api/hash-check fileType=', fileType, 'modelsDir=', modelsDir); } catch (e) { }
     const { computeMD5 } = require('./dist-backend/utils/threeMFToJson');
     let result = [];
     let seenHashes = new Set();
@@ -3032,7 +3226,7 @@ app.post('/api/hash-check', async (req, res) => {
         entries = fs.readdirSync(dir, { withFileTypes: true });
       } catch (err) {
         console.warn(`[Scanner] ⚠️ SKIPPING FOLDER (Access Denied): ${dir}`);
-        return; 
+        return;
       }
 
       console.log(`[Scanner] 📂 Scanning: ${dir} (${entries.length} items)`);
@@ -3042,7 +3236,7 @@ app.post('/api/hash-check', async (req, res) => {
 
         // 2. Safety: Skip hidden system folders that often crash scanners
         if (entry.name.startsWith('.') || entry.name === 'System Volume Information' || entry.name === '$RECYCLE.BIN') {
-            continue; 
+          continue;
         }
 
         if (entry.isDirectory()) {
@@ -3105,7 +3299,7 @@ app.post('/api/hash-check', async (req, res) => {
     }
 
     // Process all found models
-    try { console.log('[debug] /api/hash-check base entries count=', Object.keys(cleanedModelMap).length); } catch (e) {}
+    try { console.log('[debug] /api/hash-check base entries count=', Object.keys(cleanedModelMap).length); } catch (e) { }
     for (const base in cleanedModelMap) {
       const entry = cleanedModelMap[base];
       const threeMFPath = entry.threeMF ? path.join(modelsDir, entry.threeMF) : null;
@@ -3206,7 +3400,7 @@ app.get('/api/load-model', async (req, res) => {
     const { filePath, id } = req.query;
     // Prefer id-based lookup when provided (more robust)
     const modelsDir = path.resolve(getModelsDirectory());
-    try { console.log('[debug] /api/load-model modelsDir=', modelsDir, 'id=', id); } catch (e) {}
+    try { console.log('[debug] /api/load-model modelsDir=', modelsDir, 'id=', id); } catch (e) { }
 
     // If `id` provided, try scanning for a munchie.json with matching id
     if (id && typeof id === 'string' && id.trim().length > 0) {
@@ -3224,9 +3418,9 @@ app.get('/api/load-model', async (req, res) => {
               const raw = fs.readFileSync(full, 'utf8');
               if (!raw || raw.trim().length === 0) continue;
               const parsed = JSON.parse(raw);
-              try { console.log('[debug] /api/load-model inspecting', full, 'parsed.id=', parsed && parsed.id, 'parsed.name=', parsed && parsed.name); } catch (e) {}
+              try { console.log('[debug] /api/load-model inspecting', full, 'parsed.id=', parsed && parsed.id, 'parsed.name=', parsed && parsed.name); } catch (e) { }
               if (parsed && (parsed.id === id || parsed.name === id)) {
-                try { console.log('[debug] /api/load-model matched id at', full); } catch (e) {}
+                try { console.log('[debug] /api/load-model matched id at', full); } catch (e) { }
                 return full;
               }
             } catch (e) {
@@ -3244,7 +3438,7 @@ app.get('/api/load-model', async (req, res) => {
           const parsed = JSON.parse(content);
           return res.json(parsed);
         }
-        try { console.log('[debug] /api/load-model no match found for id', id); } catch (e) {}
+        try { console.log('[debug] /api/load-model no match found for id', id); } catch (e) { }
         // If search completed without finding a match, return 404 to indicate not found
         return res.status(404).json({ success: false, error: 'Model not found for id' });
       } catch (e) {
@@ -4243,14 +4437,14 @@ app.get('/api/printer/status', async (req, res) => {
     try {
       const cleanUrl = url.replace(/\/$/, '');
       const target = type === 'moonraker' ? `${cleanUrl}/printer/info` : `${cleanUrl}/api/version`;
-      
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
       const headers = apiKey ? { 'X-Api-Key': apiKey } : {};
-      
+
       const resp = await fetch(target, { headers, signal: controller.signal });
       clearTimeout(timeout);
-      
+
       if (resp.ok) return res.json({ status: 'connected' });
       return res.json({ status: 'error', message: `HTTP ${resp.status}: ${resp.statusText}` });
     } catch (e) {
@@ -4260,15 +4454,15 @@ app.get('/api/printer/status', async (req, res) => {
 
   // CASE 2: Return list of all configured printers (for Hub & Drawer)
   const config = ConfigManager.loadConfig();
-  
+
   // Combine legacy 'printer' object and new 'printers' array
   const legacy = config.integrations?.printer;
   const list = config.integrations?.printers || [];
-  
+
   // If user has a legacy printer set but no array, treat it as Printer 1
   let allPrinters = [...list];
   if (legacy && legacy.url && allPrinters.length === 0) {
-      allPrinters.push(legacy);
+    allPrinters.push(legacy);
   }
 
   // Filter valid configs
@@ -4277,7 +4471,7 @@ app.get('/api/printer/status', async (req, res) => {
     .filter(p => p.url); // Must have URL
 
   if (validPrinters.length === 0) {
-      return res.json({ status: 'disabled', printers: [] });
+    return res.json({ status: 'disabled', printers: [] });
   }
 
   // Check status of ALL printers in parallel
@@ -4285,26 +4479,26 @@ app.get('/api/printer/status', async (req, res) => {
     try {
       const cleanUrl = p.url.replace(/\/$/, '');
       const target = p.type === 'moonraker' ? `${cleanUrl}/printer/info` : `${cleanUrl}/api/version`;
-      
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2000); // Fast 2s timeout per printer
       const headers = p.apiKey ? { 'X-Api-Key': p.apiKey } : {};
-      
+
       const resp = await fetch(target, { headers, signal: controller.signal });
       clearTimeout(timeout);
-      
-      return { 
-        index: p.index, 
-        name: p.name || `Printer ${p.index + 1}`, 
+
+      return {
+        index: p.index,
+        name: p.name || `Printer ${p.index + 1}`,
         type: p.type,
-        status: resp.ok ? 'connected' : 'error' 
+        status: resp.ok ? 'connected' : 'error'
       };
     } catch (e) {
-      return { 
-        index: p.index, 
-        name: p.name || `Printer ${p.index + 1}`, 
+      return {
+        index: p.index,
+        name: p.name || `Printer ${p.index + 1}`,
         type: p.type,
-        status: 'offline' 
+        status: 'offline'
       };
     }
   }));
@@ -4315,10 +4509,10 @@ app.get('/api/printer/status', async (req, res) => {
 app.post('/api/printer/print', async (req, res) => {
   const { filePath, printerIndex } = req.body; // Expect printerIndex (0, 1, 2...)
   const config = ConfigManager.loadConfig();
-  
+
   // Get the specific printer config
   const printerList = config.integrations?.printers || (config.integrations?.printer ? [config.integrations.printer] : []);
-  
+
   // Default to index 0 if not provided (legacy fallback), but prefer explicit index
   const targetIndex = (typeof printerIndex === 'number') ? printerIndex : 0;
   const p = printerList[targetIndex];
@@ -4376,16 +4570,16 @@ app.get('/api/printer/job-status', async (req, res) => {
   const config = ConfigManager.loadConfig();
   // Support both legacy single printer and new array
   const printerList = config.integrations?.printers || (config.integrations?.printer ? [config.integrations.printer] : []);
-  
+
   if (printerList.length === 0) return res.json({ printers: [] });
 
   // Helper to fetch status for one printer
   const checkPrinter = async (p, index) => {
     if (!p || !p.url) return null;
-    
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000); // Short 2s timeout per printer
-    
+
     try {
       const cleanUrl = p.url.replace(/\/$/, '');
       let status = 'idle';
@@ -4401,15 +4595,15 @@ app.get('/api/printer/job-status', async (req, res) => {
         const data = await resp.json();
         const stats = data.result?.status?.print_stats || {};
         const display = data.result?.status?.display_status || {};
-        
+
         const kState = stats.state || 'standby';
         if (kState === 'printing') status = 'printing';
         else if (kState === 'paused') status = 'paused';
         else if (kState === 'error') status = 'error';
-        
+
         progress = (display.progress || 0) * 100;
         filename = stats.filename || '';
-      } 
+      }
       else {
         // OctoPrint
         const headers = p.apiKey ? { 'X-Api-Key': p.apiKey } : {};
@@ -4418,11 +4612,11 @@ app.get('/api/printer/job-status', async (req, res) => {
         if (!resp.ok) throw new Error('Unreachable');
         const data = await resp.json();
         const state = (data.state || '').toLowerCase();
-        
+
         if (state.includes('printing')) status = 'printing';
         else if (state.includes('paused')) status = 'paused';
         else if (state.includes('error') || state.includes('offline')) status = 'error';
-        
+
         progress = data.progress?.completion || 0;
         timeLeft = data.progress?.printTimeLeft || null;
         filename = data.job?.file?.name || '';

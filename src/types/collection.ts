@@ -1,24 +1,31 @@
+export interface BuildPlate {
+  id: string;
+  name: string; // e.g. "Extruder Parts (Black)"
+  modelIds: string[]; // IDs of models assigned to this plate
+  status: 'draft' | 'sliced' | 'printed';
+  lastModified?: string;
+}
+
 export interface Collection {
   id: string;
   name: string;
   description?: string;
-  modelIds: string[];
+  modelIds: string[]; // The "Master List" of all models in this project
   childCollectionIds?: string[];
   parentId?: string | null;
+  
+  // Visuals
   coverModelId?: string;
   coverImage?: string;
+  images?: string[]; // Gallery images
+  
+  // Metadata
   category?: string;
   tags?: string[];
-  images?: string[];
   created?: string;
   lastModified?: string;
-  type?: 'standard' | 'project'; // Differentiate normal folders vs Projects
-  buildPlates?: BuildPlate[]; // The new feature
-}
 
-export interface BuildPlate {
-  id: string;
-  name: string; // e.g. "Extruder (Black)"
-  modelIds: string[]; // List of IDs in this specific plate
-  status?: 'planned' | 'sliced' | 'printed'; // Track status per plate!
+  // [NEW] Project Features
+  type?: 'standard' | 'project';
+  buildPlates?: BuildPlate[];
 }

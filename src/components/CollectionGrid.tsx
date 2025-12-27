@@ -5,7 +5,7 @@ import type { Collection } from '../types/collection';
 import { ModelCard } from './ModelCard';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
-import { ArrowLeft, ChevronRight, FileCheck, Folder, CloudDownload, Clock, Weight, HardDrive, FolderPlus, Upload } from 'lucide-react';
+import { ArrowLeft, ChevronRight, FileCheck, Folder, CloudDownload, Clock, Weight, HardDrive, FolderPlus, Upload, Box } from 'lucide-react';
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
 import { ImageWithFallback } from "./ImageWithFallback";
@@ -20,6 +20,15 @@ import { useLayoutSettings } from "./LayoutSettingsContext";
 import { LayoutControls } from "./LayoutControls";
 import { downloadMultipleModels } from "../utils/downloadUtils";
 import { CollectionEditorDialog } from './CollectionEditorDialog';
+import { ProjectView } from './ProjectView';
+import { toast } from 'sonner';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "./ui/carousel";
 
 interface CollectionGridProps {
   name: string;
@@ -168,7 +177,24 @@ export default function CollectionGrid({
     await downloadMultipleModels(targets);
   };
 
+// [PASTE THE INTERCEPT HERE]
+  // If this collection is a PROJECT, show the Project View instead of the Grid
+  if (activeCollection && activeCollection.type === 'project') {
+    return (
+      <ProjectView 
+        collection={activeCollection}
+        models={models} 
+        onModelClick={onModelClick}
+        onBack={onBack}
+        onUpdateCollection={() => {
+            onCollectionChanged?.(); 
+        }}
+      />
+    );
+  }
+  
   return (
+    
     <div className="h-full flex flex-col">
       <div className="p-4 lg:p-6 border-b bg-card shadow-sm shrink-0 flex flex-wrap items-center justify-between gap-4">
         {/* Left Side: Back + Title + Layout Controls */}
@@ -241,10 +267,89 @@ export default function CollectionGrid({
               Thingiverse Import
             </Button>
           )}
+          {/* [UPDATED] Create Project Copy Button */}
+          {!isSelectionMode && activeCollection && activeCollection.type !== 'project' && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 border-dashed border-primary/50 text-primary hover:bg-primary/10"
+              onClick={async () => {
+                if(!confirm(`Create a Project based on "${activeCollection.name}"?\n\nThis will create a NEW project copy and leave the original collection untouched.`)) return;
+                
+                try {
+                    // 1. Prepare the Clone
+                    const projectCopy = {
+                        ...activeCollection,
+                        id: "", // Clear ID to force creation of NEW entry
+                        name: `${activeCollection.name} (Project)`, // Rename to avoid confusion
+                        type: 'project', // Set type
+                        buildPlates: [], // Init empty plates
+                        created: new Date().toISOString(),
+                        lastModified: new Date().toISOString()
+                    };
+
+                    // 2. Send to Server
+                    const res = await fetch(`/api/collections`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(projectCopy)
+                    });
+                    
+                    const data = await res.json();
+                    if(data.success) {
+                        toast.success("Project created successfully!");
+                        onCollectionChanged?.(); // Refresh list
+                        // Optional: Automatically switch to the new project? 
+                        // For now, staying on current view is safer.
+                    } else {
+                        throw new Error(data.error);
+                    }
+                } catch(e: any) { 
+                    toast.error("Creation failed: " + e.message); 
+                }
+              }}
+            >
+              <Box className="h-4 w-4" />
+              Create Project from this
+            </Button>
+          )}
         </div>
       </div>
       <ScrollArea className="flex-1 min-h-0">
+       
+        {/* [NEW] Collection Banner Carousel */}
+        {activeCollection && activeCollection.images && activeCollection.images.length > 0 && (
+           <div className="w-full bg-muted/10 border-b mb-4">
+              <div className="container max-w-4xl mx-auto py-6">
+                 <Carousel className="w-full">
+                    <CarouselContent>
+                       {activeCollection.images.map((img, index) => (
+                          <CarouselItem key={index} className="basis-1/2 md:basis-1/3 lg:basis-1/4">
+                             <div className="p-1">
+                                <div className="overflow-hidden rounded-lg aspect-video shadow-md border bg-background">
+                                   <img 
+                                      src={img} 
+                                      alt={`Gallery ${index}`} 
+                                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-500" 
+                                   />
+                                </div>
+                             </div>
+                          </CarouselItem>
+                       ))}
+                    </CarouselContent>
+                    {activeCollection.images.length > 2 && (
+                       <>
+                         <CarouselPrevious className="left-2" />
+                         <CarouselNext className="right-2" />
+                       </>
+                    )}
+                 </Carousel>
+              </div>
+           </div>
+        )}
+
         <div className="p-4 lg:p-6 pb-8 lg:pb-12 space-y-6">
+          {/* ... Existing Breadcrumbs ... */}
 
           {/* Breadcrumbs */}
           {breadcrumbs.length > 1 && (
@@ -510,14 +615,29 @@ export default function CollectionGrid({
             onCollectionChanged?.();
             onDeselectAll?.();
             if (isSelectionMode) onToggleSelectionMode?.();
-            setIsEditorOpen(false);
+            
+            // [CHANGE] Do NOT close dialog here yet, let the dialog handle it
+            // setIsEditorOpen(false); 
+            
+            return result.collection; // Return the new collection object
           } catch (e) {
             console.error(e);
-            throw e; // Dialog handles error toast
+            throw e; 
           }
         }}
-        onDelete={async () => { }}
-      />
+        onDelete={async (id) => { // [FIX] Added 'id' argument here
+          try {
+            const res = await fetch(`/api/collections/${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
+            onCollectionChanged?.();
+            onDeselectAll?.();
+          } catch (e) {
+            console.error(e);
+            toast.error("Failed to delete collection");
+          }
+        }}
+    />
     </div>
   );
 }
