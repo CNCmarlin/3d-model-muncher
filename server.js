@@ -4149,10 +4149,11 @@ app.post('/api/printer/config', (req, res) => {
   res.json({ success: true });
 });
 
+// [FIXED] Smart Printer Status - Supports Multi-Printer Array
 app.get('/api/printer/status', async (req, res) => {
   const { type, url, apiKey } = req.query;
 
-  // CASE 1: Test specific credentials (from Settings)
+  // CASE 1: Test specific credentials (from Settings "Test" button)
   if (url) {
     try {
       const cleanUrl = url.replace(/\/$/, '');
@@ -4165,32 +4166,48 @@ app.get('/api/printer/status', async (req, res) => {
       const resp = await fetch(target, { headers, signal: controller.signal });
       clearTimeout(timeout);
       
-      return resp.ok ? res.json({ status: 'connected' }) : res.json({ status: 'error', message: resp.statusText });
+      if (resp.ok) return res.json({ status: 'connected' });
+      return res.json({ status: 'error', message: `HTTP ${resp.status}: ${resp.statusText}` });
     } catch (e) {
       return res.json({ status: 'error', message: e.message });
     }
   }
 
-  // CASE 2: Return list of all configured printers (for Drawer)
+  // CASE 2: Return list of all configured printers (for Hub & Drawer)
   const config = ConfigManager.loadConfig();
-  const printers = config.integrations?.printers || (config.integrations?.printer ? [config.integrations.printer] : []);
   
-  // Filter out empty slots
-  const validPrinters = printers.map((p, index) => ({ ...p, index })).filter(p => p.url);
+  // Combine legacy 'printer' object and new 'printers' array
+  const legacy = config.integrations?.printer;
+  const list = config.integrations?.printers || [];
+  
+  // If user has a legacy printer set but no array, treat it as Printer 1
+  let allPrinters = [...list];
+  if (legacy && legacy.url && allPrinters.length === 0) {
+      allPrinters.push(legacy);
+  }
 
-  if (validPrinters.length === 0) return res.json({ status: 'disabled', printers: [] });
+  // Filter valid configs
+  const validPrinters = allPrinters
+    .map((p, index) => ({ ...p, index }))
+    .filter(p => p.url); // Must have URL
 
-  // Quick ping for all of them to see which are online
+  if (validPrinters.length === 0) {
+      return res.json({ status: 'disabled', printers: [] });
+  }
+
+  // Check status of ALL printers in parallel
   const results = await Promise.all(validPrinters.map(async (p) => {
     try {
       const cleanUrl = p.url.replace(/\/$/, '');
       const target = p.type === 'moonraker' ? `${cleanUrl}/printer/info` : `${cleanUrl}/api/version`;
+      
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2000); // Fast 2s timeout
+      const timeout = setTimeout(() => controller.abort(), 2000); // Fast 2s timeout per printer
       const headers = p.apiKey ? { 'X-Api-Key': p.apiKey } : {};
       
       const resp = await fetch(target, { headers, signal: controller.signal });
       clearTimeout(timeout);
+      
       return { 
         index: p.index, 
         name: p.name || `Printer ${p.index + 1}`, 
@@ -4198,7 +4215,12 @@ app.get('/api/printer/status', async (req, res) => {
         status: resp.ok ? 'connected' : 'error' 
       };
     } catch (e) {
-      return { index: p.index, name: p.name || `Printer ${p.index + 1}`, status: 'offline' };
+      return { 
+        index: p.index, 
+        name: p.name || `Printer ${p.index + 1}`, 
+        type: p.type,
+        status: 'offline' 
+      };
     }
   }));
 

@@ -418,10 +418,24 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
             <div className="space-y-2">
               <Label>Printer URL</Label>
               <Input
-                placeholder="http://192.168.1.100"
+                placeholder="http://192.168.1.100:7125"
                 value={currentPrinterConfig.url || ''}
                 onChange={(e) => handlePrinterUpdate('url', e.target.value)}
               />
+            </div>
+
+            {/* [INSERT] Printer Name Field */}
+            <div className="space-y-2">
+              <Label>Printer Name</Label>
+              <Input
+                placeholder={`My Printer ${activePrinterIndex + 1}`}
+                value={currentPrinterConfig.name || ''}
+                onChange={(e) => handlePrinterUpdate('name', e.target.value)}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                <strong>Tip:</strong> Set this to match the "Printer Name" in your Slicer. 
+                Muncher uses this to auto-detect print settings from G-code files.
+              </p>
             </div>
 
             {currentPrinterConfig.type === 'octoprint' && (

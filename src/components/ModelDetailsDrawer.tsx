@@ -26,7 +26,8 @@ import {
   Clock, Weight, HardDrive, Layers, Droplet, Diameter, Edit3, Save, X, FileText, Tag,
   Box, Images, ChevronLeft, ChevronRight, Maximize2, StickyNote, ExternalLink, Globe, DollarSign,
   Store, CheckCircle, Ban, User, RefreshCw, Plus, List, MinusCircle, Upload, ChevronDown, ChevronUp,
-  Codesandbox, Trash2, Loader2, Printer
+  Codesandbox, Trash2, Loader2, Printer,
+  AlertCircle
 } from "lucide-react"; import TagsInput from "./TagsInput";
 import { Download } from "lucide-react";
 import { toast } from 'sonner';
@@ -97,6 +98,14 @@ export function ModelDetailsDrawer({
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
+  // [INSERT NEW STATE]
+  interface PrinterStatus {
+    index: number;
+    name: string;
+    type: string;
+    status: string;
+  }
+
   // G-code upload state
   const gcodeInputRef = useRef<HTMLInputElement>(null);
   const [isGcodeExpanded, setIsGcodeExpanded] = useState(false);
@@ -149,6 +158,7 @@ export function ModelDetailsDrawer({
       fetch('/api/printer/status')
         .then(r => r.json())
         .then(d => {
+          // Check if we have a valid list of printers
           if (d.printers && Array.isArray(d.printers)) {
             setAvailablePrinters(d.printers);
           } else {
@@ -160,6 +170,7 @@ export function ModelDetailsDrawer({
   }, [isOpen]);
 
   const handleSendToPrinter = async (printerIndex: number) => {
+    // Requires a G-code file path
     if (!currentModel || !currentModel.gcodeData?.gcodeFilePath) return;
 
     setIsSending(true);
@@ -169,13 +180,13 @@ export function ModelDetailsDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filePath: currentModel.gcodeData.gcodeFilePath,
-          printerIndex: printerIndex // Send the selected index
+          printerIndex: printerIndex // Send specific index
         })
       });
       const data = await res.json();
       if (data.success) {
         toast.success(data.message || "Sent to Printer!");
-        setIsPrintDialogOpen(false); // Close modal on success
+        setIsPrintDialogOpen(false); // Close dialog
       }
       else toast.error("Failed: " + data.error);
     } catch (e) {
@@ -3934,43 +3945,77 @@ export function ModelDetailsDrawer({
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* 3. Printer Selection Dialog (SIBLING, not child) */}
+        {/* [UPDATED] Printer Selection Dialog with Safety Check */}
         <Dialog open={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Select Printer</DialogTitle>
               <DialogDescription>
-                Choose which printer to send <strong>{currentModel.gcodeData?.gcodeFilePath?.split('/').pop()}</strong> to.
+                Choose a destination for <strong>{currentModel.gcodeData?.gcodeFilePath?.split('/').pop()}</strong>.
               </DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-3 py-4">
-              {availablePrinters.map((p) => (
-                <Button
-                  key={p.index}
-                  variant="outline"
-                  className="justify-between h-auto py-3 px-4"
-                  disabled={p.status !== 'connected' || isSending}
-                  onClick={() => handleSendToPrinter(p.index)}
-                >
-                  <div className="flex items-center gap-3">
-                    <Printer className={`h-5 w-5 ${p.status === 'connected' ? 'text-primary' : 'text-muted-foreground'}`} />
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{p.name}</span>
-                      <span className="text-xs text-muted-foreground capitalize">{p.type}</span>
+              {availablePrinters.map((p) => {
+                // 1. Get Slicer Name vs Target Name
+                const slicedPrinter = currentModel.gcodeData?.printSettings?.printer || '';
+                const targetPrinter = p.name || '';
+                
+                // 2. Check for Mismatch (Case-insensitive)
+                const hasMetadata = slicedPrinter.length > 0;
+                const isMismatch = hasMetadata && targetPrinter.length > 0 && 
+                  slicedPrinter.toLowerCase().trim() !== targetPrinter.toLowerCase().trim();
+
+                return (
+                  <Button
+                    key={p.index}
+                    variant="outline"
+                    className={`justify-between h-auto py-3 px-4 ${isMismatch ? 'border-yellow-500/50 bg-yellow-50/10 hover:bg-yellow-100/20' : ''}`}
+                    disabled={p.status !== 'connected' || isSending}
+                    onClick={() => {
+                      if (isMismatch) {
+                        // Optional: Add a browser confirm for extra safety
+                        if (!confirm(`⚠️ SAFETY WARNING ⚠️\n\nThis file was sliced for "${slicedPrinter}", but you are sending it to "${targetPrinter}".\n\nThis could damage your printer.\n\nAre you sure?`)) {
+                          return;
+                        }
+                      }
+                      handleSendToPrinter(p.index);
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      {isMismatch ? (
+                         <div className="text-yellow-600 dark:text-yellow-500 animate-pulse">
+                           <AlertCircle className="w-5 h-5" />
+                         </div>
+                      ) : (
+                         <Printer className={`h-5 w-5 ${p.status === 'connected' ? 'text-primary' : 'text-muted-foreground'}`} />
+                      )}
+                      
+                      <div className="flex flex-col items-start text-left">
+                        <span className="font-medium">{p.name}</span>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                           <span className="capitalize">{p.type}</span>
+                           {isMismatch && (
+                             <span className="text-yellow-600 dark:text-yellow-500 font-bold">
+                               (Sliced for: {slicedPrinter})
+                             </span>
+                           )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  {p.status === 'connected' ? (
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full dark:bg-green-900/30 dark:text-green-400">
-                      Online
-                    </span>
-                  ) : (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full dark:bg-red-900/30 dark:text-red-400">
-                      Offline
-                    </span>
-                  )}
-                </Button>
-              ))}
+
+                    {p.status === 'connected' ? (
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full dark:bg-green-900/30 dark:text-green-400">
+                        Online
+                      </span>
+                    ) : (
+                      <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full dark:bg-red-900/30 dark:text-red-400">
+                        Offline
+                      </span>
+                    )}
+                  </Button>
+                );
+              })}
             </div>
           </DialogContent>
         </Dialog>
