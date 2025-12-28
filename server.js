@@ -18,15 +18,14 @@ let activeThumbnailJob = null; // Stores the AbortController for cancellation
 
 const collectionQueue = new CollectionQueue(loadCollections, saveCollections);
 
-// 1. Define Global Data Directory
+// 1. Define Global
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-
-// 2. Define Collection Images Directory
 const COLLECTION_IMAGES_DIR = path.join(DATA_DIR, 'images', 'collections');
-if (!fs.existsSync(COLLECTION_IMAGES_DIR)) fs.mkdirSync(COLLECTION_IMAGES_DIR, { recursive: true });
-
-// 3. Define Uploads Directory (optional, but good for consistency)
+const COLLECTION_DOCS_DIR = path.join(DATA_DIR, 'documents', 'collections');
 const UPLOADS_DIR = path.join(getAbsoluteModelsPath(), 'uploads');
+if (!fs.existsSync(COLLECTION_DOCS_DIR)) fs.mkdirSync(COLLECTION_DOCS_DIR, { recursive: true });
+if (!fs.existsSync(COLLECTION_IMAGES_DIR)) fs.mkdirSync(COLLECTION_IMAGES_DIR, { recursive: true });
+if (!fs.existsSync(COLLECTION_DOCS_DIR)) fs.mkdirSync(COLLECTION_DOCS_DIR, { recursive: true });
 
 // Startup diagnostic: show which GenAI env vars are present (sanitized)
 safeLog('GenAI env presence:', {
@@ -152,7 +151,9 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES } // configurable via env MAX_UPLOAD_BYTES
 });
-
+app.use('/api/images', express.static(path.join(DATA_DIR, 'images')));
+// [NEW] Serve Documents
+app.use('/api/documents', express.static(path.join(DATA_DIR, 'documents')));
 app.use(cors());
 app.use(express.json({ limit: '100mb' })); // Increased limit for large model payloads
 
@@ -536,7 +537,26 @@ app.post('/api/collections', async (req, res) => {
 
     // Fetch result
     const freshCols = loadCollections();
-    const savedItem = freshCols.find(c => c.id === finalId);
+    let savedItem = freshCols.find(c => c.id === finalId);
+
+    // [FIX] SAFETY NET: If disk read fails (race condition), manually construct the object.
+    // This ensures the frontend ALWAYS gets an ID to perform the image uploads.
+    if (!savedItem) {
+        console.log(`[Collection] Race condition detected for ${finalId}. Returning memory object.`);
+        savedItem = {
+            id: finalId,
+            name,
+            description,
+            modelIds: modelIds || [],
+            category: finalCategory || category,
+            parentId: (parentId === 'root' ? null : parentId),
+            coverModelId,
+            type,
+            buildPlates: buildPlates || [],
+            created: new Date().toISOString(),
+            lastModified: new Date().toISOString()
+        };
+    }
 
     setTimeout(() => { try { reconcileHiddenFlags(); } catch { } }, 10);
 
@@ -2790,27 +2810,14 @@ app.post('/api/collections/:id/images', upload.single('image'), async (req, res)
   const collectionId = req.params.id;
   const file = req.file;
 
+  console.log(`[Upload] Request received for collection: ${collectionId}`);
+
   if (!file) return res.status(400).json({ success: false, error: "No image file provided" });
   if (!collectionId) return res.status(400).json({ success: false, error: "No collection ID" });
 
   try {
-    // 1. Load Collections
-    const collectionsFile = path.join(DATA_DIR, 'collections.json');
-    if (!fs.existsSync(collectionsFile)) return res.status(404).json({ success: false, error: "Collections DB not found" });
-
-    const collectionsData = JSON.parse(fs.readFileSync(collectionsFile, 'utf8'));
-    let collections = collectionsData.collections || [];
-
-    // 2. Find Collection
-    const colIndex = collections.findIndex(c => c.id === collectionId);
-    if (colIndex === -1) {
-      // Clean up uploaded file if collection invalid
-      fs.unlinkSync(file.path);
-      return res.status(404).json({ success: false, error: "Collection not found" });
-    }
-
-    // 3. Move File to Permanent Location
-    // We store it as: data/images/collections/<col_id>/<timestamp>_<filename>
+    // 1. Write Image to Disk (IO operation)
+    // We do this *before* the queue to keep the queue fast.
     const targetDir = path.join(COLLECTION_IMAGES_DIR, collectionId);
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
@@ -2818,38 +2825,156 @@ app.post('/api/collections/:id/images', upload.single('image'), async (req, res)
     const filename = `${Date.now()}_${Math.round(Math.random() * 1000)}${ext}`;
     const targetPath = path.join(targetDir, filename);
 
-    // Move from temp (multer) to target
-    fs.renameSync(file.path, targetPath);
-
-    // 4. Update Database
-    // Store relative path accessible via web
+    console.log(`[Upload] Writing file buffer to: ${targetPath}`);
+    fs.writeFileSync(targetPath, file.buffer);
+    
     const publicPath = `/api/images/collections/${collectionId}/${filename}`;
 
-    if (!collections[colIndex].images) collections[colIndex].images = [];
-    collections[colIndex].images.push(publicPath);
+    // 2. Update Database via Queue (Fixes Race Condition)
+    // This ensures we wait for any pending "Create Collection" tasks to finish first.
+    const updateTask = (currentCols) => {
+      const idx = currentCols.findIndex(c => c.id === collectionId);
+      if (idx === -1) throw new Error("Collection not found");
 
-    // Auto-set cover image if none exists
-    if (!collections[colIndex].coverImage) {
-      collections[colIndex].coverImage = publicPath;
-    }
+      const updated = { ...currentCols[idx] };
+      if (!updated.images) updated.images = [];
+      
+      // Add new image
+      updated.images.push(publicPath);
 
-    collections[colIndex].lastModified = new Date().toISOString();
+      // Auto-set cover if missing
+      if (!updated.coverImage) {
+        updated.coverImage = publicPath;
+      }
+      updated.lastModified = new Date().toISOString();
 
-    // 5. Save
-    collectionsData.collections = collections;
-    fs.writeFileSync(collectionsFile, JSON.stringify(collectionsData, null, 2));
+      const newCols = [...currentCols];
+      newCols[idx] = updated;
+      return newCols;
+    };
+
+    console.log(`[Upload] Queuing DB update for: ${collectionId}`);
+    await collectionQueue.add(updateTask);
+
+    // 3. Fetch latest state to return
+    const freshCols = loadCollections();
+    const col = freshCols.find(c => c.id === collectionId);
+
+    console.log(`[Upload] Success! Image added to ${col?.name || collectionId}`);
 
     res.json({
       success: true,
       imagePath: publicPath,
-      collection: collections[colIndex]
+      collection: col
     });
 
   } catch (e) {
-    console.error("Collection image upload failed:", e);
-    if (file && fs.existsSync(file.path)) fs.unlinkSync(file.path); // cleanup
+    console.error("[Upload] Error:", e.message);
+    const status = e.message === "Collection not found" ? 404 : 500;
+    res.status(status).json({ success: false, error: e.message });
+  }
+});
+
+// [NEW] Endpoint: Upload Document for Collection (PDF, TXT, etc.)
+app.post('/api/collections/:id/documents', upload.single('file'), async (req, res) => {
+  const collectionId = req.params.id;
+  const file = req.file;
+
+  console.log(`[Docs] Request received for collection: ${collectionId}`);
+
+  if (!file) return res.status(400).json({ success: false, error: "No file provided" });
+  if (!collectionId) return res.status(400).json({ success: false, error: "No collection ID" });
+
+  try {
+    // 1. Write File to Disk (IO operation)
+    const targetDir = path.join(COLLECTION_DOCS_DIR, collectionId);
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+    // Sanitize filename but keep extension
+    const ext = path.extname(file.originalname);
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const filename = `${Date.now()}_${safeName}`;
+    const targetPath = path.join(targetDir, filename);
+
+    console.log(`[Docs] Writing file buffer to: ${targetPath}`);
+    fs.writeFileSync(targetPath, file.buffer);
+    
+    // Public URL: /api/documents/collections/<id>/<filename>
+    const publicPath = `/api/documents/collections/${collectionId}/${filename}`;
+
+    // 2. Update Database via Queue
+    const updateTask = (currentCols) => {
+      const idx = currentCols.findIndex(c => c.id === collectionId);
+      if (idx === -1) {
+          console.warn(`[Docs] Collection ${collectionId} not found in DB.`);
+          throw new Error("Collection not found");
+      }
+
+      const updated = { ...currentCols[idx] };
+      if (!updated.documents) updated.documents = [];
+      
+      updated.documents.push(publicPath);
+      updated.lastModified = new Date().toISOString();
+
+      const newCols = [...currentCols];
+      newCols[idx] = updated;
+      return newCols;
+    };
+
+    await collectionQueue.add(updateTask);
+
+    // 3. Fetch Result
+    const freshCols = loadCollections();
+    const col = freshCols.find(c => c.id === collectionId);
+
+    console.log(`[Docs] Success! Document added to ${col?.name}`);
+
+    res.json({
+      success: true,
+      filePath: publicPath,
+      collection: col
+    });
+
+  } catch (e) {
+    console.error("[Docs] Error:", e.message);
     res.status(500).json({ success: false, error: e.message });
   }
+});
+
+// [NEW] Endpoint: Delete Document
+app.delete('/api/collections/:id/documents/:filename', async (req, res) => {
+    const { id, filename } = req.params;
+    try {
+        // 1. Remove from DB via Queue
+        const updateTask = (currentCols) => {
+            const idx = currentCols.findIndex(c => c.id === id);
+            if (idx === -1) return currentCols; // Should we throw?
+
+            const updated = { ...currentCols[idx] };
+            const targetPath = `/api/documents/collections/${id}/${filename}`;
+            
+            if (updated.documents) {
+                updated.documents = updated.documents.filter(d => !d.includes(filename));
+            }
+            updated.lastModified = new Date().toISOString();
+            
+            const newCols = [...currentCols];
+            newCols[idx] = updated;
+            return newCols;
+        };
+        
+        await collectionQueue.add(updateTask);
+
+        // 2. Remove from Disk
+        const filePath = path.join(COLLECTION_DOCS_DIR, id, filename);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 // API endpoint to parse G-code files and extract metadata

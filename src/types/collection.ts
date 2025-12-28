@@ -18,6 +18,7 @@ export interface Collection {
   coverModelId?: string;
   coverImage?: string;
   images?: string[]; // Gallery images
+  documents?: string[];
   
   // Metadata
   category?: string;

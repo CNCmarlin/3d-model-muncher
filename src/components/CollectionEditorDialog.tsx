@@ -255,29 +255,36 @@ export function CollectionEditorDialog({
   const handleMassUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files = Array.from(e.target.files);
+    console.log("[Dialog] Uploading files:", files.length);
 
     // CASE A: Edit Mode (Loop Upload)
     if (localCollection.id) {
       setIsLoading(true);
-      let successCount = 0;
+      const newImagePaths: string[] = [];
 
-      // We will optimistically update the UI after all uploads finish to avoid flicker
       for (const file of files) {
         const formData = new FormData();
         formData.append('image', file);
         try {
           const res = await fetch(`/api/collections/${localCollection.id}/images`, { method: 'POST', body: formData });
-          if (res.ok) successCount++;
-        } catch (e) { console.error(e); }
+          const data = await res.json();
+          console.log("[Dialog] Server response:", data);
+
+          if (res.ok && data.success && data.imagePath) {
+             newImagePaths.push(data.imagePath);
+          }
+        } catch (e) { console.error("[Dialog] Error:", e); }
       }
 
-      if (successCount > 0) {
-        toast.success(`Uploaded ${successCount} images`);
-        // Trigger a re-save or re-fetch to get the updated image list from backend
-        // For now, we rely on the parent's onSave/Refresh, but we should probably 
-        // trigger a manual refresh here if possible. 
-        // Workaround: We just force a save of the current state to trigger refresh in parent
-        await onSave(localCollection);
+      if (newImagePaths.length > 0) {
+        toast.success(`Uploaded ${newImagePaths.length} images`);
+        
+        // Update local state
+        const updatedImages = [...(localCollection.images || []), ...newImagePaths];
+        const updatedCol = { ...localCollection, images: updatedImages };
+        
+        setLocalCollection(updatedCol);
+        await onSave(updatedCol); 
       }
 
       setIsLoading(false);
@@ -305,14 +312,27 @@ export function CollectionEditorDialog({
       modelIds: localCollection.modelIds || [],
       tags: localCollection.tags || [],
       parentId: parentId === "root" ? null : parentId,
-      createOnDisk: !isEditing && createOnDisk
+      createOnDisk: !isEditing && createOnDisk,
+      // Clear images if creating new (they are pending), otherwise keep existing
+      images: isEditing ? localCollection.images : [] 
     };
 
     try {
       // 1. Save Collection
       const savedCollection = await onSave(dataToSave as Collection) as unknown as Collection;
 
-      // 2. Handle Pending Cover
+      // 2. Handle Pending Gallery (Sequential)
+      if (pendingGallery.length > 0 && savedCollection?.id) {
+        for (const file of pendingGallery) {
+          const formData = new FormData();
+          formData.append('image', file);
+          try {
+            await fetch(`/api/collections/${savedCollection.id}/images`, { method: 'POST', body: formData });
+          } catch(e) { console.error("Pending upload failed", e); }
+        }
+      }
+
+      // 3. Handle Pending Cover
       if (pendingCover && savedCollection?.id) {
         const formData = new FormData();
         formData.append('image', pendingCover);
@@ -320,10 +340,14 @@ export function CollectionEditorDialog({
           const res = await fetch(`/api/collections/${savedCollection.id}/images`, { method: 'POST', body: formData });
           const data = await res.json();
 
-          // If successful, we need to ensure this is marked as cover
           if (data.success && data.imagePath) {
-            // We need to patch the collection again to set the coverImage
-            const patchData = { ...savedCollection, coverImage: data.imagePath };
+            // Patch the collection to set coverImage
+            // We need to fetch current state first or just patch
+            const patchData = { 
+               ...savedCollection, 
+               coverImage: data.imagePath,
+               // Re-fetch images list if possible, or trust backend
+            };
             await fetch(`/api/collections`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -333,21 +357,48 @@ export function CollectionEditorDialog({
         } catch (e) { console.error("Cover upload failed", e); }
       }
 
-      // 3. Handle Pending Gallery (Loop)
-      if (pendingGallery.length > 0 && savedCollection?.id) {
-        for (const file of pendingGallery) {
-          const formData = new FormData();
-          formData.append('image', file);
-          await fetch(`/api/collections/${savedCollection.id}/images`, { method: 'POST', body: formData }).catch(console.error);
-        }
-      }
-
       toast.success(`${isEditing ? 'Updated' : 'Created'} collection: ${dataToSave.name}`);
       onOpenChange(false);
     } catch (e: any) {
       toast.error(`Save failed: ${e.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // --- 4. DELETE IMAGE HANDLER ---
+  const handleDeleteImage = async (imgUrl: string) => {
+    // Optimistic UI update
+    const updatedImages = (localCollection.images || []).filter(img => img !== imgUrl);
+    
+    // If cover was removed, clear it
+    const updatedCover = localCollection.coverImage === imgUrl ? undefined : localCollection.coverImage;
+    
+    const updatedCollection = { 
+      ...localCollection, 
+      images: updatedImages,
+      coverImage: updatedCover
+    };
+
+    setLocalCollection(updatedCollection);
+
+    // Persist if editing an existing collection
+    if (isEditing && localCollection.id) {
+      try {
+        // 1. Attempt to delete physical file (optional, but good for cleanup)
+        const filename = imgUrl.split('/').pop();
+        if (filename) {
+           await fetch(`/api/collections/${localCollection.id}/images/${filename}`, { method: 'DELETE' });
+        }
+        
+        // 2. Update collection record
+        await onSave(updatedCollection);
+        toast.success("Image removed");
+      } catch (e) {
+        console.error("Error deleting image:", e);
+        // Even if file delete fails, we should save the collection state
+        await onSave(updatedCollection); 
+      }
     }
   };
 
@@ -369,65 +420,95 @@ export function CollectionEditorDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] h-[85vh] flex flex-col p-0 gap-0 bg-background">
-        <div className="p-6 pb-2"> {/* Header Wrapper */}
+        {/* HEADER */}
+        <div className="p-6 pb-2">
           <DialogHeader>
             <DialogTitle>
-              {isEditing ? `Edit: ${collection?.name}` : (initialMode === 'folder' ? 'New Collection Folder' : 'Manual Import')}
+              {isEditing 
+                ? `Edit: ${collection?.name}` 
+                : (initialMode === 'folder' ? 'New Collection Folder' : 'Manual Import')}
             </DialogTitle>
             <DialogDescription>
-              {isEditing ? 'Update details.' : 'Create a new collection.'}
+              {isEditing ? 'Update details, manage visuals, or organize files.' : 'Create a new collection.'}
             </DialogDescription>
           </DialogHeader>
         </div>
 
-        {/* The ScrollArea needs to be flex-1 and min-h-0 to scroll internally */}
+        {/* SCROLLABLE CONTENT */}
         <ScrollArea className="flex-1 min-h-0 w-full px-6">
-          <div className="py-4"> {/* Content Padding Wrapper */}
-            {/* --- NAME & PARENT --- */}
+          <div className="py-4 space-y-6">
+            
+            {/* NAME & PARENT GRID */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input id="name" value={localCollection.name} onChange={handleInputChange} required disabled={isLoading} placeholder="Collection Name" />
+                <Input 
+                  id="name" 
+                  value={localCollection.name} 
+                  onChange={handleInputChange} 
+                  required 
+                  disabled={isLoading} 
+                  placeholder="Collection Name" 
+                />
               </div>
 
               <div className="space-y-2">
                 <Label>Parent</Label>
                 <Select value={parentId} onValueChange={setParentId} disabled={isLoading}>
-                  <SelectTrigger><SelectValue placeholder="Select parent..." /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select parent..." />
+                  </SelectTrigger>
                   <SelectContent className="max-h-[250px]">
                     <SelectItem value="root"><span className="italic">Root</span></SelectItem>
                     {formattedCollections.map((col) => (
-                      <SelectItem key={col.id} value={col.id}>{truncateMiddle(col.displayName, 30)}</SelectItem>
+                      <SelectItem key={col.id} value={col.id}>
+                        {truncateMiddle(col.displayName, 30)}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            {/* --- DISK OPTIONS --- */}
+            {/* CREATE ON DISK TOGGLE (New Folder Mode) */}
             {!isEditing && initialMode === 'folder' && (
               <div className="flex items-start space-x-2 border p-3 rounded-md bg-muted/20">
-                <Checkbox id="create-disk" checked={createOnDisk} onCheckedChange={(c) => setCreateOnDisk(!!c)} />
+                <Checkbox 
+                  id="create-disk" 
+                  checked={createOnDisk} 
+                  onCheckedChange={(c) => setCreateOnDisk(!!c)} 
+                />
                 <div className="grid gap-1.5 leading-none">
                   <Label htmlFor="create-disk" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
-                    <FolderPlus className="h-3.5 w-3.5 text-primary" /> Create Physical Folder
+                    <FolderPlus className="h-3.5 w-3.5 text-primary" /> 
+                    Create Physical Folder
                   </Label>
-                  <p className="text-xs text-muted-foreground">Creates folder at <code>/{parentId !== 'root' ? '.../' : ''}{localCollection.name || '...'}</code></p>
+                  <p className="text-xs text-muted-foreground">
+                    Creates folder at <code>/{parentId !== 'root' ? '.../' : ''}{localCollection.name || '...'}</code>
+                  </p>
                 </div>
               </div>
             )}
 
-            {/* --- MANUAL IMPORT FOLDER SELECT --- */}
+            {/* MANUAL IMPORT SELECTION */}
             {(!isEditing && initialMode === 'manual') && (
               <Accordion type="single" collapsible className="w-full border rounded-md px-2">
                 <AccordionItem value="folder-import" className="border-0">
                   <AccordionTrigger className="hover:no-underline py-2">
-                    <div className="flex items-center gap-2 text-sm font-medium"><Folder className="h-4 w-4 text-blue-500" /> Select from Existing Folder</div>
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <Folder className="h-4 w-4 text-blue-500" /> 
+                      Select from Existing Folder
+                    </div>
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
                       {Object.values(folderTree.children).map(node => (
-                        <FolderTreeItem key={node.fullPath} node={node} level={0} onSelect={handleFolderSelect} />
+                        <FolderTreeItem 
+                          key={node.fullPath} 
+                          node={node} 
+                          level={0} 
+                          onSelect={handleFolderSelect} 
+                        />
                       ))}
                     </div>
                   </AccordionContent>
@@ -435,149 +516,191 @@ export function CollectionEditorDialog({
               </Accordion>
             )}
 
+            {/* DESCRIPTION */}
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea id="description" value={localCollection.description} onChange={handleInputChange} rows={3} className="resize-y" disabled={isLoading} />
+              <Textarea 
+                id="description" 
+                value={localCollection.description} 
+                onChange={handleInputChange} 
+                rows={4} 
+                className="max-h-[150px] min-h-[80px] resize-y" 
+                placeholder="Describe this collection..."
+                disabled={isLoading} 
+              />
             </div>
 
-            {/* --- SECTION 1: COVER PHOTO (SINGLE) --- */}
-            <div className="border rounded-md p-3 space-y-3 bg-muted/10">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="w-4 h-4 text-primary" />
-                <Label className="font-semibold">Cover Photo</Label>
-              </div>
-
-              <div className="flex gap-4 items-start">
-                {/* Preview Box */}
-                <div className="w-24 h-24 bg-muted rounded-md border flex items-center justify-center overflow-hidden shrink-0 relative">
-                  {(pendingCoverPreview || localCollection.coverImage) ? (
-                    <img
-                      src={pendingCoverPreview || localCollection.coverImage || ''}
-                      alt="Cover"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
-                  )}
-                  {/* Remove Cover Button */}
-                  {(localCollection.coverImage || pendingCover) && (
-                    <button
-                      onClick={() => {
-                        setLocalCollection(p => ({ ...p, coverImage: undefined }));
-                        setPendingCover(null);
-                        setPendingCoverPreview(null);
-                        if (isEditing) onSave({ ...localCollection, coverImage: undefined }); // Save removal immediately
-                      }}
-                      className="absolute top-0 right-0 p-1 bg-black/50 text-white hover:bg-destructive"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
+            {/* VISUALS SECTION */}
+            <div className="space-y-4">
+              
+              {/* COVER PHOTO */}
+              <div className="border rounded-md p-3 space-y-3 bg-muted/10">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-primary" />
+                  <Label className="font-semibold">Cover Photo</Label>
                 </div>
 
-                <div className="space-y-2 flex-1">
-                  <p className="text-xs text-muted-foreground">The main image displayed on cards.</p>
-                  <div className="flex gap-2">
-                    <Input id="cover-upload" type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-                    <Button variant="outline" size="sm" onClick={() => document.getElementById('cover-upload')?.click()} disabled={isLoading}>
+                <div className="flex gap-4 items-start">
+                  <div className="w-24 h-24 bg-muted rounded-md border flex items-center justify-center overflow-hidden shrink-0 relative">
+                    {(pendingCoverPreview || localCollection.coverImage) ? (
+                      <img
+                        src={pendingCoverPreview || localCollection.coverImage || ''}
+                        alt="Cover"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
+                    )}
+                    
+                    {(localCollection.coverImage || pendingCover) && (
+                      <button
+                        onClick={() => {
+                          setLocalCollection(p => ({ ...p, coverImage: undefined }));
+                          setPendingCover(null);
+                          setPendingCoverPreview(null);
+                          if (isEditing) onSave({ ...localCollection, coverImage: undefined });
+                        }}
+                        className="absolute top-0 right-0 p-1 bg-black/50 text-white hover:bg-destructive"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 flex-1">
+                    <p className="text-xs text-muted-foreground">
+                      The main image displayed on cards.
+                    </p>
+                    <div className="flex gap-2">
+                      <Input 
+                        id="cover-upload" 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={handleCoverUpload} 
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => document.getElementById('cover-upload')?.click()} 
+                        disabled={isLoading}
+                      >
+                        <Upload className="w-3 h-3 mr-2" />
+                        {localCollection.coverImage || pendingCover ? "Change Cover" : "Upload Cover"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* GALLERY */}
+              <div className="border rounded-md p-3 space-y-3 bg-muted/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Images className="w-4 h-4 text-primary" />
+                    <Label className="font-semibold">Gallery Images</Label>
+                  </div>
+                  <div>
+                    <Input 
+                      id="gallery-upload" 
+                      type="file" 
+                      multiple 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handleMassUpload} 
+                    />
+                    <Button 
+                      size="sm" 
+                      variant="secondary" 
+                      onClick={() => document.getElementById('gallery-upload')?.click()} 
+                      disabled={isLoading}
+                    >
                       <Upload className="w-3 h-3 mr-2" />
-                      {localCollection.coverImage || pendingCover ? "Change Cover" : "Upload Cover"}
+                      Add Photos
                     </Button>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            {/* --- SECTION 2: GALLERY (MASS UPLOAD) --- */}
-            <div className="border rounded-md p-3 space-y-3 bg-muted/10">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Images className="w-4 h-4 text-primary" />
-                  <Label className="font-semibold">Gallery Images</Label>
-                </div>
-                {/* MASS UPLOAD BUTTON */}
-                <div>
-                  <Input id="gallery-upload" type="file" multiple accept="image/*" className="hidden" onChange={handleMassUpload} />
-                  <Button size="sm" variant="secondary" onClick={() => document.getElementById('gallery-upload')?.click()} disabled={isLoading}>
-                    <Upload className="w-3 h-3 mr-2" />
-                    Add Photos
-                  </Button>
-                </div>
-              </div>
-
-              {/* Gallery Grid */}
-              <div className="grid grid-cols-5 gap-2">
-                {/* Existing Images */}
-                {localCollection.images?.map((img, idx) => (
-                  <div key={`exist-${idx}`} className="relative aspect-square rounded overflow-hidden border group bg-background">
-                    <img src={img} className="w-full h-full object-cover" alt="Gallery" />
-                    {/* Overlay Actions */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Set as Cover Action
-                          const updated = { ...localCollection, coverImage: img };
-                          setLocalCollection(updated);
-                          if (isEditing) onSave(updated);
-                          toast.success("Set as cover");
-                        }}
-                        className="p-1.5 bg-background rounded-full hover:bg-primary hover:text-primary-foreground text-foreground"
-                        title="Set as Cover"
-                      >
-                        <Star className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteImage(img)} // <--- FIXED
-                        className="p-1.5 bg-background rounded-full hover:bg-destructive hover:text-destructive-foreground text-foreground"
-                        title="Remove"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                    {/* Active Cover Indicator */}
-                    {localCollection.coverImage === img && (
-                      <div className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[8px] text-center py-0.5">
-                        COVER
+                <div className="grid grid-cols-5 gap-2">
+                  {localCollection.images?.map((img, idx) => (
+                    <div key={`exist-${idx}`} className="relative aspect-square rounded overflow-hidden border group bg-background">
+                      <img src={img} className="w-full h-full object-cover" alt="Gallery" />
+                      
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = { ...localCollection, coverImage: img };
+                            setLocalCollection(updated);
+                            if (isEditing) onSave(updated);
+                            toast.success("Set as cover");
+                          }}
+                          className="p-1.5 bg-background rounded-full hover:bg-primary hover:text-primary-foreground text-foreground"
+                          title="Set as Cover"
+                        >
+                          <Star className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteImage(img)}
+                          className="p-1.5 bg-background rounded-full hover:bg-destructive hover:text-destructive-foreground text-foreground"
+                          title="Remove"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Pending Gallery Previews */}
-                {pendingGalleryPreviews.map((src, idx) => (
-                  <div key={`pend-${idx}`} className="relative aspect-square rounded overflow-hidden border border-dashed border-primary/50 opacity-70 bg-background">
-                    <img src={src} className="w-full h-full object-cover grayscale" alt="Pending" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-[9px] font-bold bg-background/80 px-1 rounded">PENDING</span>
+                      
+                      {localCollection.coverImage === img && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[8px] text-center py-0.5">
+                          COVER
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  ))}
 
-                {/* Empty State */}
-                {(!localCollection.images?.length && !pendingGallery.length) && (
-                  <div className="col-span-5 py-8 text-center text-xs text-muted-foreground border border-dashed rounded bg-background/50">
-                    No gallery images.
-                  </div>
-                )}
+                  {pendingGalleryPreviews.map((src, idx) => (
+                    <div key={`pend-${idx}`} className="relative aspect-square rounded overflow-hidden border border-dashed border-primary/50 opacity-70 bg-background">
+                      <img src={src} className="w-full h-full object-cover grayscale" alt="Pending" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-[9px] font-bold bg-background/80 px-1 rounded">PENDING</span>
+                      </div>
+                    </div>
+                  ))}
+
+                  {(!localCollection.images?.length && !pendingGallery.length) && (
+                    <div className="col-span-5 py-8 text-center text-xs text-muted-foreground border border-dashed rounded bg-background/50">
+                      No gallery images.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
+            {/* CATEGORY */}
             <div className="space-y-2">
               <Label>Category</Label>
-              <Select value={localCollection.category || '--none--'} onValueChange={handleCategoryChange} disabled={isLoading}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+              <Select 
+                value={localCollection.category || '--none--'} 
+                onValueChange={handleCategoryChange} 
+                disabled={isLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="--none--">(Uncategorized)</SelectItem>
-                  {categories.map(c => <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>)}
+                  {categories.map(c => (
+                    <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
+            
           </div>
         </ScrollArea>
 
-        <div className="p-6 pt-2 border-t mt-auto bg-background"> {/* Footer Wrapper */}
+        {/* FOOTER */}
+        <div className="p-6 pt-2 border-t mt-auto bg-background">
           <DialogFooter>
             {isEditing && (
               <Button variant="destructive" onClick={handleDelete} disabled={isLoading}>
@@ -585,7 +708,9 @@ export function CollectionEditorDialog({
               </Button>
             )}
             <div className="flex space-x-2 ml-auto">
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
+                Cancel
+              </Button>
               <Button onClick={handleSave} disabled={isLoading}>
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 {isEditing ? "Save Changes" : "Create"}
