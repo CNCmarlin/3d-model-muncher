@@ -10,7 +10,12 @@ export interface GcodeFilament {
 
 export interface GcodeMetadata {
   printTime?: string;
-  filaments: GcodeFilament[];
+  filaments: {
+    color?: string;  // Hex code or color name
+    type: string;    // e.g. "PLA"
+    length: string;  // e.g. "1200mm"
+    weight: string;  // e.g. "45g"
+  }[];
   totalFilamentWeight?: string;
   gcodeFilePath?: string;
   printSettings?: {
@@ -18,6 +23,7 @@ export interface GcodeMetadata {
     infill?: string;
     nozzle?: string;
     printer?: string;
+    material?: string;
   };
 }
 
@@ -40,7 +46,7 @@ export function normalizeTime(seconds: number): string {
 
 function parseTimeString(raw: string): string {
   if (!raw) return '';
-  return raw.replace(/[=:]/g, '').trim(); 
+  return raw.replace(/[=:]/g, '').trim();
 }
 
 export function estimateWeightFromLength(lengthMm: number, diameter: number = 1.75, density: number = 1.24): number {
@@ -81,18 +87,18 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
   const allLines = gcodeContent.split('\n');
   let linesToScan: string[] = [];
 
-  if (allLines.length > 10500) {
-    linesToScan = [...allLines.slice(0, 500), ...allLines.slice(allLines.length - 10000)];
+  if (allLines.length > 20000) {
+    linesToScan = [...allLines.slice(0, 500), ...allLines.slice(allLines.length - 19500)];
   } else {
     linesToScan = allLines;
   }
-  
+
   const metadata: GcodeMetadata = {
     filaments: [],
     printSettings: {},
     gcodeFilePath: filePath // Store it if provided
   };
-  
+
   let filamentLengths: string[] = [];
   let filamentWeights: string[] = [];
   let filamentTypes: string[] = [];
@@ -107,7 +113,7 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
 
   const patterns = {
     // [FIX] Strict Time Regex to avoid matching "min_layer_time = 30"
-    time: /; (?:total |model )?(?:estimated )?(?:printing |build )time[:=]\s*(.*)/i,
+    time: /; (?:total |model )?(?:estimated )?(?:printing |build )time.*[:=]\s*(.*)/i,
     timeCura: /;TIME:(\d+)/i,
     weight: /; (?:total )?filament (?:used|weight) \[g\]\s*[:=]\s*(.*)/i,
     length: /; (?:total )?filament (?:used|length) \[mm\]\s*[:=]\s*(.*)/i,
@@ -122,14 +128,20 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
 
   for (const line of linesToScan) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith(';')) continue; 
+    if (!trimmed.startsWith(';')) continue;
 
     if (!printTimeRaw) {
       let match = trimmed.match(patterns.time);
-      if (match) { printTimeRaw = parseTimeString(match[1]); }
+      if (match) {
+        printTimeRaw = parseTimeString(match[1]);
+        console.log('[GcodeParser] Found Time:', printTimeRaw);
+      }
       else {
         match = trimmed.match(patterns.timeCura);
-        if (match) printTimeRaw = normalizeTime(parseInt(match[1]));
+        if (match) {
+          printTimeRaw = normalizeTime(parseInt(match[1]));
+          console.log('[GcodeParser] Found timeCura:', printTimeRaw);
+        }
       }
     }
     if (filamentWeights.length === 0) {
@@ -147,16 +159,17 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
     if (filamentTypes.length === 0) {
       const match = trimmed.match(patterns.type);
       // [FIX] Log found material types for debugging
-      if (match) { 
-        filamentTypes = parseCSV(match[1]); 
-        console.log('[GcodeParser] Found Materials:', filamentTypes); 
+      if (match) {
+        filamentTypes = parseCSV(match[1]);
+        console.log('[GcodeParser] Found Materials:', filamentTypes);
       }
     }
     if (filamentColors.length === 0) {
       const match = trimmed.match(patterns.color);
-      if (match) 
+      if (match) {
         filamentColors = parseCSV(match[1]);
-      console.log('[GcodeParser] Found Material Colors:', filamentColors); 
+        console.log('[GcodeParser] Found Material Colors:', filamentColors);
+      }
 
     }
     if (!layerHeight) { const match = trimmed.match(patterns.layerHeight); if (match) layerHeight = match[1]; }
@@ -171,15 +184,15 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
   for (let i = 0; i < count; i++) {
     const type = filamentTypes[i] || 'Unknown';
     const color = filamentColors[i] || '#888888';
-    let weight = filamentWeights[i]; 
-    let length = filamentLengths[i]; 
+    let weight = filamentWeights[i];
+    let length = filamentLengths[i];
 
     if (!weight && length) {
       const lenVal = parseFloat(length);
-      const wVal = estimateWeightFromLength(lenVal, 1.75, 1.24); 
+      const wVal = estimateWeightFromLength(lenVal, 1.75, 1.24);
       weight = wVal.toFixed(2);
     }
-    
+
     if (weight || length) {
       metadata.filaments.push({
         type, color,
@@ -190,10 +203,12 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
     }
   }
 
+  const primaryMaterial = filamentTypes.length > 0 ? filamentTypes[0] : undefined;
+
   if (printTimeRaw) {
     metadata.printTime = printTimeRaw;
   }
-  
+
   if (totalWeightCalc > 0) {
     metadata.totalFilamentWeight = `${totalWeightCalc.toFixed(2)}g`;
   } else if (filamentWeights.length > 0) {
@@ -204,21 +219,34 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
     layerHeight: layerHeight || undefined,
     infill: infill || undefined,
     nozzle: nozzle || undefined,
-    printer: printer || undefined
+    printer: printer || undefined,
+    material: primaryMaterial
   };
-  
-  console.log('[GcodeParser] Final Settings:', JSON.stringify(metadata.printSettings));
 
-  // [FIX] Fallback: If content scan failed, try extracting time from filename (e.g. "Model_8h50m.gcode")
+
+
+  if (filePath) {
+    console.log(`[GcodeParser] Checking filename for time: "${filePath}"`);
+  }
+
+  // [FIX] Fallback: If content scan failed, try extracting time from filename
+  // Logic: Looks for patterns like "2h30m", "45m", "1h", etc.
   if (!metadata.printTime && filePath) {
-    // Matches: 8h50m, 1h30m, 45m
-    const filenameTime = filePath.match(/(\d+h)?(\d+m)/i);
-    if (filenameTime && filenameTime[0]) {
-      metadata.printTime = filenameTime[0];
-      console.log('[GcodeParser] Recovered Time from Filename:', metadata.printTime);
-      console.log('[GcodeParser] Filaments:', JSON.stringify(metadata.filaments));
+    const name = filePath.split('/').pop() || '';
+
+    // Updated Regex: strictly looks for hours/mins/secs groups to avoid matching random numbers
+    // Matches: _2h30m_, (2h30m), or space separated
+    const timeMatch = name.match(/(\d+h)(\d+m)?(\d+s)?|(\d+m)(\d+s)?/i);
+
+    if (timeMatch) {
+      // Join the matched parts (index 0 is the full match)
+      metadata.printTime = timeMatch[0].toLowerCase();
+      console.log('[GcodeParser] ✅ Recovered Time from Filename:', metadata.printTime);
+    } else {
+      console.log('[GcodeParser] ❌ No time pattern found in filename.');
     }
   }
-  
+
+  console.log('[GcodeParser] Final Settings:', JSON.stringify(metadata.printSettings));
   return metadata;
 }

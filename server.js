@@ -1683,7 +1683,9 @@ app.get('/api/models', async (req, res) => {
                   model.filePath = filePath;
 
                   // console.log(`Added STL model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
-                  models.push(model);
+                  if (!model.hidden) {
+                    models.push(model);
+                }
                 } else {
                   serverDebug(`Skipping ${fullPath} - corresponding .stl/.STL file not found`);
                 }
@@ -1708,7 +1710,9 @@ app.get('/api/models', async (req, res) => {
                   model.filePath = filePath;
 
                   // console.log(`Added 3MF model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
-                  models.push(model);
+                  if (!model.hidden) {
+                    models.push(model);
+                }
                 } else {
                   serverDebug(`Skipping ${fullPath} - corresponding .3mf file not found at ${absoluteThreeMfPath}`);
                 }
@@ -2462,49 +2466,54 @@ app.post('/api/import/thingiverse', async (req, res) => {
     const { thingId, targetFolder = 'imported', collectionId, category } = req.body;
 
     if (!thingId) return res.status(400).json({ success: false, error: 'No Thing ID provided' });
+    
     const config = ConfigManager.loadConfig();
     const token = config.integrations?.thingiverse?.token || process.env.THINGIVERSE_TOKEN;
     if (!token) return res.status(500).json({ success: false, error: 'Server missing THINGIVERSE_TOKEN' });
 
-    // Import Utility - Dynamic require allows server to start even if backend isn't built yet
+    // 1. Perform Import
     let ThingiverseImporter;
     try {
       const module = require('./dist-backend/utils/thingiverseImporter');
       ThingiverseImporter = module.ThingiverseImporter;
     } catch (e) {
-      return res.status(500).json({ success: false, error: 'Backend not rebuilt. Run "npm run build:backend"' });
+      return res.status(500).json({ success: false, error: 'Backend utility not found. Rebuild required.' });
     }
 
-    // 1. Perform Import
     const importer = new ThingiverseImporter(token);
     const modelData = await importer.importThing(thingId, getAbsoluteModelsPath(), targetFolder);
 
-    // 2. Apply User Category (if selected)
-    if (category && category !== 'Uncategorized') {
-      modelData.category = category;
+    // 2. Wrap Post-Processing in Collection Queue
+    await collectionQueue.add(async (currentCols) => {
       const modelsRoot = getAbsoluteModelsPath();
-      // Construct full path to the json file we just wrote
-      const jsonPath = modelData.filePath.endsWith('.json')
-        ? modelData.filePath
-        : modelData.filePath.replace(/\.(3mf|stl)$/i, modelData.filePath.toLowerCase().endsWith('.stl') ? '-stl-munchie.json' : '-munchie.json');
+      
+      // Update Category if selected
+      if (category && category !== 'Uncategorized') {
+        modelData.category = category;
+        const jsonPath = modelData.filePath.endsWith('.json')
+          ? modelData.filePath
+          : modelData.filePath.replace(/\.(3mf|stl)$/i, modelData.filePath.toLowerCase().endsWith('.stl') ? '-stl-munchie.json' : '-munchie.json');
 
-      const fullJsonPath = path.join(modelsRoot, jsonPath);
-      fs.writeFileSync(fullJsonPath, JSON.stringify(modelData, null, 2));
-    }
+        const fullJsonPath = path.join(modelsRoot, jsonPath);
+        fs.writeFileSync(fullJsonPath, JSON.stringify(modelData, null, 2));
+      }
 
-    // 3. Add to Collection (if selected)
-    if (collectionId) {
-      const cols = loadCollections();
-      const colIndex = cols.findIndex(c => c.id === collectionId);
-      if (colIndex !== -1) {
-        const col = cols[colIndex];
-        if (!col.modelIds.includes(modelData.id)) {
-          col.modelIds.push(modelData.id);
-          if (!col.coverModelId) col.coverModelId = modelData.id;
-          saveCollections(cols);
+      // Add to Collection if selected
+      if (collectionId) {
+        const colIndex = currentCols.findIndex(c => c.id === collectionId);
+        if (colIndex !== -1) {
+          const col = currentCols[colIndex];
+          if (!col.modelIds.includes(modelData.id)) {
+            col.modelIds.push(modelData.id);
+            if (!col.coverModelId) col.coverModelId = modelData.id;
+            col.lastModified = new Date().toISOString();
+          }
         }
       }
-    }
+      
+      // 3. Trigger Library Rescan to populate modelIds for the UI
+      return collectionScanner.scanDirectory(modelsRoot, modelsRoot, { strategy: 'strict' });
+    });
 
     res.json({ success: true, model: modelData });
   } catch (e) {
@@ -2975,6 +2984,67 @@ app.delete('/api/collections/:id/documents/:filename', async (req, res) => {
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
+});
+
+app.post('/api/models/upload-document', upload.single('file'), async (req, res) => {
+  const { modelId, filePath } = req.body;
+  const file = req.file;
+
+  try {
+      const modelsBaseDir = path.resolve(__dirname, 'models');
+      const relativeFolder = path.dirname(filePath);
+      const absoluteTargetDir = path.join(modelsBaseDir, relativeFolder);
+
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const filename = `${Date.now()}_${safeName}`;
+      const targetPath = path.join(absoluteTargetDir, filename);
+
+      // 1. Save the file
+      fs.writeFileSync(targetPath, file.buffer);
+
+      // 2. Identify Extension for Post-Processing
+      const ext = path.extname(filename).toLowerCase();
+      
+      // If it's a 3D file, create its "Munchie Identity" using your existing tools
+      if (['.stl', '.3mf', '.obj'].includes(ext)) {
+          const subMunchieName = filename.replace(ext, `${ext === '.stl' ? '-stl' : ''}-munchie.json`);
+          const subMunchiePath = path.join(absoluteTargetDir, subMunchieName);
+
+          if (!fs.existsSync(subMunchiePath)) {
+            const basicMeta = {
+                name: safeName.replace(ext, ''),
+                filePath: path.join(relativeFolder, filename).replace(/\\/g, '/'),
+                dateAdded: new Date().toISOString(),
+                related_files: [],
+                hidden: true,           // <--- ADD THIS: Prevents it appearing in the main grid
+                isRelatedPart: true,    // <--- ADD THIS: Identification for the scanner
+            };
+            fs.writeFileSync(subMunchiePath, JSON.stringify(basicMeta, null, 2));
+            
+            // Call your robust processing tool
+            await postProcessMunchieFile(subMunchiePath);
+        }
+      }
+
+      // 3. Update the Primary Model's Related Files
+      const primaryMunchie = fs.readdirSync(absoluteTargetDir).find(f => f.includes('munchie') && f.endsWith('.json'));
+      if (primaryMunchie) {
+          const mPath = path.join(absoluteTargetDir, primaryMunchie);
+          const data = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+          if (!data.related_files) data.related_files = [];
+          
+          const newRelPath = path.join(relativeFolder, filename).replace(/\\/g, '/');
+          if (!data.related_files.includes(newRelPath)) {
+              data.related_files.push(newRelPath);
+              fs.writeFileSync(mPath, JSON.stringify(data, null, 2));
+              return res.json({ success: true, model: data });
+          }
+      }
+
+      res.json({ success: true });
+  } catch (e) {
+      res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // API endpoint to parse G-code files and extract metadata

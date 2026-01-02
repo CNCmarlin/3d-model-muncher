@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { FilterSidebar } from "./components/FilterSidebar";
 import { ModelGrid } from "./components/ModelGrid";
-import { ModelDetailsDrawer } from "./components/ModelDetailsDrawer";
+import { ModelHubView } from "./components/ModelHubView";
 import { BulkEditDrawer } from "./components/BulkEditDrawer";
 import { DonationDialog } from "./components/DonationDialog";
 import { SettingsPage } from "./components/SettingsPage";
@@ -17,7 +17,7 @@ import { ConfigManager } from "./utils/configManager";
 import * as pkg from '../package.json';
 import { applyFiltersToModels, FilterState } from "./utils/filterUtils";
 import { sortModels, sortCollections, SortKey } from "./utils/sortUtils";
-import { Menu, RefreshCw, Heart, FileCheck, Files, Box, Upload, List } from "lucide-react";
+import { RefreshCw, Heart, FileCheck, Files, Box, Upload, List, Sidebar } from "lucide-react";
 import ModelUploadDialog from "./components/ModelUploadDialog";
 import { Button } from "./components/ui/button";
 import {
@@ -53,7 +53,7 @@ import { SpoolmanProvider } from "./context/SpoolmanContext";
 import { PrinterStatusHub } from "./components/PrinterStatusHub";
 
 // Initial type for view
-type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view';
+type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view' | 'model-hero';
 
 // Helper: Recursively get all model IDs from a collection and its children
 const getRecursiveModelIds = (col: Collection, allCols: Collection[]): Set<string> => {
@@ -71,7 +71,6 @@ function AppContent() {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [models, setModels] = useState<Model[]>([]);
   const [filteredModels, setFilteredModels] = useState<Model[]>([]);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentView, setCurrentView] = useState<ViewType>('models');
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
@@ -295,10 +294,10 @@ function AppContent() {
       return;
     }
     setSelectedModel(model);
-    setIsDrawerOpen(true);
+    setCurrentView('model-hero'); // Switch view instead of just opening drawer
   };
 
-  const handleModelUpdate = (updatedModel: Model) => {
+  const handleModelUpdate = async (updatedModel: Model) => {
     const updatedModels = models.map(model =>
       model.id === updatedModel.id ? updatedModel : model
     );
@@ -309,6 +308,23 @@ function AppContent() {
       model.id === updatedModel.id ? updatedModel : model
     );
     setFilteredModels(updatedFilteredModels);
+    try {
+      const response = await fetch('/api/save-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          
+          ...updatedModel      // Sends the rest of the changes (isPrinted, etc)
+        }),
+
+      });
+  
+      if (!response.ok) throw new Error('Failed to save to server');
+      
+      console.log("Model saved successfully!");
+    } catch (error) {
+      console.error('Failed to persist model change:', error);
+    }
   };
 
   const handleBulkModelsUpdate = (updatedModels: Model[]) => {
@@ -480,7 +496,7 @@ function AppContent() {
 
       if (result.success) {
         toast.success("Model deleted");
-        setIsDrawerOpen(false); // Close the drawer
+        // // Close the drawer
         setSelectedModel(null);
         await handleRefreshModels(); // Refresh grid
       } else {
@@ -578,18 +594,18 @@ function AppContent() {
     let effectiveCollection = activeCollection;
 
     if (filters.search.trim().length > 0 && currentView === 'collection-view') {
-        // Force switch to Global View
-        effectiveView = 'models';
-        effectiveCollection = null;
-        
-        setCurrentView('models');
-        setActiveCollection(null);
-        
-        // Optional: Clear selection to avoid cross-view selection bugs
-        if (isSelectionMode) {
-            setIsSelectionMode(false);
-            setSelectedModelIds([]);
-        }
+      // Force switch to Global View
+      effectiveView = 'models';
+      effectiveCollection = null;
+
+      setCurrentView('models');
+      setActiveCollection(null);
+
+      // Optional: Clear selection to avoid cross-view selection bugs
+      if (isSelectionMode) {
+        setIsSelectionMode(false);
+        setSelectedModelIds([]);
+      }
     }
 
     // Determine base models using the EFFECTIVE view (not just state)
@@ -606,450 +622,468 @@ function AppContent() {
         if (isSelectionMode) setSelectedModelIds([]);
         return;
       }
-    // 1. Check if we have active data filters
-    const hasDataFilters =
-      filters.search.length > 0 ||
-      filters.tags.length > 0 ||
-      filters.category !== 'all' ||
-      filters.printStatus !== 'all' ||
-      filters.license !== 'all' ||
-      (filters.fileType !== 'all' && filters.fileType !== 'collections');
+      // 1. Check if we have active data filters
+      const hasDataFilters =
+        filters.search.length > 0 ||
+        filters.tags.length > 0 ||
+        filters.category !== 'all' ||
+        filters.printStatus !== 'all' ||
+        filters.license !== 'all' ||
+        (filters.fileType !== 'all' && filters.fileType !== 'collections');
 
-    // 2. Check if data filters actually changed from the last state
-    // (We ignore changes to showHidden/showMissingImages/sortBy for this check)
-    const prevSig = JSON.stringify({
-      s: lastFilters.search,
-      t: lastFilters.tags,
-      c: lastFilters.category,
-      p: lastFilters.printStatus,
-      l: lastFilters.license,
-      f: lastFilters.fileType
-    });
+      // 2. Check if data filters actually changed from the last state
+      // (We ignore changes to showHidden/showMissingImages/sortBy for this check)
+      const prevSig = JSON.stringify({
+        s: lastFilters.search,
+        t: lastFilters.tags,
+        c: lastFilters.category,
+        p: lastFilters.printStatus,
+        l: lastFilters.license,
+        f: lastFilters.fileType
+      });
 
-    const newSig = JSON.stringify({
-      s: filters.search,
-      t: filters.tags,
-      c: filters.category,
-      p: filters.printStatus,
-      l: filters.license,
-      f: filters.fileType
-    });
+      const newSig = JSON.stringify({
+        s: filters.search,
+        t: filters.tags,
+        c: filters.category,
+        p: filters.printStatus,
+        l: filters.license,
+        f: filters.fileType
+      });
 
-    if (prevSig !== newSig) {
-      if (hasDataFilters) {
-        filters.showHidden = true; // Auto-show hidden items when searching/filtering
-      } else {
-        filters.showHidden = false; // Auto-hide when clearing filters
+      if (prevSig !== newSig) {
+        if (hasDataFilters) {
+          filters.showHidden = true; // Auto-show hidden items when searching/filtering
+        } else {
+          filters.showHidden = false; // Auto-hide when clearing filters
+        }
       }
     }
-  }
 
-  const filterState: FilterState = {
-    search: filters.search,
-    category: filters.category,
-    printStatus: filters.printStatus,
-    license: filters.license,
-    fileType: filters.fileType,
-    tags: filters.tags,
-    showHidden: filters.showHidden,
-    showMissingImages: filters.showMissingImages,
+    const filterState: FilterState = {
+      search: filters.search,
+      category: filters.category,
+      printStatus: filters.printStatus,
+      license: filters.license,
+      fileType: filters.fileType,
+      tags: filters.tags,
+      showHidden: filters.showHidden,
+      showMissingImages: filters.showMissingImages,
+    };
+
+
+    const filtered = applyFiltersToModels(baseModels, filterState);
+    const sortKey = (filters.sortBy || 'none') as SortKey;
+    const sorted = sortModels(filtered as any[], sortKey);
+    setFilteredModels(sorted);
+    setLastFilters({ ...filters });
+    setSelectionAnchorIndex(null);
+    setLastCategoryFilter(incomingCategory);
+
+    if (isSelectionMode) {
+      const validSelections = selectedModelIds.filter(id =>
+        filtered.some(model => model.id === id)
+      );
+      setSelectedModelIds(validSelections);
+    }
   };
 
+  const handleRefreshModels = async () => {
+    setIsRefreshing(true);
+    try {
+      toast("Reloading model metadata...", { description: "Refreshing from existing JSON files" });
+      const response = await fetch('/api/models');
+      if (!response.ok) throw new Error('Failed to fetch models');
+      const updatedModels = await response.json() as Model[];
 
-  const filtered = applyFiltersToModels(baseModels, filterState);
-  const sortKey = (filters.sortBy || 'none') as SortKey;
-  const sorted = sortModels(filtered as any[], sortKey);
-  setFilteredModels(sorted);
-  setLastFilters({ ...filters });
-  setSelectionAnchorIndex(null);
-  setLastCategoryFilter(incomingCategory);
-
-  if (isSelectionMode) {
-    const validSelections = selectedModelIds.filter(id =>
-      filtered.some(model => model.id === id)
-    );
-    setSelectedModelIds(validSelections);
-  }
-};
-
-const handleRefreshModels = async () => {
-  setIsRefreshing(true);
-  try {
-    toast("Reloading model metadata...", { description: "Refreshing from existing JSON files" });
-    const response = await fetch('/api/models');
-    if (!response.ok) throw new Error('Failed to fetch models');
-    const updatedModels = await response.json() as Model[];
-
-    setModels(updatedModels);
-    if (currentView === 'collection-view' && activeCollection) {
-      const setIds = new Set(activeCollection.modelIds || []);
-      let base = updatedModels.filter(m => setIds.has(m.id));
-      const filtersForCollection = {
-        ...lastFilters,
-        fileType: lastFilters.fileType?.toLowerCase() === 'collections' ? 'all' : lastFilters.fileType,
-      } as any as FilterState;
-      const filtered = applyFiltersToModels(base, filtersForCollection);
-      const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
-      setFilteredModels(sorted);
-    } else {
-      if ((lastFilters.fileType || '').toLowerCase() === 'collections') {
-        setFilteredModels([]);
-      } else {
-        const filtered = applyFiltersToModels(updatedModels, lastFilters as FilterState);
+      setModels(updatedModels);
+      if (currentView === 'collection-view' && activeCollection) {
+        const setIds = new Set(activeCollection.modelIds || []);
+        let base = updatedModels.filter(m => setIds.has(m.id));
+        const filtersForCollection = {
+          ...lastFilters,
+          fileType: lastFilters.fileType?.toLowerCase() === 'collections' ? 'all' : lastFilters.fileType,
+        } as any as FilterState;
+        const filtered = applyFiltersToModels(base, filtersForCollection);
         const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
         setFilteredModels(sorted);
-      }
-    }
-    toast("Models reloaded successfully");
-  } catch (error) {
-    console.error('Failed to refresh models:', error);
-    toast("Failed to reload models");
-  } finally {
-    setIsRefreshing(false);
-  }
-};
-
-const handleCategoriesUpdate = (updatedCategories: Category[]) => {
-  setCategories(updatedCategories);
-  if (appConfig) {
-    const updatedConfig = { ...appConfig, categories: updatedCategories };
-    setAppConfig(updatedConfig);
-    if (updatedConfig.settings.autoSave) {
-      try {
-        ConfigManager.saveConfig(updatedConfig);
-        fetch('/api/save-config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedConfig)
-        }).catch(err => console.warn(err));
-      } catch (error) { console.error(error); }
-    }
-  }
-};
-
-const handleConfigUpdate = (updatedConfig: AppConfig) => {
-  try {
-    ConfigManager.saveConfig(updatedConfig);
-    fetch('/api/save-config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedConfig)
-    }).catch(err => console.warn(err));
-    setAppConfig(updatedConfig);
-    setCategories(updatedConfig.categories);
-  } catch (error) { console.error(error); }
-};
-
-const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-
-const handleSettingsClick = () => {
-  setSettingsInitialTab(undefined);
-  setCurrentView('settings');
-  setIsDrawerOpen(false);
-  setIsSelectionMode(false);
-  setSelectedModelIds([]);
-};
-
-// Upload dialog state
-const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
-const [isImportOpen, setIsImportOpen] = useState(false);
-const [uploadTargetFolder, setUploadTargetFolder] = useState<string | undefined>(undefined);
-const [importTargetCollectionId, setImportTargetCollectionId] = useState<string | undefined>(undefined);
-const [importTargetFolder, setImportTargetFolder] = useState<string | undefined>(undefined);
-
-const handleCollectionUpload = () => {
-  if (activeCollection && activeCollection.id.startsWith('col_')) {
-     try {
-         // Decode "col_Base64..." -> "models/Cars/Porsche"
-         const b64 = activeCollection.id.substring(4);
-         const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-         setUploadTargetFolder(relPath);
-     } catch (e) {
-         console.warn("Could not decode collection path", e);
-         setUploadTargetFolder(undefined);
-     }
-  } else {
-      setUploadTargetFolder(undefined);
-  }
-  setIsUploadDialogOpen(true);
-};
-
-const handleOpenImport = (collectionId?: string) => {
-  setImportTargetCollectionId(collectionId);
-
-  // Smart Folder Inference:
-  // If we are in a collection, check the first file in that collection.
-  // Use its folder as the default for the new import.
-  let inferredFolder: string | undefined = undefined;
-
-  if (collectionId) {
-    const col = collections.find(c => c.id === collectionId);
-    if (col && col.modelIds && col.modelIds.length > 0) {
-      // Find the first model to check its path
-      const firstModelId = col.modelIds[0];
-      const representativeModel = models.find(m => m.id === firstModelId);
-
-      if (representativeModel && representativeModel.filePath) {
-        // Grab the full directory path (everything before the last slash)
-        // e.g. "3d prints/cars/porsche/file.json" -> "3d prints/cars/porsche"
-        const lastSlash = Math.max(
-          representativeModel.filePath.lastIndexOf('/'),
-          representativeModel.filePath.lastIndexOf('\\')
-        );
-
-        if (lastSlash > 0) {
-          inferredFolder = representativeModel.filePath.substring(0, lastSlash);
+      } else {
+        if ((lastFilters.fileType || '').toLowerCase() === 'collections') {
+          setFilteredModels([]);
         } else {
-          // File is likely at root or has no path structure; fallback to 'imported' logic or leave undefined
-          inferredFolder = 'imported';
-        }
-      }
-    }
-  }
-
-  setImportTargetFolder(inferredFolder);
-  setIsImportOpen(true);
-};
-
-const openSettingsOnTab = (tab: string, action?: { type: 'hash-check' | 'generate'; fileType: '3mf' | 'stl' }) => {
-  setSettingsInitialTab(tab);
-  setCurrentView('settings');
-  setIsDrawerOpen(false);
-  setIsSelectionMode(false);
-  setSelectedModelIds([]);
-  if (action) setSettingsAction(action);
-};
-
-const handleBackToModels = () => {
-  setCurrentView('models');
-};
-
-const openCollectionsList = () => {
-  setCurrentView('collections');
-  setIsDrawerOpen(false);
-  setIsSelectionMode(false);
-};
-const openCollection = (col: Collection) => {
-  setActiveCollection(col);
-  setCurrentView('collection-view');
-  setIsDrawerOpen(false);
-  try {
-    const setIds = new Set(col.modelIds || []);
-    const base = models.filter(m => setIds.has(m.id));
-    setFilteredModels(base);
-  } catch { /* ignore */ }
-  setSidebarResetKey(k => k + 1);
-};
-const refreshCollections = async () => {
-  try {
-    const r = await fetch('/api/collections');
-    if (r.ok) {
-      const data = await r.json();
-      if (data && data.success && Array.isArray(data.collections)) {
-        setCollections(data.collections);
-        if (activeCollection) {
-          const updatedActive = data.collections.find((c: any) => c.id === activeCollection.id);
-          if (updatedActive) setActiveCollection(updatedActive);
-        }
-      }
-    }
-    try {
-      const resp = await fetch('/api/models');
-      if (resp.ok) {
-        const updatedModels = await resp.json() as Model[];
-        setModels(updatedModels);
-        if (currentView === 'collection-view' && activeCollection) {
-          const setIds = new Set(activeCollection.modelIds || []);
-          let base = updatedModels.filter(m => setIds.has(m.id));
-          const filtersForCollection = {
-            ...lastFilters,
-            fileType: lastFilters.fileType?.toLowerCase() === 'collections' ? 'all' : lastFilters.fileType,
-            showHidden: true,
-          } as any as FilterState;
-          const filtered = applyFiltersToModels(base, filtersForCollection);
+          const filtered = applyFiltersToModels(updatedModels, lastFilters as FilterState);
           const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
           setFilteredModels(sorted);
-        } else {
-          if ((lastFilters.fileType || '').toLowerCase() === 'collections') {
-            setFilteredModels([]);
+        }
+      }
+      toast("Models reloaded successfully");
+    } catch (error) {
+      console.error('Failed to refresh models:', error);
+      toast("Failed to reload models");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleCategoriesUpdate = (updatedCategories: Category[]) => {
+    setCategories(updatedCategories);
+    if (appConfig) {
+      const updatedConfig = { ...appConfig, categories: updatedCategories };
+      setAppConfig(updatedConfig);
+      if (updatedConfig.settings.autoSave) {
+        try {
+          ConfigManager.saveConfig(updatedConfig);
+          fetch('/api/save-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedConfig)
+          }).catch(err => console.warn(err));
+        } catch (error) { console.error(error); }
+      }
+    }
+  };
+
+  const handleConfigUpdate = (updatedConfig: AppConfig) => {
+    try {
+      ConfigManager.saveConfig(updatedConfig);
+      fetch('/api/save-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedConfig)
+      }).catch(err => console.warn(err));
+      setAppConfig(updatedConfig);
+      setCategories(updatedConfig.categories);
+    } catch (error) { console.error(error); }
+  };
+
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+  const handleSettingsClick = () => {
+    setSettingsInitialTab(undefined);
+    setCurrentView('settings');
+    //setIsDrawerOpen(false);
+    setIsSelectionMode(false);
+    setSelectedModelIds([]);
+  };
+
+  // Upload dialog state
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [uploadTargetFolder, setUploadTargetFolder] = useState<string | undefined>(undefined);
+  const [importTargetCollectionId, setImportTargetCollectionId] = useState<string | undefined>(undefined);
+  const [importTargetFolder, setImportTargetFolder] = useState<string | undefined>(undefined);
+
+  const handleCollectionUpload = () => {
+    if (activeCollection && activeCollection.id.startsWith('col_')) {
+      try {
+        // Decode "col_Base64..." -> "models/Cars/Porsche"
+        const b64 = activeCollection.id.substring(4);
+        const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+        setUploadTargetFolder(relPath);
+      } catch (e) {
+        console.warn("Could not decode collection path", e);
+        setUploadTargetFolder(undefined);
+      }
+    } else {
+      setUploadTargetFolder(undefined);
+    }
+    setIsUploadDialogOpen(true);
+  };
+
+  const handleOpenImport = (collectionId?: string) => {
+    setImportTargetCollectionId(collectionId);
+
+    // Smart Folder Inference:
+    // If we are in a collection, check the first file in that collection.
+    // Use its folder as the default for the new import.
+    let inferredFolder: string | undefined = undefined;
+
+    if (collectionId) {
+      const col = collections.find(c => c.id === collectionId);
+      if (col && col.modelIds && col.modelIds.length > 0) {
+        // Find the first model to check its path
+        const firstModelId = col.modelIds[0];
+        const representativeModel = models.find(m => m.id === firstModelId);
+
+        if (representativeModel && representativeModel.filePath) {
+          // Grab the full directory path (everything before the last slash)
+          // e.g. "3d prints/cars/porsche/file.json" -> "3d prints/cars/porsche"
+          const lastSlash = Math.max(
+            representativeModel.filePath.lastIndexOf('/'),
+            representativeModel.filePath.lastIndexOf('\\')
+          );
+
+          if (lastSlash > 0) {
+            inferredFolder = representativeModel.filePath.substring(0, lastSlash);
           } else {
-            const filtered = applyFiltersToModels(updatedModels, lastFilters as FilterState);
-            const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
-            setFilteredModels(sorted);
+            // File is likely at root or has no path structure; fallback to 'imported' logic or leave undefined
+            inferredFolder = 'imported';
           }
         }
       }
-    } catch (e) { /* ignore */ }
-  } catch (e) { /* ignore */ }
-};
-useEffect(() => {
-  const handler = (ev: Event) => {
-    try {
-      const anyEv: any = ev as any;
-      const col = anyEv?.detail as Collection | undefined;
-      if (col && Array.isArray(col.modelIds)) {
-        setActiveCollection(col);
-        setCurrentView('collection-view');
-      }
-    } catch { /* ignore */ }
-    refreshCollections();
+    }
+
+    setImportTargetFolder(inferredFolder);
+    setIsImportOpen(true);
   };
-  window.addEventListener('collection-created', handler as any);
-  return () => window.removeEventListener('collection-created', handler as any);
-}, []);
 
-useEffect(() => {
-  const handler = () => { refreshCollections(); };
-  window.addEventListener('collection-updated', handler);
-  return () => window.removeEventListener('collection-updated', handler);
-}, [activeCollection, lastFilters, currentView]);
+  const openSettingsOnTab = (tab: string, action?: { type: 'hash-check' | 'generate'; fileType: '3mf' | 'stl' }) => {
+    setSettingsInitialTab(tab);
+    setCurrentView('settings');
+    //setIsDrawerOpen(false);
+    setIsSelectionMode(false);
+    setSelectedModelIds([]);
+    if (action) setSettingsAction(action);
+  };
 
-const handleDonationClick = () => {
-  setIsDonationDialogOpen(true);
-};
+  const handleBackToModels = () => {
+    setCurrentView('models');
+  };
 
-const getViewTitle = () => {
-  switch (currentView) {
-    case 'settings': return 'Settings';
-    case 'demo': return 'UI Demo';
-    case 'collections': return 'Collections';
-    case 'collection-view': return activeCollection ? activeCollection.name : 'Collection';
-    default: return 'Organize & Print';
-  }
-};
+  const openCollectionsList = () => {
+    setCurrentView('collections');
+    //setIsDrawerOpen(false);
+    setIsSelectionMode(false);
+  };
+  const openCollection = (col: Collection) => {
+    setActiveCollection(col);
+    setCurrentView('collection-view');
+    //setIsDrawerOpen(false);
+    try {
+      const setIds = new Set(col.modelIds || []);
+      const base = models.filter(m => setIds.has(m.id));
+      setFilteredModels(base);
+    } catch { /* ignore */ }
+    setSidebarResetKey(k => k + 1);
+  };
+  const refreshCollections = async () => {
+    try {
+      const r = await fetch('/api/collections');
+      if (r.ok) {
+        const data = await r.json();
+        if (data && data.success && Array.isArray(data.collections)) {
+          setCollections(data.collections);
+          if (activeCollection) {
+            const updatedActive = data.collections.find((c: any) => c.id === activeCollection.id);
+            if (updatedActive) setActiveCollection(updatedActive);
+          }
+        }
+      }
+      try {
+        const resp = await fetch('/api/models');
+        if (resp.ok) {
+          const updatedModels = await resp.json() as Model[];
+          setModels(updatedModels);
+          if (currentView === 'collection-view' && activeCollection) {
+            const setIds = new Set(activeCollection.modelIds || []);
+            let base = updatedModels.filter(m => setIds.has(m.id));
+            const filtersForCollection = {
+              ...lastFilters,
+              fileType: lastFilters.fileType?.toLowerCase() === 'collections' ? 'all' : lastFilters.fileType,
+              showHidden: true,
+            } as any as FilterState;
+            const filtered = applyFiltersToModels(base, filtersForCollection);
+            const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
+            setFilteredModels(sorted);
+          } else {
+            if ((lastFilters.fileType || '').toLowerCase() === 'collections') {
+              setFilteredModels([]);
+            } else {
+              const filtered = applyFiltersToModels(updatedModels, lastFilters as FilterState);
+              const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
+              setFilteredModels(sorted);
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    } catch (e) { /* ignore */ }
+  };
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      try {
+        const anyEv: any = ev as any;
+        const col = anyEv?.detail as Collection | undefined;
+        if (col && Array.isArray(col.modelIds)) {
+          setActiveCollection(col);
+          setCurrentView('collection-view');
+        }
+      } catch { /* ignore */ }
+      refreshCollections();
+    };
+    window.addEventListener('collection-created', handler as any);
+    return () => window.removeEventListener('collection-created', handler as any);
+  }, []);
 
-const globalTags = useMemo(() => {
-  const set = new Set<string>();
-  (models || []).forEach(m => (m.tags || []).forEach(t => { if (t) set.add(t); }));
-  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-}, [models]);
+  useEffect(() => {
+    const handler = () => { refreshCollections(); };
+    window.addEventListener('collection-updated', handler);
+    return () => window.removeEventListener('collection-updated', handler);
+  }, [activeCollection, lastFilters, currentView]);
 
-const collectionsForDisplay = useMemo(() => {
-  if (!Array.isArray(collections) || collections.length === 0) {
-    return [] as Collection[];
-  }
+  const handleDonationClick = () => {
+    setIsDonationDialogOpen(true);
+  };
 
-  const filters = lastFilters;
-  const fileType = (filters.fileType || 'all').toLowerCase();
+  const getViewTitle = () => {
+    switch (currentView) {
+      case 'settings': return 'Settings';
+      case 'demo': return 'UI Demo';
+      case 'collections': return 'Collections';
+      case 'collection-view': return activeCollection ? activeCollection.name : 'Collection';
+      default: return 'Organize & Print';
+    }
+  };
 
-  // If filtering for model files specifically, hide collections
-  if (fileType === '3mf' || fileType === 'stl') {
-    return [] as Collection[];
-  }
+  const globalTags = useMemo(() => {
+    const set = new Set<string>();
+    (models || []).forEach(m => (m.tags || []).forEach(t => { if (t) set.add(t); }));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }, [models]);
 
-  let filteredList = collections.slice();
+  const collectionsForDisplay = useMemo(() => {
+    if (!Array.isArray(collections) || collections.length === 0) {
+      return [] as Collection[];
+    }
 
-  // 1. Search Term
-  const searchTerm = (filters.search || '').trim().toLowerCase();
-  if (searchTerm) {
-    filteredList = filteredList.filter(col => {
-      const nameMatch = (col.name || '').toLowerCase().includes(searchTerm);
-      const descriptionMatch = (col.description || '').toLowerCase().includes(searchTerm);
-      const tagsMatch = (col.tags || []).some(tag => tag.toLowerCase().includes(searchTerm));
-      return nameMatch || descriptionMatch || tagsMatch;
-    });
-  }
+    const filters = lastFilters;
+    const fileType = (filters.fileType || 'all').toLowerCase();
 
-  // 2. Category Filter
-  const hasCategoryFilter = filters.category && filters.category !== 'all';
-  if (hasCategoryFilter) {
-    const targetCategory = (filters.category || '').toLowerCase();
-    filteredList = filteredList.filter(col => (col.category || '').toLowerCase() === targetCategory);
-  }
+    // If filtering for model files specifically, hide collections
+    if (fileType === '3mf' || fileType === 'stl') {
+      return [] as Collection[];
+    }
 
-  // 3. Tag Filter
-  const hasTagFilter = Array.isArray(filters.tags) && filters.tags.length > 0;
-  if (hasTagFilter) {
-    const targetTags = filters.tags.map(tag => tag.toLowerCase());
-    filteredList = filteredList.filter(col => {
-      const collectionTags = (col.tags || []).map(tag => tag.toLowerCase());
-      return targetTags.every(tag => collectionTags.includes(tag));
-    });
-  }
+    let filteredList = collections.slice();
 
-  // [NEW LOGIC] Root-Only View
-  // If no search/filters are active, only show Root collections (no parent).
-  // If filters ARE active, show all matching collections (flat list) so deep items are found.
-  const isFiltering = searchTerm !== '' || hasCategoryFilter || hasTagFilter;
+    // 1. Search Term
+    const searchTerm = (filters.search || '').trim().toLowerCase();
+    if (searchTerm) {
+      filteredList = filteredList.filter(col => {
+        const nameMatch = (col.name || '').toLowerCase().includes(searchTerm);
+        const descriptionMatch = (col.description || '').toLowerCase().includes(searchTerm);
+        const tagsMatch = (col.tags || []).some(tag => tag.toLowerCase().includes(searchTerm));
+        return nameMatch || descriptionMatch || tagsMatch;
+      });
+    }
 
-  if (!isFiltering) {
-    filteredList = filteredList.filter(c => !c.parentId);
-  }
+    // 2. Category Filter
+    const hasCategoryFilter = filters.category && filters.category !== 'all';
+    if (hasCategoryFilter) {
+      const targetCategory = (filters.category || '').toLowerCase();
+      filteredList = filteredList.filter(col => (col.category || '').toLowerCase() === targetCategory);
+    }
 
-  return filteredList;
-}, [collections, lastFilters]);
+    // 3. Tag Filter
+    const hasTagFilter = Array.isArray(filters.tags) && filters.tags.length > 0;
+    if (hasTagFilter) {
+      const targetTags = filters.tags.map(tag => tag.toLowerCase());
+      filteredList = filteredList.filter(col => {
+        const collectionTags = (col.tags || []).map(tag => tag.toLowerCase());
+        return targetTags.every(tag => collectionTags.includes(tag));
+      });
+    }
 
-if (!appConfig) {
-  return (
-    <TagsProvider tags={globalTags}>
-      <div className="flex items-center justify-center h-screen bg-background">
-        <div className="text-center space-y-4">
-          <div className="flex items-center justify-center w-16 h-16 bg-gradient-primary rounded-xl shadow-lg mx-auto">
-            <img
-              src="/images/favicon-32x32.png"
-              alt="3D Model Muncher"
-              className="animate-pulse"
-            />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold">Loading 3D Model Muncher</h2>
-            <p className="text-muted-foreground">Initializing configuration...</p>
+    // [NEW LOGIC] Root-Only View
+    // If no search/filters are active, only show Root collections (no parent).
+    // If filters ARE active, show all matching collections (flat list) so deep items are found.
+    const isFiltering = searchTerm !== '' || hasCategoryFilter || hasTagFilter;
+
+    if (!isFiltering) {
+      filteredList = filteredList.filter(c => !c.parentId);
+    }
+
+    return filteredList;
+  }, [collections, lastFilters]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const isLargeScreen = window.innerWidth >= 1280;
+
+      if (!isLargeScreen) {
+        // Below 1280px: We NEVER want the skinny bar. 
+        // It should only be a full-width overlay or completely hidden.
+        setIsSidebarOpen(false);
+      } else {
+        // Above 1280px: Force it to open so it pushes content and shows labels
+        setIsSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial check
+
+    return () => window.removeEventListener('resize', handleResize);
+  }, []); // Remove dependency so it only tracks window size
+
+  if (!appConfig) {
+    return (
+      <TagsProvider tags={globalTags}>
+        <div className="flex items-center justify-center h-screen bg-background">
+          <div className="text-center space-y-4">
+            <div className="flex items-center justify-center w-16 h-16 bg-gradient-primary rounded-xl shadow-lg mx-auto">
+              <img
+                src="/images/favicon-32x32.png"
+                alt="3D Model Muncher"
+                className="animate-pulse"
+              />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Loading 3D Model Muncher</h2>
+              <p className="text-muted-foreground">Initializing configuration...</p>
+            </div>
           </div>
         </div>
-      </div>
-    </TagsProvider>
-  );
-}
+      </TagsProvider>
+    );
+  }
 
-return (
-  <TagsProvider tags={globalTags}>
-    <div className="flex h-screen bg-background">
-      {/* Mobile Overlay - Only when sidebar is open AND not in settings */}
-      {isSidebarOpen && currentView !== 'settings' && (
-        <div
-          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
 
-      {/* Sidebar - Hide when in Settings view */}
-      {currentView !== 'settings' && (
-        <div className={`
-        fixed lg:relative z-30 lg:z-0
-        h-full bg-sidebar border-r border-sidebar-border shadow-xl
-        transform transition-all duration-300 ease-in-out
-        ${isSidebarOpen ? 'w-80 translate-x-0' : 'w-0 lg:w-12 -translate-x-full lg:translate-x-0'}
-        overflow-hidden
-      `}
-          onClick={() => !isSidebarOpen && setIsSidebarOpen(true)}
-        >
-          <FilterSidebar
-            key={sidebarResetKey}
+
+  return (
+    <TagsProvider tags={globalTags}>
+      <div className="flex h-screen bg-background overflow-hidden">
+
+        {/* --- 1. MOBILE/TABLET OVERLAY (< 1280px) --- */}
+        {isSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 xl:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+
+        {/* --- 2. GLOBAL SIDEBAR --- */}
+        <aside className={`
+  /* FIXED on mobile (overlay), RELATIVE on desktop (pushes content) */
+  fixed xl:relative z-50 xl:z-0 h-full bg-sidebar border-r border-sidebar-border shadow-xl
+  transition-all duration-300 ease-in-out flex flex-col
+  
+  /* Logic:
+     - Minimum width is ALWAYS w-12 (skinny bar).
+     - Expanded width is ALWAYS w-80.
+     - We stay 'visible' and 'opacity-100' so the skinny bar is never gone.
+  */
+  ${isSidebarOpen ? 'w-80' : 'w-12'}
+  
+  visible opacity-100 translate-x-0
+`}>
+  <FilterSidebar
+    key={sidebarResetKey}
+    isOpen={isSidebarOpen}
             onFilterChange={handleFilterChange}
             onCategoryChosen={(label) => {
-              const currentViewSafe = currentView as ViewType;
-              if (currentViewSafe === 'settings') {
-                setCurrentView('models');
-              }
+              if (currentView === 'settings') setCurrentView('models');
               setLastCategoryFilter(label || 'all');
             }}
-            isOpen={isSidebarOpen}
             onClose={() => setIsSidebarOpen(false)}
             onSettingsClick={handleSettingsClick}
             categories={categories}
             collections={collections}
             onOpenCollection={openCollection}
-            // [NEW] Provide the navigation handler
             onBackToRoot={() => {
               setActiveCollection(null);
               setCurrentView('models');
-              // Optionally clear selection mode if you want a clean slate
-              setIsSelectionMode(false);
-              setSelectedModelIds([]);
             }}
-            models={(currentView === 'collection-view' && activeCollection)
-              ? collectionBaseModels
-              : models}
+            models={(currentView === 'collection-view' && activeCollection) ? collectionBaseModels : models}
             initialFilters={{
               search: '',
               category: appConfig?.filters?.defaultCategory || 'all',
@@ -1062,53 +1096,50 @@ return (
               sortBy: appConfig?.filters?.defaultSortBy || 'none',
             }}
           />
-        </div>
-      )}
+        </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 p-4 border-b bg-card shadow-sm shrink-0">
-          <div className="flex items-center gap-3">
-            {/* Hide sidebar toggle menu if in settings view */}
-            {currentView !== 'settings' && (
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden pl-12 xl:pl-0">
+          {/* HEADER */}
+          <header className="flex items-center justify-between gap-2 p-4 border-b bg-card shadow-sm shrink-0">
+            <div className="flex items-center gap-3">
+              {/* Sidebar Toggle */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleSidebar}
                 className="p-2 hover:bg-accent transition-colors"
               >
-                <Menu className="h-4 w-4" />
+                <Sidebar className={`h-4 w-4 transition-transform duration-300 ${!isSidebarOpen ? 'rotate-180' : ''}`} />
               </Button>
-            )}
-            {/* Show title/logo if sidebar is closed OR we are in settings (because sidebar is hidden there) */}
-            {(!isSidebarOpen || currentView === 'settings') && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl shadow-lg">
-                  <img
-                    src="/images/favicon-32x32.png"
-                    alt="3D Model Muncher"
-                  />
-                </div>
-                <div>
-                  <h1 className="text-lg font-semibold text-foreground tracking-tight leading-none">
-                    3D Model Muncher
-                  </h1>
-                  <p className="text-xs text-muted-foreground mt-1 font-medium">
-                    {getViewTitle()}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* [INSERT] CENTER SECTION: Printer Hub */}
-            {/* We use flex-1 to push it to center, but ensure it doesn't shrink to 0 */}
-            <div className="flex-1 flex justify-center min-w-0 px-2">
-               {appConfig && <PrinterStatusHub config={appConfig} />}
+              {/* Show title/logo if sidebar is closed OR we are in settings (because sidebar is hidden there) */}
+              {(!isSidebarOpen || currentView === 'settings') && (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl shadow-lg">
+                    <img
+                      src="/images/favicon-32x32.png"
+                      alt="3D Model Muncher"
+                    />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-semibold text-foreground tracking-tight leading-none">
+                      3D Model Muncher
+                    </h1>
+                    <p className="text-xs text-muted-foreground mt-1 font-medium">
+                      {getViewTitle()}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
-          <div className="flex items-center gap-2">
+            {/* [INSERT] CENTER SECTION: Printer Hub */}
+            {/* We use flex-1 to push it to center, but ensure it doesn't shrink to 0 */}
+            <div className="flex-1 flex justify-center min-w-0 px-2">
+              {appConfig && <PrinterStatusHub config={appConfig} />}
+            </div>
+
             <div className="flex items-center gap-2">
               <ThemeToggle />
 
@@ -1154,350 +1185,343 @@ return (
                 <Heart className="h-4 w-4" />
               </Button>
             </div>
-          </div>
-        </div>
+          </header>
 
-        {/* Main Content Area */}
-        <div className="flex-1 min-h-0">
-          {isModelsLoading && (
-            <div className="flex items-center gap-3 px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-yellow-800">
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              <div className="text-sm">
-                Loading models — this may take a minute for large libraries. Please wait...
+          {/* MAIN VIEWPORT (The View Switcher) */}
+          <main className="flex-1 min-h-0 relative">
+            {isModelsLoading && (
+              <div className="flex items-center gap-3 px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-yellow-800">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <div className="text-sm">Loading models...</div>
               </div>
-            </div>
-          )}
-          {currentView === 'models' ? (
-            <ModelGrid
-              models={filteredModels}
-              collections={sortCollections(collectionsForDisplay, currentSortBy)}
-              allCollections={collections}
-              sortBy={currentSortBy}
-              onModelClick={handleModelClick}
-              onOpenCollection={(id) => {
-                const col = collections.find(c => c.id === id);
-                if (col) {
-                  setActiveCollection(col);
-                  setCurrentView('collection-view');
-                  try {
-                    const setIds = new Set(col.modelIds || []);
-                    const base = models.filter(m => setIds.has(m.id));
-                    setFilteredModels(base);
-                  } catch { /* ignore */ }
-                  setSidebarResetKey(k => k + 1);
-                }
-              }}
-              onCollectionChanged={refreshCollections}
-              isSelectionMode={isSelectionMode}
-              selectedModelIds={selectedModelIds}
-              onModelSelection={handleModelSelection}
-              onToggleSelectionMode={toggleSelectionMode}
-              onSelectAll={selectAllModels}
-              onDeselectAll={deselectAllModels}
-              onBulkEdit={handleBulkEdit}
-              onBulkDelete={handleBulkDeleteClick}
-              config={appConfig}
-            />
-          ) : currentView === 'settings' ? (
-            <SettingsPage
-              onBack={handleBackToModels}
-              categories={categories}
-              onCategoriesUpdate={handleCategoriesUpdate}
-              config={appConfig}
-              onConfigUpdate={handleConfigUpdate}
-              models={models}
-              onModelsUpdate={handleBulkModelsUpdate}
-              onModelClick={handleModelClick}
-              onDonationClick={handleDonationClick}
-              initialTab={settingsInitialTab}
-              settingsAction={settingsAction}
-              onActionHandled={() => setSettingsAction(null)}
-              onCollectionCreatedForBulkEdit={handleCollectionCreatedForBulkEdit}
-            />
-          ) : currentView === 'collections' ? (
-            <div className="h-full flex flex-col">
-              {/* ... header ... */}
-              {/* Collections Header with Layout Controls */}
-              <div className="p-4 lg:p-6 pb-0 flex justify-between items-center">
-                <h2 className="text-lg font-semibold">All Collections</h2>
-                <LayoutControls />
-              </div>
+            )}
+            {currentView === 'models' ? (
+              <ModelGrid
+                models={filteredModels}
+                collections={sortCollections(collectionsForDisplay, currentSortBy)}
+                allCollections={collections}
+                sortBy={currentSortBy}
+                onModelClick={handleModelClick}
+                onOpenCollection={(id) => {
+                  const col = collections.find(c => c.id === id);
+                  if (col) openCollection(col);
+                }}
+                onCollectionChanged={refreshCollections}
+                isSelectionMode={isSelectionMode}
+                selectedModelIds={selectedModelIds}
+                onModelSelection={handleModelSelection}
+                onToggleSelectionMode={toggleSelectionMode}
+                onSelectAll={selectAllModels}
+                onDeselectAll={deselectAllModels}
+                onBulkEdit={handleBulkEdit}
+                onBulkDelete={handleBulkDeleteClick}
+                config={appConfig}
+              />
+            ) : currentView === 'settings' ? (
+              <SettingsPage
+                onBack={handleBackToModels}
+                categories={categories}
+                onCategoriesUpdate={handleCategoriesUpdate}
+                config={appConfig}
+                onConfigUpdate={handleConfigUpdate}
+                models={models}
+                onModelsUpdate={handleBulkModelsUpdate}
+                onModelClick={handleModelClick}
+                onDonationClick={handleDonationClick}
+                initialTab={settingsInitialTab}
+                settingsAction={settingsAction}
+                onActionHandled={() => setSettingsAction(null)}
+                onCollectionCreatedForBulkEdit={handleCollectionCreatedForBulkEdit}
+              />
+            ) : currentView === 'collections' ? (
+              <div className="h-full flex flex-col">
+                {/* ... header ... */}
+                {/* Collections Header with Layout Controls */}
+                <div className="p-4 lg:p-6 pb-0 flex justify-between items-center">
+                  <h2 className="text-lg font-semibold">All Collections</h2>
+                  <LayoutControls />
+                </div>
 
-              <div className="p-4 lg:p-6">
-                {collections.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">No collections yet...</div>
-                ) : (
-                  // DYNAMIC VIEW FOR COLLECTIONS
-                  viewMode === 'grid' ? (
-                    <div className={`grid ${getGridClasses()} gap-3`}>
-                      {sortCollections(collectionsForDisplay, currentSortBy).map(c => {
-                        let fallback: string | undefined = undefined;
-                        if (c.modelIds && c.modelIds.length > 0) {
-                          for (const id of c.modelIds) {
-                            const m = models.find(mod => mod.id === id);
-                            if (m && m.images && m.images.length > 0) {
-                              fallback = m.images[0];
-                              break;
+                <div className="p-4 lg:p-6 flex-1 overflow-auto">
+                  {collections.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No collections yet...</div>
+                  ) : (
+                    // DYNAMIC VIEW FOR COLLECTIONS
+                    viewMode === 'grid' ? (
+                      <div className={`grid ${getGridClasses()} gap-3`}>
+                        {sortCollections(collectionsForDisplay, currentSortBy).map(c => {
+                          let fallback: string | undefined = undefined;
+                          if (c.modelIds && c.modelIds.length > 0) {
+                            for (const id of c.modelIds) {
+                              const m = models.find(mod => mod.id === id);
+                              if (m && m.images && m.images.length > 0) {
+                                fallback = m.images[0];
+                                break;
+                              }
                             }
                           }
-                        }
 
-                        return (
-                          <CollectionCard
+                          return (
+                            <CollectionCard
+                              key={c.id}
+                              collection={c}
+                              categories={categories}
+                              collections={collections}
+                              onOpen={() => openCollection(c)}
+                              onChanged={refreshCollections}
+                              fallbackImage={fallback} />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {sortCollections(collectionsForDisplay, currentSortBy).map(c => (
+                          <CollectionListRow
                             key={c.id}
                             collection={c}
                             categories={categories}
                             collections={collections}
                             onOpen={() => openCollection(c)}
                             onChanged={refreshCollections}
-                            fallbackImage={fallback}                           />
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {sortCollections(collectionsForDisplay, currentSortBy).map(c => (
-                        <CollectionListRow
-                          key={c.id}
-                          collection={c}
-                          categories={categories}
-                          collections={collections}
-                          onOpen={() => openCollection(c)}
-                          onChanged={refreshCollections}
-                        />
-                      ))}
-                    </div>
-                  )
-                )}
+                          />
+                        ))}
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
-            </div>
-          ) : currentView === 'collection-view' && activeCollection ? (
-            <CollectionGrid
-              name={activeCollection.name}
-              modelIds={activeCollection.modelIds}
-              models={filteredModels}
-              collections={collections}
-              onOpenCollection={openCollection}
-              onImportClick={handleOpenImport}
-              onUploadClick={handleCollectionUpload}
-              onBack={() => {
-                // 1. FILTER RESET: If filtering, clear filters but STAY in the collection.
-                if (hasActiveFilters) {
-                  handleFilterChange({
-                    search: '',
-                    category: 'all',
-                    printStatus: 'all',
-                    license: 'all',
-                    fileType: 'all',
-                    tags: [],
-                    showHidden: true, // Always show hidden items when inside a collection
-                    showMissingImages: false,
-                    sortBy: currentSortBy
-                  });
-                  setSidebarResetKey(k => k + 1); // Reset the sidebar UI (uncheck boxes)
-                  return;
-                }
-
-                // 2. HIERARCHY NAV: Go up one level
-                if (activeCollection?.parentId) {
-                  const parent = collections.find(c => c.id === activeCollection.parentId);
-                  if (parent) {
-                    setActiveCollection(parent);
+            ) : currentView === 'collection-view' && activeCollection ? (
+              <CollectionGrid
+                name={activeCollection.name}
+                modelIds={activeCollection.modelIds}
+                models={filteredModels}
+                collections={collections}
+                onOpenCollection={openCollection}
+                onImportClick={handleOpenImport}
+                onUploadClick={handleCollectionUpload}
+                onBack={() => {
+                  // 1. FILTER RESET: If filtering, clear filters but STAY in the collection.
+                  if (hasActiveFilters) {
+                    handleFilterChange({
+                      search: '',
+                      category: 'all',
+                      printStatus: 'all',
+                      license: 'all',
+                      fileType: 'all',
+                      tags: [],
+                      showHidden: true, // Always show hidden items when inside a collection
+                      showMissingImages: false,
+                      sortBy: currentSortBy
+                    });
+                    setSidebarResetKey(k => k + 1); // Reset the sidebar UI (uncheck boxes)
                     return;
                   }
-                }
 
-                // 3. EXIT NAV: Go Home
-                setActiveCollection(null);
-                setCurrentView('models');
-                setSidebarResetKey(k => k + 1);
-                setIsSelectionMode(false);
-                setSelectedModelIds([]);
-              }}
-              onModelClick={handleModelClick}
-              config={appConfig}
-              activeCollection={activeCollection}
-              isFiltering={hasActiveFilters}
-              isSelectionMode={isSelectionMode}
-              selectedModelIds={selectedModelIds}
-              onModelSelection={handleModelSelection}
-              onToggleSelectionMode={toggleSelectionMode}
-              onSelectAll={selectAllModels}
-              onDeselectAll={deselectAllModels}
-              onBulkEdit={handleBulkEdit}
-              onBulkDelete={handleBulkDeleteClick}
-              onCollectionChanged={refreshCollections}
-            />
-          ) : (
-            <DemoPage onBack={handleBackToModels} />
-          )}
-        </div>
-      </div>
+                  // 2. HIERARCHY NAV: Go up one level
+                  if (activeCollection?.parentId) {
+                    const parent = collections.find(c => c.id === activeCollection.parentId);
+                    if (parent) {
+                      setActiveCollection(parent);
+                      return;
+                    }
+                  }
 
-      {/* Model Details Drawer */}
-      {(((currentView === 'models' || currentView === 'collection-view') && !isSelectionMode) || currentView === 'settings') && (
-        <ModelDetailsDrawer
-          model={selectedModel}
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-          onModelUpdate={handleModelUpdate}
-          onDelete={handleSingleModelDelete}
-          defaultModelView={appConfig?.settings.defaultModelView || 'images'}
-          defaultModelColor={appConfig?.settings?.defaultModelColor}
-          categories={categories}
+                  // 3. EXIT NAV: Go Home
+                  setActiveCollection(null);
+                  setCurrentView('models');
+                  setSidebarResetKey(k => k + 1);
+                  setIsSelectionMode(false);
+                  setSelectedModelIds([]);
+                }}
+                onModelClick={handleModelClick}
+                config={appConfig}
+                activeCollection={activeCollection}
+                isFiltering={hasActiveFilters}
+                isSelectionMode={isSelectionMode}
+                selectedModelIds={selectedModelIds}
+                onModelSelection={handleModelSelection}
+                onToggleSelectionMode={toggleSelectionMode}
+                onSelectAll={selectAllModels}
+                onDeselectAll={deselectAllModels}
+                onBulkEdit={handleBulkEdit}
+                onBulkDelete={handleBulkDeleteClick}
+                onCollectionChanged={refreshCollections}
+              />
+            ) : currentView === 'model-hero' && selectedModel ? (
+              <ModelHubView
+                model={selectedModel}
+                models={models}
+                categories={categories}
+                collections={collections}
+                config={appConfig}
+                defaultModelView={appConfig?.settings?.defaultModelView ?? 'images'}
+                defaultModelColor={appConfig?.settings?.defaultModelColor}
+                isSidebarOpen={isSidebarOpen} // Pass global sidebar state
+                onClose={() => {
+                  setSelectedModel(null);
+                  setCurrentView(activeCollection ? 'collection-view' : 'models');
+                }}
+                onModelUpdate={handleModelUpdate}
+                onDelete={handleSingleModelDelete}
+                onOpenCollection={openCollection}
+                onFilterChange={handleFilterChange}
+                onSettingsClick={handleSettingsClick}
+              />
+            ) : (
+              <DemoPage onBack={handleBackToModels} />
+            )}
+          </main> {/* Closes flex-1 min-h-0 */}
+        </div> {/* Closes flex-1 flex flex-col min-w-0 */}
+
+        {/* Bulk Edit Drawer */}
+        {(currentView === 'models' || currentView === 'collection-view') && (
+          <BulkEditDrawer
+            models={getSelectedModels()}
+            isOpen={isBulkEditOpen}
+            onClose={() => setIsBulkEditOpen(false)}
+            onBulkUpdate={handleBulkUpdateModels}
+            onRefresh={handleRefreshModels}
+            onBulkSaved={handleBulkSavedModels}
+            onModelUpdate={handleModelUpdate}
+            onClearSelections={exitSelectionMode}
+            categories={categories}
+            modelDirectory={appConfig?.settings?.modelDirectory || './models'}
+            collectionsList={collections}
+            pendingBulkCollectionId={pendingBulkCollectionId}
+            onBulkEditComplete={() => setPendingBulkCollectionId(null)}
+
+          />
+        )}
+
+        {/* [NEW] Thingiverse Import Dialog */}
+        <ThingiverseImportDialog
+          isOpen={isImportOpen}
+          onClose={() => {
+            setIsImportOpen(false);
+            setImportTargetCollectionId(undefined); // Reset
+            setImportTargetFolder(undefined);       // Reset
+          }}
+          defaultCollectionId={importTargetCollectionId}
+          defaultFolder={importTargetFolder}          // Pass the inferred folder
+          onImportComplete={() => {
+            handleRefreshModels();
+            refreshCollections();
+          }}
         />
-      )}
 
-      {/* Bulk Edit Drawer */}
-      {(currentView === 'models' || currentView === 'collection-view') && (
-        <BulkEditDrawer
-          models={getSelectedModels()}
-          isOpen={isBulkEditOpen}
-          onClose={() => setIsBulkEditOpen(false)}
-          onBulkUpdate={handleBulkUpdateModels}
-          onRefresh={handleRefreshModels}
-          onBulkSaved={handleBulkSavedModels}
-          onModelUpdate={handleModelUpdate}
-          onClearSelections={exitSelectionMode}
-          categories={categories}
-          modelDirectory={appConfig?.settings?.modelDirectory || './models'}
-          collectionsList={collections}
-          pendingBulkCollectionId={pendingBulkCollectionId}
-          onBulkEditComplete={() => setPendingBulkCollectionId(null)}
-
+        {/* Dialogs */}
+        <DonationDialog
+          isOpen={isDonationDialogOpen}
+          onClose={() => setIsDonationDialogOpen(false)}
         />
-      )}
 
-      {/* [NEW] Thingiverse Import Dialog */}
-      <ThingiverseImportDialog
-        isOpen={isImportOpen}
-        onClose={() => {
-          setIsImportOpen(false);
-          setImportTargetCollectionId(undefined); // Reset
-          setImportTargetFolder(undefined);       // Reset
-        }}
-        defaultCollectionId={importTargetCollectionId}
-        defaultFolder={importTargetFolder}          // Pass the inferred folder
-        onImportComplete={() => {
-          handleRefreshModels();
-          refreshCollections();
-        }}
-      />
+        <AlertDialog open={isReleaseNotesOpen} onOpenChange={(open) => { if (!open) closeReleaseNotes(dontShowReleaseNotes); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>What's new in this version</AlertDialogTitle>
+              <AlertDialogDescription>
+                Thanks for updating! Here are a few notable changes in the latest release:
+              </AlertDialogDescription>
 
-      {/* Dialogs */}
-      <DonationDialog
-        isOpen={isDonationDialogOpen}
-        onClose={() => setIsDonationDialogOpen(false)}
-      />
-
-      <AlertDialog open={isReleaseNotesOpen} onOpenChange={(open) => { if (!open) closeReleaseNotes(dontShowReleaseNotes); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>What's new in this version</AlertDialogTitle>
-            <AlertDialogDescription>
-              Thanks for updating! Here are a few notable changes in the latest release:
-            </AlertDialogDescription>
-
-            <div className="mt-2 text-sm">
-              <h3 className="text-lg font-semibold">v0.16.0 - The Features & Style Update</h3>
-              <ul className="list-disc pl-5 list-outside mb-4 space-y-2 mt-2">
-                <li><strong>🎨 Dynamic Theme Engine</strong> - Pick any primary color in Settings, and the app now mathematically generates a perfect, accessible Dark and Light theme to match.</li>
-                <li><strong>🚀 Docker Architecture Upgrade</strong> - Migrated from Alpine to Debian Slim. This fixes the persistent 'Context Lost' WebGL crashes and enables native support for complex 3MF texture parsing.</li>
-                <li><strong>🛑 Thumbnail Cancellation</strong> - Added a 'Stop' button to the thumbnail generator. You can now safely abort long-running rendering jobs without restarting the server.</li>
-                <li><strong>📂 Nested Collections Editor</strong> - Manage your library organization directly from the 'All Models' view with the new nested collection editor.</li>
-                <li><strong>✨ UI Polish</strong> - Light mode has been remastered with softer backgrounds and improved contrast for better readability.</li>
-              </ul>
-            </div>
-
-            <div className="space-y-3 my-4 mb-4 mt-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="dont-show-release-notes"
-                  checked={dontShowReleaseNotes}
-                  onCheckedChange={(v) => setDontShowReleaseNotes(Boolean(v))}
-                />
-                <label
-                  htmlFor="dont-show-release-notes"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Do not show these notes again for this version
-                </label>
+              <div className="mt-2 text-sm">
+                <h3 className="text-lg font-semibold">v0.16.0 - The Features & Style Update</h3>
+                <ul className="list-disc pl-5 list-outside mb-4 space-y-2 mt-2">
+                  <li><strong>🎨 Dynamic Theme Engine</strong> - Pick any primary color in Settings, and the app now mathematically generates a perfect, accessible Dark and Light theme to match.</li>
+                  <li><strong>🚀 Docker Architecture Upgrade</strong> - Migrated from Alpine to Debian Slim. This fixes the persistent 'Context Lost' WebGL crashes and enables native support for complex 3MF texture parsing.</li>
+                  <li><strong>🛑 Thumbnail Cancellation</strong> - Added a 'Stop' button to the thumbnail generator. You can now safely abort long-running rendering jobs without restarting the server.</li>
+                  <li><strong>📂 Nested Collections Editor</strong> - Manage your library organization directly from the 'All Models' view with the new nested collection editor.</li>
+                  <li><strong>✨ UI Polish</strong> - Light mode has been remastered with softer backgrounds and improved contrast for better readability.</li>
+                </ul>
               </div>
-            </div>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <div className="flex-1">
-              <a
-                href="https://github.com/robsturgill/3d-model-muncher/blob/main/CHANGELOG.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary hover:underline"
+
+              <div className="space-y-3 my-4 mb-4 mt-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="dont-show-release-notes"
+                    checked={dontShowReleaseNotes}
+                    onCheckedChange={(v) => setDontShowReleaseNotes(Boolean(v))}
+                  />
+                  <label
+                    htmlFor="dont-show-release-notes"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Do not show these notes again for this version
+                  </label>
+                </div>
+              </div>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <div className="flex-1">
+                <a
+                  href="https://github.com/robsturgill/3d-model-muncher/blob/main/CHANGELOG.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-primary hover:underline"
+                >
+                  View full changelog on GitHub
+                </a>
+              </div>
+              <AlertDialogAction onClick={() => { closeReleaseNotes(dontShowReleaseNotes); }}>Close</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Models</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {selectedModelIds.length} model{selectedModelIds.length !== 1 ? 's' : ''}?
+                <br /><br />
+                <strong>This action cannot be undone.</strong>
+              </AlertDialogDescription>
+              <div className="space-y-3 my-4 mb-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="include-3mf"
+                    checked={includeThreeMfFiles}
+                    onCheckedChange={(v) => setIncludeThreeMfFiles(Boolean(v))}
+                  />
+                  <label
+                    htmlFor="include-3mf"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Include .3mf and .stl files (3D model files) when deleting
+                  </label>
+                </div>
+              </div>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                View full changelog on GitHub
-              </a>
-            </div>
-            <AlertDialogAction onClick={() => { closeReleaseNotes(dontShowReleaseNotes); }}>Close</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+                {includeThreeMfFiles ? 'Delete All Files' : 'Delete Metadata Only'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Models</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete {selectedModelIds.length} model{selectedModelIds.length !== 1 ? 's' : ''}?
-              <br /><br />
-              <strong>This action cannot be undone.</strong>
-            </AlertDialogDescription>
-            <div className="space-y-3 my-4 mb-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="include-3mf"
-                  checked={includeThreeMfFiles}
-                  onCheckedChange={(v) => setIncludeThreeMfFiles(Boolean(v))}
-                />
-                <label
-                  htmlFor="include-3mf"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Include .3mf and .stl files (3D model files) when deleting
-                </label>
-              </div>
-            </div>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleBulkDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {includeThreeMfFiles ? 'Delete All Files' : 'Delete Metadata Only'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Upload Dialog */}
-      <ModelUploadDialog
-        isOpen={isUploadDialogOpen}
-        onClose={() => {
-          setIsUploadDialogOpen(false)
-          setUploadTargetFolder(undefined);
-        }}
-        onUploaded={() => { handleRefreshModels(); }}
-        initialFolder={uploadTargetFolder}
-      />
-    </div>
-  </TagsProvider>
-);
+        {/* Upload Dialog */}
+        <ModelUploadDialog
+          isOpen={isUploadDialogOpen}
+          onClose={() => {
+            setIsUploadDialogOpen(false)
+            setUploadTargetFolder(undefined);
+          }}
+          onUploaded={() => { handleRefreshModels(); }}
+          initialFolder={uploadTargetFolder}
+        />
+      </div>
+    </TagsProvider>
+  );
 }
 
 export default function App() {
   return (
     <ThemeProvider defaultTheme="system">
       <LayoutSettingsProvider>
-        {/* [FIX] Just the Provider. No extra <div> here! */}
         <SpoolmanProvider>
           <AppContent />
           <Toaster />

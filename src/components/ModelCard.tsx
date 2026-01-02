@@ -114,7 +114,22 @@ export function ModelCard({
           </div>
         )}
 
-        {/* Overlays / Badges */}
+        {/* [NEW] TOP LEFT OVERLAY - Stock Badges */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1 items-start pointer-events-none z-20">
+          {stockStatus === 'empty' && (
+            <Badge variant="destructive" className="gap-1 backdrop-blur-sm shadow-sm border-none bg-red-600/90 py-0.5">
+              <AlertTriangle className="w-3 h-3" />
+              <span className="text-[10px] font-bold uppercase">No Stock</span>
+            </Badge>
+          )}
+          {stockStatus === 'low' && (
+            <Badge variant="secondary" className="gap-1 backdrop-blur-sm shadow-sm border-none bg-amber-500/90 text-white py-0.5">
+              <Droplet className="w-3 h-3" />
+              <span className="text-[10px] font-bold uppercase">Low Stock</span>
+            </Badge>
+          )}
+        </div>
+
         <div className="absolute top-2 right-2 flex flex-col gap-1 items-end pointer-events-none z-20">
           {isSelectionMode && (
             <div className="pointer-events-auto">
@@ -159,19 +174,6 @@ export function ModelCard({
              <HardDrive className="h-3 w-3" />
              <span>{model.fileSize}</span>
           </div>
-          {/* [NEW] Stock Warning Indicator */}
-          {stockStatus === 'empty' && (
-               <div className="flex items-center gap-1 text-destructive font-medium" title="Not enough filament in preferred spool">
-                  <AlertTriangle className="w-3 h-3" />
-                  <span>Stock</span>
-               </div>
-            )}
-            {stockStatus === 'low' && (
-               <div className="flex items-center gap-1 text-amber-500 font-medium" title="Low filament stock">
-                  <Droplet className="w-3 h-3" />
-                  <span>Low</span>
-               </div>
-            )}
         </div>
       </div>
     </div>

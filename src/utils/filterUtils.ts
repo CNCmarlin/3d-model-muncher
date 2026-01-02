@@ -81,4 +81,28 @@ export const applyFiltersToModels = (modelsToFilter: Model[], filters: FilterSta
   }
 
   return filtered;
+
+  
+};
+
+export const isViewableImage = (path: string) => {
+  return /\.(jpg|jpeg|png|webp|gif)$/i.test(path);
+};
+
+export const isViewable3D = (path: string) => {
+  return /\.(stl|3mf|obj)$/i.test(path);
+};
+
+export const isViewablePDF = (path: string) => {
+  return path.toLowerCase().endsWith('.pdf');
+};
+
+export const isViewableText = (path: string) => {
+  return /\.(txt|md|log|cfg|ini|gcode)$/i.test(path);
+};
+
+export const getDocType = (path: string): 'pdf' | 'text' | 'unknown' => {
+  if (isViewablePDF(path)) return 'pdf';
+  if (isViewableText(path)) return 'text';
+  return 'unknown';
 };

@@ -5,7 +5,7 @@ import { createRoot, Root } from 'react-dom/client';
 
 import * as downloadUtils from '../utils/downloadUtils';
 import { ModelCard } from '../components/ModelCard';
-import { ModelDetailsDrawer } from '../components/ModelDetailsDrawer';
+import { ModelDetailsDrawer } from '../components/ModelHubView';
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;

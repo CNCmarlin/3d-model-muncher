@@ -23,6 +23,7 @@ export interface Model {
   source?: string;
   price?: number;
   hidden?: boolean;
+  isRelatedPart?: boolean;
   // List of user-provided related files (relative paths). Example: "prints/part-supports.zip"
   related_files?: string[];
   // Structured user-provided data. The first element is used for user edits such as
@@ -45,6 +46,7 @@ export interface Model {
     infill: string;
     nozzle: string;
     printer?: string;
+    material?: string;
   };
   gcodeData?: {
     printTime?: string;

@@ -1,15 +1,14 @@
 import { useState, useMemo } from 'react';
-import { Collection, BuildPlate } from '../types/collection';
+import { Collection } from '../types/collection';
 import { Model } from '../types/model';
 import { Button } from './ui/button';
 import { ScrollArea, ScrollBar } from './ui/scroll-area';
-import { Plus, Trash2, Printer, ChevronRight, ChevronLeft, Box, LayoutGrid } from 'lucide-react';
+import { Plus, Trash2, Printer, Box, LayoutGrid } from 'lucide-react';
 import { ImageWithFallback } from './ImageWithFallback';
 import { resolveModelThumbnail } from '../utils/thumbnailUtils';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { toast } from 'sonner';
-import { ConfigManager } from '../utils/configManager';
 import {
     DropdownMenu,
     DropdownMenuContent,
