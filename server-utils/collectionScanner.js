@@ -3,19 +3,17 @@ const path = require('path');
 
 /**
  * Generates collections based on folder structure.
- * * Strategies:
- * 1. 'smart': (Flattener) Creates a collection ONLY for folders that directly contain models. Ignores intermediate folders.
- * 2. 'strict': (Mirror) Replicates folder hierarchy exactly. Creates collections for parent folders if they lead to content.
- * 3. 'top-level': (Aggregator) Creates one collection per top-level folder, containing ALL models found recursively inside it.
+ * Supports: 'smart', 'strict', and 'top-level' strategies.
+ * Respects 'project.json' as a marker for single-model project folders.
  */
 function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' }) {
   const strategy = options.strategy || 'smart';
-  console.log(`🔍 Auto-generating collections using strategy: '${strategy}'...`);
+  console.log(`\n--- 🚀 COLLECTION SCANNER DEBUG REV: FINAL (Strategy: ${strategy}) ---`);
   
   const collections = [];
   let taggedCount = 0;
   
-  // Helper: Read JSON safely
+  // --- HELPERS ---
   function readJson(fp) {
     try {
       const raw = fs.readFileSync(fp, 'utf8');
@@ -23,157 +21,158 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
     } catch (e) { return null; }
   }
 
-  // Helper: Auto-tag models based on folder path
   function updateModelTags(jsonPath, newTags) {
     try {
       const data = readJson(jsonPath) || {};
       const existingTags = Array.isArray(data.tags) ? data.tags : [];
-      const combined = [...existingTags];
-      const lowerExisting = new Set(existingTags.map(t => t.toLowerCase()));
+      const combined = [...new Set([...existingTags, ...newTags])];
       
-      let changed = false;
-      
-      for (const t of newTags) {
-        if (!lowerExisting.has(t.toLowerCase())) {
-          combined.push(t);
-          lowerExisting.add(t.toLowerCase());
-          changed = true;
-        }
-      }
-
-      if (changed) {
+      if (combined.length !== existingTags.length) {
         data.tags = combined;
         data.lastModified = new Date().toISOString();
-        const tmp = jsonPath + '.tmp';
-        fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-        fs.renameSync(tmp, jsonPath);
+        fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), 'utf8');
         taggedCount++;
       }
-    } catch (e) {
-      // console.warn(`   ⚠️ Failed to update tags for ${path.basename(jsonPath)}:`, e.message);
-    }
+    } catch (e) {}
   }
 
-  // Helper: Generate stable ID from folder path
   function generateCollectionId(folderPath) {
     const rel = path.relative(modelsDir, folderPath);
-    // Force forward slashes to ensure IDs match across Windows/Linux
     const normalized = rel.replace(/\\/g, '/');
     return `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
   }
 
-  // --- RECURSIVE SCANNER ---
-  function scanRecursively(currentDir, parentColId = null) {
-    let entries;
-    try {
-      entries = fs.readdirSync(currentDir, { withFileTypes: true });
-    } catch (e) { return false; } // Return false if unreadable
+ // --- RECURSIVE SCANNER (Project Filter Revision) ---
+ function scanRecursively(currentDir, parentColId = null, depth = 0) {
+  const indent = "  ".repeat(depth);
+  const folderName = path.basename(currentDir);
+  
+  // 1. Marker Check
+  const isProjectFolder = fs.existsSync(path.join(currentDir, 'project.json'));
 
-    const modelIds = [];
-    const subFolders = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(currentDir, { withFileTypes: true });
+  } catch (e) { return false; }
 
-    // 1. Process files in current directory
-    for (const entry of entries) {
-      const fullPath = path.join(currentDir, entry.name);
-      
-      if (entry.isDirectory()) {
-        if (!entry.name.startsWith('.')) subFolders.push(fullPath);
-      } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
-        const modelData = readJson(fullPath);
-        if (modelData && modelData.id) {
-          modelIds.push(modelData.id);
+  let directModelIds = [];
+  let projectRootId = null; // We'll store the "Main" ID here if it's a project
+  const subFolders = [];
+
+  // 2. Identify contents
+  for (const entry of entries) {
+    const fullPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      if (!entry.name.startsWith('.')) subFolders.push(fullPath);
+    } else if (entry.name.endsWith('munchie.json') && entry.name !== 'project.json') {
+      const modelData = readJson(fullPath);
+      if (modelData && modelData.id) {
+        // If this is a project folder, we only care about the root model
+        if (isProjectFolder && modelData.isProjectRoot === true) {
+          projectRootId = modelData.id;
+        } else if (!isProjectFolder) {
+          directModelIds.push(modelData.id);
         }
       }
     }
-
-    // 2. Prepare recursion
-    const myColId = generateCollectionId(currentDir);
-    
-    // [CRITICAL FIX] Determine ID to pass to children.
-    // If strategy is 'strict', we normally pass OUR ID.
-    // BUT: If we are the 'scanRoot', we (usually) don't create a collection for ourselves.
-    // If we pass 'myColId' as parent but don't create the parent collection, the children become hidden orphans.
-    // So if currentDir == scanRoot, we pass 'null' (top-level) to children.
-    let idToPass = null;
-    if (strategy === 'strict') {
-        if (currentDir === scanRoot) {
-            idToPass = null; 
-        } else {
-            idToPass = myColId;
-        }
-    }
-    // In 'smart' mode, we always pass null because we want a flat list.
-
-    // 3. Recurse first (depth-first)
-    let childCreatedCollection = false;
-    for (const sub of subFolders) {
-       const childHasContent = scanRecursively(sub, idToPass);
-       if (childHasContent) childCreatedCollection = true;
-    }
-
-    // 4. Determine if we should create a collection for THIS folder
-    const hasDirectModels = modelIds.length > 0;
-    
-    let shouldCreate = false;
-
-    if (strategy === 'smart') {
-        // Smart: Create ONLY if this specific folder holds models. 
-        if (hasDirectModels) shouldCreate = true;
-    } else if (strategy === 'strict') {
-        // Strict: Create if we have models OR if a child has content (hierarchy node).
-        if (hasDirectModels || childCreatedCollection) shouldCreate = true;
-    }
-
-    // Don't create collection for the root watch folder itself
-    if (shouldCreate && currentDir !== scanRoot) {
-        const folderName = path.basename(currentDir);
-        
-        collections.push({
-            id: myColId,
-            name: folderName,
-            description: `Auto-generated from ${folderName}`,
-            modelIds: modelIds, 
-            parentId: strategy === 'strict' ? parentColId : null,
-            created: new Date().toISOString(),
-            category: 'Auto-Imported' // <--- Confirmed Category
-        });
-
-        // Tagging
-        if (hasDirectModels) {
-            for (const entry of entries) {
-                if ((entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json'))) {
-                    updateModelTags(path.join(currentDir, entry.name), [folderName]);
-                }
-            }
-        }
-        return true; // Report up that we created content
-    }
-
-    if (currentDir === scanRoot) {
-        return hasDirectModels || childCreatedCollection;
-    }
-
-    return shouldCreate;
   }
+
+  console.log(`${indent}📁 Scanning: ${folderName} [Project: ${isProjectFolder}]`);
+
+  const myColId = generateCollectionId(currentDir);
+  let idToPass = (strategy === 'strict' && currentDir !== scanRoot) ? myColId : parentColId;
+
+  // 3. Recurse and Collect IDs from children
+  let childrenModelIds = [];
+  let childCreatedCollection = false;
+
+  for (const sub of subFolders) {
+     // We need to know what IDs the children found so we can include them in the parent
+     const childResult = scanRecursivelyWithResult(sub, idToPass, depth + 1);
+     if (childResult.hasCreated) childCreatedCollection = true;
+     
+     // Bubble up the IDs from the children (like the StarFighter from its project folder)
+     childrenModelIds = [...childrenModelIds, ...childResult.foundIds];
+  }
+
+  // 4. DECISION LOGIC
+  const isMajorCategory = ['imported', 'uploads', 'models'].includes(folderName.toLowerCase());
+  let shouldCreate = false;
+  let reason = "";
+
+  if (isMajorCategory) {
+      shouldCreate = true;
+      reason = "System Category";
+  } else if (isProjectFolder) {
+      shouldCreate = false; 
+      reason = "Omitted: Project Folder (Reporting Root ID only)";
+  } else if (strategy === 'smart') {
+      if (directModelIds.length > 0 || childrenModelIds.length > 0) shouldCreate = true;
+  } else if (strategy === 'strict') {
+      if (directModelIds.length > 0 || childCreatedCollection || childrenModelIds.length > 0) shouldCreate = true;
+  }
+
+  // 5. Final Push
+  const allModelsForThisCollection = [...directModelIds, ...childrenModelIds];
+
+  if (shouldCreate && currentDir !== scanRoot) {
+    console.log(`${indent}✅ CREATING: ${folderName} (Models: ${allModelsForThisCollection.length})`);
+    collections.push({
+      id: myColId,
+      name: folderName,
+      modelIds: allModelsForThisCollection,
+      parentId: strategy === 'strict' ? parentColId : null,
+      category: 'Auto-Imported'
+    });
+  }
+
+  // --- WHAT WE REPORT BACK TO THE PARENT ---
+  // If we are a project, we ONLY report the root ID.
+  // Otherwise, we report everything we found.
+  const idsToReportUp = isProjectFolder ? (projectRootId ? [projectRootId] : []) : allModelsForThisCollection;
+  
+  return {
+    hasCreated: shouldCreate || childCreatedCollection,
+    foundIds: idsToReportUp
+  };
+}
+
+// Helper to bridge the recursion
+function scanRecursivelyWithResult(d, p, dep) {
+  return scanRecursively(d, p, dep);
+}
 
   // --- TOP-LEVEL AGGREGATION ---
   function scanTopLevelOnly() {
     const topEntries = fs.readdirSync(scanRoot, { withFileTypes: true });
     for (const entry of topEntries) {
       if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-      
+
       const folderName = entry.name;
       const fullPath = path.join(scanRoot, folderName);
       const allModelIds = [];
 
       function deepGrab(d) {
+        // Skip recursing into folders marked as Projects at the top level
+        if (fs.existsSync(path.join(d, 'project.json'))) {
+             // We still grab the models from inside it, but don't go deeper
+             const files = fs.readdirSync(d, { withFileTypes: true });
+             for (const f of files) {
+                 if (f.name.endsWith('munchie.json') && f.name !== 'project.json') {
+                     const m = readJson(path.join(d, f.name));
+                     if (m && m.id) allModelIds.push(m.id);
+                 }
+             }
+             return;
+        }
+
         const subs = fs.readdirSync(d, { withFileTypes: true });
         for (const s of subs) {
           const p = path.join(d, s.name);
           if (s.isDirectory() && !s.name.startsWith('.')) deepGrab(p);
-          else if (s.name.endsWith('munchie.json')) {
-             const m = readJson(p);
-             if (m && m.id) allModelIds.push(m.id);
+          else if (s.name.endsWith('munchie.json') && s.name !== 'project.json') {
+            const m = readJson(p);
+            if (m && m.id) allModelIds.push(m.id);
           }
         }
       }
@@ -193,11 +192,8 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
   }
 
   // --- EXECUTE ---
-  if (strategy === 'top-level') {
-    scanTopLevelOnly();
-  } else {
-    scanRecursively(scanRoot, null);
-  }
+  if (strategy === 'top-level') scanTopLevelOnly();
+  else scanRecursively(scanRoot, null);
 
   console.log(`📂 Scan complete (${strategy}). Found ${collections.length} collections.`);
   return collections;
