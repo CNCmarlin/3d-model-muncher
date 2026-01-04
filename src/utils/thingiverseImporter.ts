@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { createStandardModelIdentity } from './modelFactory';
-import { generateThumbnail } from './thumbnailGenerator';
+import { ProjectService } from './ProjectService';
 
 // Helper to sanitize filenames
 const sanitize = (name: string) => name.replace(/[^a-z0-9\.\-]/gi, '_');
@@ -71,7 +70,6 @@ export class ThingiverseImporter {
 
     // 3. Create Directory (Sanitized Thing Name)
     const thingName = sanitize(meta.name).substring(0, 64);
-    // Combine user's selected target folder with the thing name
     const destRelPath = path.join(targetFolder, thingName);
     const destDir = path.join(modelsRoot, destRelPath);
 
@@ -120,88 +118,23 @@ export class ThingiverseImporter {
       fs.writeFileSync(path.join(destDir, 'instructions.md'), instructionContent);
     }
 
-    // 6. Generate Standardized Identities
-    const mainFile = importedFiles[0];
-
-    for (let i = 0; i < importedFiles.length; i++) {
-      const currentFile = importedFiles[i];
-      const isMain = i === 0;
-
-      const cleanName = sanitize(currentFile);
-      const sourcePath = path.join(destDir, cleanName);
-
-      // We clone the localImagePaths for this specific model instance
-      const modelGallery = [...localImagePaths];
-
-      const modelIdentity = createStandardModelIdentity({
-        id: isMain ? `tv-${thingId}` : `tv-${thingId}-${i}`,
-        name: isMain ? meta.name : `${meta.name} (${currentFile})`,
-        hidden: !isMain,
-        isRelatedPart: !isMain,
-        description: meta.description || `Imported from Thingiverse: ${meta.public_url}`,
-        filePath: `${destRelPath}/${currentFile}`,
-        modelUrl: `${relativeWebFolder}/${currentFile}`.replace(/\/\//g, '/'),
-        license: meta.license || 'Unknown',
-        source: meta.public_url,
-        designer: meta.creator?.name || 'Unknown',
-        tags: meta.tags ? meta.tags.map((t: any) => t.name) : [],
-        parsedImages: modelGallery,
-        related_files: [
-          ...importedFiles.map(f => `${destRelPath}/${f}`),
-          `${destRelPath}/instructions.md`
-        ],
-        userDefined: {
-          thumbnail: 'parsed:0', // Initially point to first photo
-          imageOrder: modelGallery.map((_, idx) => `parsed:${idx}`),
-          description: meta.description || `Imported from Thingiverse: ${meta.public_url}`,
-          images: []
-        }
-      });
-
-      const jsonFileName = currentFile.toLowerCase().endsWith('.3mf')
-        ? currentFile.replace(/\.3mf$/i, '-munchie.json')
-        : currentFile.replace(/\.stl$/i, '-stl-munchie.json');
-
-      const jsonPath = path.join(destDir, jsonFileName);
-      fs.writeFileSync(jsonPath, JSON.stringify(modelIdentity, null, 2));
-
-      // --- Robust Auto-Thumbnail Generation ---
-      try {
-        const thumbName = cleanName + '-thumb.png';
-        const thumbPath = path.join(destDir, thumbName);
-        const BASE_URL = process.env.HOST_URL || `http://127.0.0.1:${process.env.PORT || 9000}`;
-
-        console.log(`📸 Generating 3D Render for: ${cleanName}`);
-        await generateThumbnail(sourcePath, thumbPath, BASE_URL, undefined, modelsRoot);
-
-        const relativeThumbUrl = `/models/${path.relative(modelsRoot, thumbPath).replace(/\\/g, '/')}`;
-        const freshJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-
-        // [FIX] Correctly insert the render and REBUILD the imageOrder
-        if (!freshJson.parsedImages.includes(relativeThumbUrl)) {
-          freshJson.parsedImages.unshift(relativeThumbUrl);
-
-          // thumbnail pointer: parsed:1 = First Real Photo, parsed:0 = 3D Render
-          // If you want the photo in the grid, keep 'parsed:1'
-          freshJson.userDefined.thumbnail = 'parsed:0';
-          freshJson.thumbnail = 'parsed:0';
-
-          // [CRITICAL] Rebuild the order so the gallery sees ALL images including the new render
-          freshJson.userDefined.imageOrder = freshJson.parsedImages.map((_: any, idx: any) => `parsed:${idx}`);
-        }
-
-        fs.writeFileSync(jsonPath, JSON.stringify(freshJson, null, 2));
-      } catch (genErr) {
-        console.error("3D Render failed for imported part:", genErr);
+    // Replace Sections 6, 7, and 8 with:
+    return await ProjectService.finalizeProject({
+      mode: 'thingiverse',
+      destDir,
+      modelsRoot,
+      importedFiles,
+      localImagePaths,
+      targetFolder,
+      meta: {
+        id: thingId,
+        name: meta.name,
+        description: meta.description,
+        public_url: meta.public_url,
+        license: meta.license,
+        creatorName: meta.creator?.name,
+        tags: meta.tags?.map((t: any) => t.name)
       }
-    }
-    //7. RETURN THE MAIN MODEL
-    const mainJsonPath = mainFile.toLowerCase().endsWith('.3mf')
-      ? mainFile.replace('.3mf', '-munchie.json')
-      : mainFile.replace('.stl', '-stl-munchie.json');
-
-    const finalMainModel = JSON.parse(fs.readFileSync(path.join(destDir, mainJsonPath), 'utf8'));
-
-    return finalMainModel;
+    });
   }
 }

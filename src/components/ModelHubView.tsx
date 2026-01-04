@@ -41,6 +41,7 @@ import { TagsSection } from "./TagsSection";
 import { FilterSidebar } from "./FilterSidebar";
 import { AppConfig } from "../types/config";
 import { ProjectFolderDialog } from "./ProjectFolderDialog";
+import { ModelUploadDialog } from "./ModelUploadDialog";
 
 
 
@@ -177,6 +178,8 @@ export function ModelHubView({
   const [active3DFile, setActive3DFile] = useState<string | null>(null);
 
   const currentModel = editedModel || model;
+  const [isAssetDialogOpen, setIsAssetDialogOpen] = useState(false);
+  const [isMoving, setIsMoving] = useState(false);
 
   useEffect(() => {
     if (!model) return;
@@ -1750,16 +1753,22 @@ export function ModelHubView({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Only show the manage button when NOT in metadata edit mode */}
           {!isEditing && (
             <Button
               variant="ghost"
               size="sm"
               className="h-8 gap-2 opacity-50 hover:opacity-100"
-              onClick={() => setIsProjectFolderOpen(true)}
+              disabled={isMoving}
+              // [FIX] Trigger the state that opens the dialog, NOT the hidden input
+              onClick={() => setIsAssetDialogOpen(true)}
             >
-              <Upload className="h-3.5 w-3.5" />
-              <span>Manage / Upload</span>
+              {isMoving ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" />
+              ) : (
+                <Upload className="h-3.5 w-3.5" />
+              )}
+
+              <span>{isMoving ? "Reorganizing..." : "Manage / Upload"}</span>
             </Button>
           )}
         </div>
@@ -1875,8 +1884,8 @@ export function ModelHubView({
                     deriveMunchieCandidate={deriveMunchieCandidate}
                     availableRelatedMunchie={availableRelatedMunchie}
                     detailsViewportRef={detailsViewportRef}
-                    toast={toast} 
-                    handleViewDocument={handleViewDocument}                  />
+                    toast={toast}
+                    handleViewDocument={handleViewDocument} />
                 </TabsContent>
 
                 <TabsContent value="siblings" className="pt-6">
@@ -2149,12 +2158,16 @@ export function ModelHubView({
         </div>
       )}
 
-      {model && (
-        <ProjectFolderDialog
-          isOpen={isProjectFolderOpen}
-          onClose={() => setIsProjectFolderOpen(false)}
-          model={model}
-          onUpdated={onModelUpdate}
+      {activeModel && (
+        <ModelUploadDialog
+          isOpen={isAssetDialogOpen}
+          onClose={() => setIsAssetDialogOpen(false)}
+          initialFolder={activeModel.filePath}
+          targetModel={activeModel}
+          onIsMovingChange={setIsMoving} 
+          onUploaded={(updatedModel) => {
+            onModelUpdate(updatedModel || activeModel);
+          }}
         />
       )}
 

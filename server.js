@@ -421,6 +421,46 @@ app.post('/api/spoolman/use', async (req, res) => {
   }
 });
 
+function createInitialModelMetadata(overrides) {
+  const now = new Date().toISOString();
+  return {
+    id: overrides.id || `local-${Date.now()}`,
+    name: overrides.name || "New Model",
+    filePath: overrides.filePath || "",
+    modelUrl: overrides.modelUrl || "",
+    fileSize: overrides.fileSize || "0",
+    description: overrides.description || "",
+    category: overrides.category || "Uncategorized",
+    tags: overrides.tags || [],
+    isPrinted: false,
+    printTime: "",
+    filamentUsed: "",
+    license: overrides.license || "Private Use",
+    source: "Upload",
+    designer: "Local User",
+    collections: overrides.collections || [],
+    excludedCollections: overrides.excludedCollections || [],
+    printSettings: {
+      layerHeight: "", infill: "", nozzle: "", material: "", printer: ""
+    },
+    created: now,
+    lastModified: now,
+    parsedImages: [],
+    related_files: overrides.related_files || [],
+    hidden: overrides.hidden ?? false,
+    isRelatedPart: overrides.isRelatedPart ?? false,
+    isProjectRoot: overrides.isProjectRoot ?? false,
+    price: 0,
+    userDefined: {
+      thumbnail: "parsed:0",
+      imageOrder: [],
+      description: overrides.description || "",
+      images: []
+    },
+    ...overrides
+  };
+}
+
 // Create or update a collection
 app.post('/api/collections', async (req, res) => {
   try {
@@ -542,20 +582,20 @@ app.post('/api/collections', async (req, res) => {
     // [FIX] SAFETY NET: If disk read fails (race condition), manually construct the object.
     // This ensures the frontend ALWAYS gets an ID to perform the image uploads.
     if (!savedItem) {
-        console.log(`[Collection] Race condition detected for ${finalId}. Returning memory object.`);
-        savedItem = {
-            id: finalId,
-            name,
-            description,
-            modelIds: modelIds || [],
-            category: finalCategory || category,
-            parentId: (parentId === 'root' ? null : parentId),
-            coverModelId,
-            type,
-            buildPlates: buildPlates || [],
-            created: new Date().toISOString(),
-            lastModified: new Date().toISOString()
-        };
+      console.log(`[Collection] Race condition detected for ${finalId}. Returning memory object.`);
+      savedItem = {
+        id: finalId,
+        name,
+        description,
+        modelIds: modelIds || [],
+        category: finalCategory || category,
+        parentId: (parentId === 'root' ? null : parentId),
+        coverModelId,
+        type,
+        buildPlates: buildPlates || [],
+        created: new Date().toISOString(),
+        lastModified: new Date().toISOString()
+      };
     }
 
     setTimeout(() => { try { reconcileHiddenFlags(); } catch { } }, 10);
@@ -585,7 +625,7 @@ app.post('/api/collections/:id/build-plates', async (req, res) => {
 
       // Clone collection to modify
       const updatedCol = { ...currentCols[idx] };
-      
+
       // Initialize array if missing
       if (!updatedCol.buildPlates) updatedCol.buildPlates = [];
 
@@ -651,7 +691,7 @@ app.put('/api/collections/:id/build-plates/:plateId', async (req, res) => {
       };
 
       updatedCol.lastModified = new Date().toISOString();
-      
+
       const newCols = [...currentCols];
       newCols[idx] = updatedCol;
       return newCols;
@@ -680,7 +720,7 @@ app.delete('/api/collections/:id/build-plates/:plateId', async (req, res) => {
       if (idx === -1) throw new Error("Collection not found");
 
       const updatedCol = { ...currentCols[idx] };
-      
+
       if (!updatedCol.buildPlates) throw new Error("No plates found");
 
       const originalLen = updatedCol.buildPlates.length;
@@ -731,6 +771,11 @@ app.delete('/api/collections/:id', async (req, res) => {
 app.post('/api/collections/auto-import', async (req, res) => {
   try {
     const { targetFolder, strategy = 'smart', clearPrevious = false } = req.body;
+
+    const config = ConfigManager.loadConfig();
+    config.settings.scanStrategy = strategy || 'smart';
+    ConfigManager.saveConfig(config);
+
     const modelsDir = getAbsoluteModelsPath();
 
     // 1. Determine directory to scan
@@ -981,7 +1026,7 @@ app.delete('/api/collections/:id/images/:filename', async (req, res) => {
     const collectionsFile = path.join(DATA_DIR, 'collections.json');
     const data = JSON.parse(fs.readFileSync(collectionsFile, 'utf8'));
     let collections = Array.isArray(data) ? data : (data.collections || []);
-    
+
     const idx = collections.findIndex(c => c.id === id);
     if (idx === -1) return res.status(404).json({ success: false, error: "Collection not found" });
 
@@ -996,7 +1041,7 @@ app.delete('/api/collections/:id/images/:filename', async (req, res) => {
     if (collections[idx].images) {
       collections[idx].images = collections[idx].images.filter(img => img !== relativePath);
     }
-    
+
     // Unset cover image if it was this one
     if (collections[idx].coverImage === relativePath) {
       collections[idx].coverImage = collections[idx].images[0] || null;
@@ -1006,10 +1051,10 @@ app.delete('/api/collections/:id/images/:filename', async (req, res) => {
 
     // Save
     if (Array.isArray(data)) {
-        fs.writeFileSync(collectionsFile, JSON.stringify(collections, null, 2));
+      fs.writeFileSync(collectionsFile, JSON.stringify(collections, null, 2));
     } else {
-        data.collections = collections;
-        fs.writeFileSync(collectionsFile, JSON.stringify(data, null, 2));
+      data.collections = collections;
+      fs.writeFileSync(collectionsFile, JSON.stringify(data, null, 2));
     }
 
     res.json({ success: true, collection: collections[idx] });
@@ -1683,9 +1728,8 @@ app.get('/api/models', async (req, res) => {
                   model.filePath = filePath;
 
                   // console.log(`Added STL model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
-                  if (!model.hidden) {
-                    models.push(model);
-                }
+
+                  models.push(model);
                 } else {
                   serverDebug(`Skipping ${fullPath} - corresponding .stl/.STL file not found`);
                 }
@@ -1709,10 +1753,9 @@ app.get('/api/models', async (req, res) => {
                   model.modelUrl = modelUrl;
                   model.filePath = filePath;
 
-                  // console.log(`Added 3MF model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`);
-                  if (!model.hidden) {
-                    models.push(model);
-                }
+                  // console.log(`Added 3MF model: ${model.name} with URL: ${model.modelUrl} and filePath: ${model.filePath}`); 
+                  models.push(model);
+
                 } else {
                   serverDebug(`Skipping ${fullPath} - corresponding .3mf file not found at ${absoluteThreeMfPath}`);
                 }
@@ -2466,7 +2509,7 @@ app.post('/api/import/thingiverse', async (req, res) => {
     const { thingId, targetFolder = 'imported', collectionId, category } = req.body;
 
     if (!thingId) return res.status(400).json({ success: false, error: 'No Thing ID provided' });
-    
+
     const config = ConfigManager.loadConfig();
     const token = config.integrations?.thingiverse?.token || process.env.THINGIVERSE_TOKEN;
     if (!token) return res.status(500).json({ success: false, error: 'Server missing THINGIVERSE_TOKEN' });
@@ -2486,7 +2529,7 @@ app.post('/api/import/thingiverse', async (req, res) => {
     // 2. Wrap Post-Processing in Collection Queue
     await collectionQueue.add(async (currentCols) => {
       const modelsRoot = getAbsoluteModelsPath();
-      
+
       // Update Category if selected
       if (category && category !== 'Uncategorized') {
         modelData.category = category;
@@ -2510,9 +2553,9 @@ app.post('/api/import/thingiverse', async (req, res) => {
           }
         }
       }
-      
-      // 3. Trigger Library Rescan to populate modelIds for the UI
-      return collectionScanner.scanDirectory(modelsRoot, modelsRoot, { strategy: 'strict' });
+
+      const userStrategy = config.settings?.scanStrategy || 'smart';
+      return collectionScanner.scanDirectory(modelsRoot, modelsRoot, { strategy: userStrategy });
     });
 
     res.json({ success: true, model: modelData });
@@ -2548,12 +2591,6 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
     if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ success: false, error: 'No files uploaded' });
 
     const modelsDir = getAbsoluteModelsPath();
-    const uploadsDir = path.join(modelsDir, 'uploads');
-    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    const createCollection = req.body.createCollection === 'true';
-    const collectionDescription = req.body.collectionDescription || '';
-    const collectionTags = req.body.collectionTags ? JSON.parse(req.body.collectionTags) : [];
-
     const { parse3MF, parseSTL, computeMD5 } = require('./dist-backend/utils/threeMFToJson');
 
     const saved = [];
@@ -2561,255 +2598,626 @@ app.post('/api/upload-models', upload.array('files'), async (req, res) => {
     const errors = [];
     const affectedFolders = new Map();
 
-    // Parse optional destinations JSON (array aligned with files order)
+    // 1. [FROM YOURS] Parse destinations and collection settings
     let destinations = null;
     try {
-      if (req.body && req.body.destinations) {
+      if (req.body.destinations) {
         destinations = JSON.parse(req.body.destinations);
-        if (!Array.isArray(destinations)) destinations = null;
       }
-    } catch (e) {
-      destinations = null;
-    }
+    } catch (e) { destinations = null; }
 
-    for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
-      const f = files[fileIndex];
-      try {
-        // multer memoryStorage provides buffer
-        const buffer = f.buffer;
-        const original = (f.originalname || 'upload').replace(/\\/g, '/');
-        // sanitize filename
-        let base = path.basename(original).replace(/[^a-zA-Z0-9_.\- ]/g, '_');
+    const createCollection = req.body.createCollection === 'true';
+    const collectionDescription = req.body.collectionDescription || '';
+    const collectionTags = req.body.collectionTags ? JSON.parse(req.body.collectionTags) : [];
 
-        // Check for G-code archives FIRST before general .3mf check (order matters!)
-        const lowerBase = base.toLowerCase();
-        if (lowerBase.endsWith('.gcode.3mf') || lowerBase.endsWith('.3mf.gcode')) {
-          errors.push({ file: original, error: 'G-code archives (.gcode.3mf) should be uploaded via the G-code analysis dialog, not the model upload dialog' });
-          continue;
-        }
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const buffer = f.buffer; // Use memory buffer directly for speed
+      const original = (f.originalname || 'upload').replace(/\\/g, '/');
+      let base = path.basename(original).replace(/[^a-zA-Z0-9_.\- ]/g, '_');
+      const lowerBase = base.toLowerCase();
 
-        // Now check for valid extensions
-        if (!/\.3mf$/i.test(base) && !/\.stl$/i.test(base)) {
-          errors.push({ file: original, error: 'Unsupported file extension' });
-          continue;
-        }
-        // Determine destination folder (if provided) relative to models dir
-        let destFolder = 'uploads';
-        if (destinations && Array.isArray(destinations) && typeof destinations[fileIndex] === 'string' && destinations[fileIndex].trim() !== '') {
-          // normalize and prevent traversal
-          let candidate = destinations[fileIndex].replace(/\\/g, '/').replace(/^\/*/, '');
-          if (candidate.includes('..')) candidate = 'uploads';
-          destFolder = candidate || 'uploads';
-        }
+      // 2. [FROM YOURS] G-Code and Extension Guards
+      if (lowerBase.endsWith('.gcode.3mf') || lowerBase.endsWith('.3mf.gcode')) {
+        errors.push({ file: original, error: 'G-code archives belong in the analysis dialog.' });
+        continue;
+      }
 
-        const destDir = path.join(modelsDir, destFolder);
-        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+      const isModel = lowerBase.endsWith('.3mf') || lowerBase.endsWith('.stl');
+      const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(lowerBase);
+      const isDoc = /\.(pdf|txt|md|doc|docx)$/i.test(lowerBase);
 
-        if (!affectedFolders.has(destDir)) {
-          affectedFolders.set(destDir, []);
-        }
+      if (!isModel && !isImage && !isDoc) {
+        errors.push({ file: original, error: 'Unsupported file extension' });
+        continue;
+      }
 
-        let targetPath = path.join(destDir, base);
-        // avoid collisions by appending timestamp when necessary
-        if (fs.existsSync(targetPath)) {
-          const name = base.replace(/(\.[^.]+)$/, '');
-          const ext = path.extname(base);
-          const ts = Date.now();
-          base = `${name}-${ts}${ext}`;
-          targetPath = path.join(destDir, base);
-        }
+      // 3. [FROM YOURS] Destination Resolution
+      let destFolder = 'uploads';
+      if (destinations && destinations[i]) {
+        let candidate = destinations[i].replace(/\\/g, '/').replace(/^\/*/, '');
+        if (candidate.includes('..')) candidate = 'uploads';
+        destFolder = candidate || 'uploads';
+      }
 
-        // Write uploaded file atomically: write to tmp then rename. Protect
-        // against a race where another process creates the same filename
-        // between our exists-check and the rename. If the target exists at
-        // rename-time, pick a new unique name and rename there instead.
-        const tmpUploadPath = targetPath + '.tmp';
-        fs.writeFileSync(tmpUploadPath, buffer);
+      const destDir = path.join(modelsDir, destFolder);
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
-        // If targetPath was created between our earlier exists check and now,
-        // avoid overwriting: choose a new name with a timestamp/random suffix.
-        if (fs.existsSync(targetPath)) {
-          const name = base.replace(/(\.[^.]+)$/, '');
-          const ext = path.extname(base);
-          const ts = Date.now();
-          const rnd = Math.floor(Math.random() * 10000);
-          base = `${name}-${ts}-${rnd}${ext}`;
-          targetPath = path.join(destDir, base);
-        }
-        fs.renameSync(tmpUploadPath, targetPath);
-        saved.push(path.relative(modelsDir, targetPath).replace(/\\/g, '/'));
+      // 4. [FROM YOURS] Atomic Write Logic
+      let targetPath = path.join(destDir, base);
+      if (fs.existsSync(targetPath)) {
+        const name = base.replace(/(\.[^.]+)$/, '');
+        const ext = path.extname(base);
+        base = `${name}-${Date.now()}${ext}`;
+        targetPath = path.join(destDir, base);
+      }
 
-        // Now generate munchie.json for the saved file (reuse regeneration logic)
+      const tmpUploadPath = targetPath + '.tmp';
+      fs.writeFileSync(tmpUploadPath, buffer);
+
+      // Secondary race-condition check from your version
+      if (fs.existsSync(targetPath)) {
+        const name = base.replace(/(\.[^.]+)$/, '');
+        const ext = path.extname(base);
+        base = `${name}-${Date.now()}-${Math.floor(Math.random() * 10000)}${ext}`;
+        targetPath = path.join(destDir, base);
+      }
+      fs.renameSync(tmpUploadPath, targetPath);
+
+      const relativePath = path.relative(modelsDir, targetPath).replace(/\\/g, '/');
+      saved.push(relativePath);
+
+      // 5. [FROM YOURS] Munchie Generation & Thumbnail Logic
+      if (isModel) {
         try {
-          const modelFilePath = targetPath;
-          const rel = path.relative(modelsDir, modelFilePath).replace(/\\/g, '/');
-          let jsonRel;
-          if (rel.toLowerCase().endsWith('.3mf')) jsonRel = rel.replace(/\.3mf$/i, '-munchie.json');
-          else if (rel.toLowerCase().endsWith('.stl')) jsonRel = rel.replace(/\.stl$/i, '-stl-munchie.json');
-          else {
-            errors.push({ file: rel, error: 'Unsupported file type for processing' });
-            continue;
-          }
+          const derivedId = base.replace(/\.(3mf|stl)$/i, '');
+          const hash = computeMD5(buffer);
 
+          // [STEP A] Parse the 3D file data first
+          const parsedData = lowerBase.endsWith('.3mf')
+            ? await parse3MF(targetPath, derivedId, hash)
+            : await parseSTL(targetPath, derivedId, hash);
+
+          // [STEP B] Use the Factory as the base, then layer the parsed data over it
+          let metadata = createInitialModelMetadata({
+            ...parsedData, // This fills in name, polygons, etc.
+            id: derivedId,
+            hash: hash,
+            filePath: relativePath,
+            modelUrl: `/models/${relativePath}`,
+          });
+
+          // [STEP C] Rebuild image order using the standard factory structure
+          const parsedArr = Array.isArray(metadata.parsedImages) ? metadata.parsedImages : [];
+          metadata.userDefined.imageOrder = parsedArr.map((_, idx) => `parsed:${idx}`);
+
+          const jsonRel = relativePath.replace(/\.(3mf|stl)$/i, lowerBase.endsWith('.3mf') ? '-munchie.json' : '-stl-munchie.json');
           const jsonPath = path.join(modelsDir, jsonRel);
-          const derivedId = path.basename(rel).replace(/\.3mf$/i, '').replace(/\.stl$/i, '');
 
-          affectedFolders.get(destDir).push(derivedId);
+          fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2), 'utf8');
 
-          const fileBuf = fs.readFileSync(modelFilePath);
-          const hash = computeMD5(fileBuf);
-          let newMetadata;
-          if (modelFilePath.toLowerCase().endsWith('.3mf')) {
-            newMetadata = await parse3MF(modelFilePath, derivedId, hash);
-          } else {
-            newMetadata = await parseSTL(modelFilePath, derivedId, hash);
-          }
-
-          const mergedMetadata = { ...newMetadata, id: derivedId, hash };
-          // Ensure created/lastModified timestamps for newly uploaded file
+          // [FROM YOURS] Thumbnail Generation Integration
           try {
-            const now = new Date().toISOString();
-            if (!mergedMetadata.created) mergedMetadata.created = now;
-            mergedMetadata.lastModified = now;
-          } catch (e) { /* ignore */ }
+            const thumbName = path.basename(targetPath) + '-thumb.png';
+            const thumbPath = path.join(destDir, thumbName);
+            const BASE_URL = process.env.HOST_URL || `http://localhost:${PORT || 3001}`;
 
-          // Rebuild imageOrder similar to regeneration logic
-          try {
-            const parsed = Array.isArray(mergedMetadata.parsedImages) ? mergedMetadata.parsedImages : (Array.isArray(mergedMetadata.images) ? mergedMetadata.images : []);
-            const userArr = Array.isArray(mergedMetadata.userDefined?.images) ? mergedMetadata.userDefined.images : [];
-            const rebuiltOrder = [];
-            for (let i = 0; i < parsed.length; i++) rebuiltOrder.push(`parsed:${i}`);
-            for (let i = 0; i < userArr.length; i++) rebuiltOrder.push(`user:${i}`);
-            if (!mergedMetadata.userDefined || typeof mergedMetadata.userDefined !== 'object') mergedMetadata.userDefined = {};
-            mergedMetadata.userDefined = { ...(mergedMetadata.userDefined || {}), imageOrder: rebuiltOrder };
-          } catch (e) {
-            console.warn('Failed to rebuild userDefined.imageOrder during upload processing:', e);
-          }
-
-          // Ensure directory exists for jsonPath
-          const jdir = path.dirname(jsonPath);
-          if (!fs.existsSync(jdir)) fs.mkdirSync(jdir, { recursive: true });
-          fs.writeFileSync(jsonPath, JSON.stringify(mergedMetadata, null, 2), 'utf8');
-          try {
-
-            const thumbName = path.basename(modelFilePath) + '-thumb.png';
-            const thumbPath = path.join(path.dirname(modelFilePath), thumbName);
-
-            const BASE_URL = process.env.HOST_URL || `http://localhost:${PORT}`;
             console.log(`📸 Auto-generating thumbnail for: ${derivedId}`);
+            await generateThumbnail(targetPath, thumbPath, BASE_URL, undefined, modelsDir);
 
-            // Await generation so the thumbnail exists when the UI refreshes
-            await generateThumbnail(modelFilePath, thumbPath, BASE_URL, undefined, modelsDir);
-            // Update JSON to include the new thumbnail image
             const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
             const freshJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-
             if (!freshJson.images) freshJson.images = [];
-            // Add to the START of the images list so it becomes the default
-            freshJson.images.unshift(relativeThumbUrl);
+            freshJson.images.unshift(relativeThumbUrl); // Make it the primary image
+
+            // Re-update image order to include the thumb
+            if (freshJson.userDefined) {
+              freshJson.userDefined.imageOrder = ['user:0', ...freshJson.userDefined.imageOrder];
+            }
 
             fs.writeFileSync(jsonPath, JSON.stringify(freshJson, null, 2), 'utf8');
           } catch (genErr) {
-            // Don't fail the upload if just the image generation fails
             console.error("Auto-thumbnail failed:", genErr);
           }
-          // -------------------------------
+
+          if (!affectedFolders.has(destDir)) affectedFolders.set(destDir, []);
+          affectedFolders.get(destDir).push(derivedId);
+          processed.push(jsonRel);
 
           await postProcessMunchieFile(jsonPath);
-          processed.push(jsonRel);
-        } catch (e) {
-          errors.push({ file: base, error: e && e.message ? e.message : String(e) });
-        }
-      } catch (e) {
-        errors.push({ file: f.originalname || 'unknown', error: e && e.message ? e.message : String(e) });
+        } catch (e) { errors.push({ file: base, error: e.message }); }
+      }
+      else if ((isImage || isDoc) && destFolder !== 'uploads') {
+        // [MY ADDITION] Link Assets to metadata if they are uploaded into a project folder
+        try {
+          const munchieFile = fs.readdirSync(destDir).find(fn => fn.endsWith('munchie.json'));
+          if (munchieFile) {
+            const mPath = path.join(destDir, munchieFile);
+            const mData = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+            const assetUrl = '/models/' + relativePath;
+
+            if (isImage) {
+              if (!mData.images) mData.images = [];
+              if (!mData.images.includes(assetUrl)) mData.images.push(assetUrl);
+            } else {
+              if (!mData.documents) mData.documents = [];
+              if (!mData.documents.includes(assetUrl)) mData.documents.push(assetUrl);
+            }
+            fs.writeFileSync(mPath, JSON.stringify(mData, null, 2));
+          }
+        } catch (e) { console.warn("Asset link failed", e); }
       }
     }
 
+    // 6. [FROM YOURS] Collection Sync Logic
     if (affectedFolders.size > 0) {
       const currentCols = loadCollections();
       let colsUpdated = false;
 
-      // Iterate the Map: folderPath -> array of newModelIds
       for (const [folderPath, newModelIds] of affectedFolders.entries()) {
         const rel = path.relative(modelsDir, folderPath);
         if (!rel || rel === '' || rel === '.') continue;
 
-        // Generate standard ID
         const normalized = rel.replace(/\\/g, '/');
         const colId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
-
         const existingIdx = currentCols.findIndex(c => c.id === colId);
-        const folderName = path.basename(folderPath);
 
         if (createCollection || existingIdx === -1) {
-          // CASE 1: Create New or Overwrite Collection (Group Upload)
           const newCol = existingIdx !== -1 ? currentCols[existingIdx] : {
             id: colId,
-            name: folderName,
+            name: path.basename(folderPath),
             modelIds: [],
             created: new Date().toISOString(),
             category: 'Auto-Imported'
           };
 
-          // [CRITICAL FIX] Add the new IDs immediately
-          const existingIds = new Set(newCol.modelIds || []);
-          newModelIds.forEach(id => existingIds.add(id));
-          newCol.modelIds = Array.from(existingIds);
-
-          // Add Description/Tags if requested
-          if (createCollection && collectionDescription) {
-            newCol.description = collectionDescription;
-          }
-          if (collectionTags.length > 0) {
-            newCol.tags = Array.from(new Set([...(newCol.tags || []), ...collectionTags]));
-          }
+          const idSet = new Set([...(newCol.modelIds || []), ...newModelIds]);
+          newCol.modelIds = Array.from(idSet);
+          if (createCollection && collectionDescription) newCol.description = collectionDescription;
+          if (collectionTags.length > 0) newCol.tags = Array.from(new Set([...(newCol.tags || []), ...collectionTags]));
 
           newCol.lastModified = new Date().toISOString();
-
           if (existingIdx !== -1) currentCols[existingIdx] = newCol;
           else currentCols.push(newCol);
-
           colsUpdated = true;
         } else {
-          // CASE 2: Uploading to existing collection (Standard Upload)
-          // We must manually append the IDs here too, or they won't appear until a full re-scan
           const existingCol = currentCols[existingIdx];
-          const existingIds = new Set(existingCol.modelIds || []);
-
-          let changed = false;
-          newModelIds.forEach(id => {
-            if (!existingIds.has(id)) {
-              existingIds.add(id);
-              changed = true;
-            }
-          });
-
-          if (changed) {
-            existingCol.modelIds = Array.from(existingIds);
+          const startSize = existingCol.modelIds.length;
+          const idSet = new Set([...existingCol.modelIds, ...newModelIds]);
+          existingCol.modelIds = Array.from(idSet);
+          if (existingCol.modelIds.length !== startSize) {
             existingCol.lastModified = new Date().toISOString();
             colsUpdated = true;
           }
         }
       }
-
-      if (colsUpdated) {
-        saveCollections(currentCols);
-      }
+      if (colsUpdated) saveCollections(currentCols);
     }
 
-    // This ensures modelIds are populated before the frontend refreshes
-    await collectionQueue.add((cols) => {
-      return collectionScanner.scanDirectory(getAbsoluteModelsPath(), getAbsoluteModelsPath(), { strategy: 'strict' });
-    });
-
-    try { reconcileHiddenFlags(); } catch (e) { console.warn('Post-upload reconcile failed', e); }
-
+    await collectionQueue.add(() => collectionScanner.scanDirectory(modelsDir, modelsDir, { strategy: 'strict' }));
+    try { reconcileHiddenFlags(); } catch (e) { }
 
     res.json({ success: errors.length === 0, saved, processed, errors });
   } catch (e) {
-    console.error('Upload processing error:', e);
-    res.status(500).json({ success: false, error: e && e.message ? e.message : String(e) });
+    res.status(500).json({ success: false, error: e.message });
   }
+});
+
+app.post('/api/move-model-to-project', async (req, res) => {
+  try {
+
+    const { ProjectModule } = require('./dist-backend/ProjectService');
+    const ProjectService = ProjectModule.ProjectService || ProjectModule;
+
+    const { modelId, targetFolderName } = req.body;
+    const modelsDir = getAbsoluteModelsPath();
+
+    // 1. Find existing munchie
+    const findMunchie = (dir) => {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          const found = findMunchie(full);
+          if (found) return found;
+        } else if (entry.name.endsWith('munchie.json')) {
+          try {
+            const data = JSON.parse(fs.readFileSync(full, 'utf8'));
+            if (data.id === modelId) return full;
+          } catch (e) { }
+        }
+      }
+      return null;
+    };
+
+    const munchiePath = findMunchie(modelsDir);
+    if (!munchiePath) return res.status(404).json({ error: "Model not found" });
+
+    const modelData = JSON.parse(fs.readFileSync(munchiePath, 'utf8'));
+    const sourceDir = path.dirname(munchiePath);
+    const safeFolderName = targetFolderName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
+    const destDir = path.join(sourceDir, safeFolderName);
+
+    // 2. Physical Move Logic
+    if (path.basename(sourceDir) !== safeFolderName) {
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+      const munchieFileName = path.basename(munchiePath);
+      const baseName = munchieFileName.replace(/(-stl)?-munchie\.json$/, '');
+
+      const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+      const filesToMove = entries.filter(entry =>
+        entry.isFile() && entry.name.startsWith(baseName)
+      );
+
+      filesToMove.forEach(f => {
+        const oldP = path.join(sourceDir, f.name);
+        const newP = path.join(destDir, f.name);
+        if (fs.existsSync(oldP)) fs.renameSync(oldP, newP);
+      });
+    }
+
+    // 3. Identify all 3D files now in the new project folder
+    const currentFiles = fs.readdirSync(destDir);
+    const modelFiles = currentFiles.filter(f => f.endsWith('.stl') || f.endsWith('.3mf'));
+
+    // 4. CALL THE UNIFIED SERVICE
+    // This replaces all manual healing, thumb re-ordering, and marker creation
+
+    const updatedModel = await ProjectService.finalizeProject({
+      mode: 'generic',
+      destDir,
+      modelsRoot: modelsDir,
+      importedFiles: modelFiles,
+      localImagePaths: [], // Service will generate thumbnails and add them
+      targetFolder: '',
+      meta: {
+        id: modelId,
+        name: safeFolderName || modelData.name,
+        description: modelData.description,
+        tags: modelData.tags
+      }
+    });
+
+    res.json({ success: true, model: updatedModel });
+
+  } catch (e) {
+    console.error("Move model error:", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// --- UNIFIED HEAL LOGIC ENGINE ---
+async function runHealLogic(isDryRun) {
+  // --- PANIC LOGS ---
+  console.log("!!! HEAL LOGIC TRIGGERED !!!");
+  console.log("Is Dry Run:", isDryRun);
+
+  const modelsDir = getAbsoluteModelsPath();
+  console.log("Target Models Directory:", modelsDir);
+
+  if (!modelsDir || !fs.existsSync(modelsDir)) {
+      console.error("❌ ERROR: Models directory does not exist or is undefined!");
+      return { processed: 0, healed: 0, errors: ["Models directory missing"], details: [] };
+  }
+
+  const results = { processed: 0, healed: 0, errors: [], details: [] };
+  
+  const actualCollections = loadCollections() || [];
+  const collectionPathMap = new Map();
+  actualCollections.forEach(c => { 
+    if (c.path) collectionPathMap.set(c.path.replace(/\\/g, '/'), c.id); 
+  });
+
+  async function processDir(dir) {
+    let entries = [];
+    try { 
+      entries = fs.readdirSync(dir, { withFileTypes: true }); 
+    } catch(e) { 
+      console.error(`❌ Cannot read directory: ${dir}`);
+      return; 
+    }
+
+    // --- 📦 PROJECT MARKER CHECK ---
+    const projectMarkerPath = path.join(dir, 'project.json');
+    const projectData = fs.existsSync(projectMarkerPath) ? JSON.parse(fs.readFileSync(projectMarkerPath, 'utf8')) : null;
+    const isProject = !!projectData;
+
+    // Filter for Munchies, but be VERY inclusive
+    const munchieFiles = entries.filter(e => e.isFile() && e.name.toLowerCase().includes('munchie.json'));
+    const normalizedCurrentDir = dir.replace(/\\/g, '/');
+
+    for (const entry of munchieFiles) {
+      const fullPath = path.join(dir, entry.name);
+      console.log(`🔍 Checking Munchie: ${entry.name} in ${normalizedCurrentDir}`);
+
+      try {
+        const raw = fs.readFileSync(fullPath, 'utf8');
+        let data = JSON.parse(raw);
+        let hasChanged = false;
+
+        data = createInitialModelMetadata(data);
+        if (!data.images) data.images = [];
+        if (!data.parsedImages) data.parsedImages = [];
+        if (!data.related_files) data.related_files = [];
+
+        // --- FALLBACK NAMING (The SportsCar Fix) ---
+        let modelFileName = data.filePath 
+            ? path.basename(data.filePath, path.extname(data.filePath)) 
+            : entry.name.replace(/(-stl)?-munchie\.json$/i, '');
+        
+        console.log(`   > Identity: ${modelFileName} | isProject: ${isProject}`);
+
+        const proposal = { 
+            model: data.name || entry.name, 
+            additions: [], 
+            deletions: [], 
+            collectionSync: null, 
+            visibilityFix: null 
+        };
+
+        const siblings = fs.readdirSync(dir);
+
+        // --- 1. EMPTY PATH HEALING ---
+        if (!data.filePath || data.filePath === "") {
+          const foundModel = siblings.find(f => {
+            const low = f.toLowerCase();
+            return low.endsWith('.stl') || low.endsWith('.3mf');
+          });
+          
+          if (foundModel) {
+            const newRelPath = path.join(path.relative(modelsDir, dir), foundModel).replace(/\\/g, '/');
+            proposal.additions.push(`Recovered filePath: ${foundModel}`);
+            data.filePath = newRelPath;
+            data.modelUrl = `/models/${newRelPath}`;
+            modelFileName = path.basename(foundModel, path.extname(foundModel)); 
+            hasChanged = true;
+            console.log(`   > 🩹 Recovered Path: ${foundModel}`);
+          }
+        }
+
+        // --- 2. ASSET CLAIMING ---
+        siblings.forEach(file => {
+          if (file.endsWith('.json') || file === 'project.json') return;
+          const relAssetPath = path.join(path.relative(modelsDir, dir), file).replace(/\\/g, '/');
+          const isMatch = modelFileName && file.toLowerCase().startsWith(modelFileName.toLowerCase());
+          const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(file);
+          const isGeneratedThumb = file.toLowerCase().endsWith('-thumb.png');
+
+          let shouldClaim = false;
+          if (isProject) {
+            if (!isImage) shouldClaim = true; 
+            else if (!isGeneratedThumb) shouldClaim = true; 
+            else if (isMatch) shouldClaim = true; 
+          } else {
+            if (isMatch) shouldClaim = true;
+          }
+
+          if (shouldClaim && relAssetPath !== data.filePath) {
+            if (isImage) {
+              const url = `/models/${relAssetPath}`;
+              const gallery = (data.parsedImages && data.parsedImages.length > 0) ? data.parsedImages : data.images;
+              if (!gallery.includes(url)) {
+                proposal.additions.push(`${file} (Gallery Link)`);
+                gallery.push(url);
+                hasChanged = true;
+              }
+            } else if (!data.related_files.includes(relAssetPath)) {
+              proposal.additions.push(`${file} (Related Part/Doc)`);
+              data.related_files.push(relAssetPath);
+              hasChanged = true;
+            }
+          }
+        });
+
+        const galleryRef = (data.parsedImages && data.parsedImages.length > 0) ? 'parsedImages' : 'images';
+        const originalImgCount = data[galleryRef].length;
+        const originalRelatedCount = data.related_files.length;
+        
+        // This defines exactly what a local URL should look like for this munchie
+        const expectedFolderUrl = `/models/${path.relative(modelsDir, dir).replace(/\\/g, '/')}/`;
+        
+        data[galleryRef] = data[galleryRef].filter(imgUrl => {
+          const fileName = path.basename(imgUrl);
+          const isPhysicallyHere = siblings.includes(fileName);
+          
+          // FIXED: Even if the filename matches, the URL must point to THIS folder
+          const isCorrectFolder = imgUrl.startsWith(expectedFolderUrl);
+          
+          const match = modelFileName && fileName.toLowerCase().startsWith(modelFileName.toLowerCase());
+          const keepInProject = isProject && isPhysicallyHere;
+        
+          if (!isPhysicallyHere || !isCorrectFolder || (!match && !keepInProject)) {
+            proposal.deletions.push(`${fileName} (Stale/Wrong Path)`);
+            return false;
+          }
+          return true;
+        });
+        
+        // Update imageOrder if we removed stale ghosts
+        if (data[galleryRef].length !== originalImgCount) {
+          hasChanged = true;
+          data.userDefined.imageOrder = data[galleryRef].map((_, idx) => `parsed:${idx}`);
+        }
+        
+        // Clean up related files (STLs/PDFs) with the same strictness
+        data.related_files = data.related_files.filter(p => {
+          const fileName = path.basename(p);
+          const isPhysicallyHere = siblings.includes(fileName);
+          const expectedRelPath = path.join(path.relative(modelsDir, dir), fileName).replace(/\\/g, '/');
+          
+          if (!isPhysicallyHere || p !== expectedRelPath) {
+            proposal.deletions.push(`${fileName} (Stale Part Path)`);
+            return false;
+          }
+          return true;
+        });
+        if (data.related_files.length !== originalRelatedCount) hasChanged = true;
+        
+        // --- 4. THUMBNAIL RESTORATION ---
+        // (Runs after the scrub so index 0 is guaranteed to be a valid local file)
+        const actualFile = data.filePath ? path.basename(data.filePath) : "";
+        if (actualFile) {
+          const expectedThumbName = `${actualFile}-thumb.png`;
+          const thumbWebUrl = `${expectedFolderUrl}${expectedThumbName}`;
+          
+          if (siblings.includes(expectedThumbName)) {
+            const gallery = data[galleryRef];
+            
+            // Ensure the valid thumb is at index 0
+            if (gallery[0] !== thumbWebUrl) {
+              proposal.additions.push(`${expectedThumbName} (Gallery Priority)`);
+              const existingIdx = gallery.indexOf(thumbWebUrl);
+              if (existingIdx > -1) gallery.splice(existingIdx, 1);
+              gallery.unshift(thumbWebUrl);
+              hasChanged = true;
+            }
+        
+            // Snap pointer
+            const isPointerBroken = (data.userDefined?.thumbnail?.startsWith('user:') && (!data.userDefined.images || data.userDefined.images.length === 0));
+            if (isPointerBroken || data.userDefined.thumbnail !== 'parsed:0') {
+              proposal.additions.push(`${expectedThumbName} (Set as Thumbnail)`);
+              if (!data.userDefined) data.userDefined = { thumbnail: '', imageOrder: [], images: [] };
+              data.userDefined.thumbnail = `parsed:0`; 
+              data.thumbnail = `parsed:0`;
+              
+              const parsedOrder = gallery.map((_, idx) => `parsed:${idx}`);
+              const userOrder = (data.userDefined.images || []).map((_, idx) => `user:${idx}`);
+              data.userDefined.imageOrder = [...parsedOrder, ...userOrder];
+              hasChanged = true;
+            }
+          }
+        }
+
+        // --- 5. SANITATION ---
+        const cleanPath = (p) => p ? p.replace(/\\/g, '/').replace(/\/+/g, '/').trim() : p;
+        if (data.filePath !== cleanPath(data.filePath)) {
+            data.filePath = cleanPath(data.filePath);
+            data.modelUrl = cleanPath(data.modelUrl);
+            hasChanged = true;
+        }
+
+        if (hasChanged && !isDryRun) {
+          // Create a backup of the ORIGINAL 'raw' content before we overwrite
+          const backupPath = fullPath + '.bak';
+          fs.writeFileSync(backupPath, raw, 'utf8'); // 'raw' is the string we read at the start
+
+          fs.writeFileSync(fullPath, JSON.stringify(data, null, 2), 'utf8');
+          results.healed++;
+        }
+        
+        if (proposal.additions.length > 0 || proposal.deletions.length > 0 || hasChanged) {
+          results.details.push(proposal);
+        }
+        results.processed++;
+      } catch (err) { 
+        console.error(`   ❌ Error in ${entry.name}: ${err.message}`);
+        results.errors.push({ file: entry.name, error: err.message }); 
+      }
+    }
+
+    // --- CRITICAL: RECURSION ---
+    // Ensure we enter every single subfolder
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await processDir(path.join(dir, entry.name));
+      }
+    }
+  }
+
+  console.log("🚀 Starting Deep Heal...");
+  await processDir(modelsDir);
+  console.log(`✅ Deep Heal Finished. Processed: ${results.processed}`);
+  return results;
+}
+
+app.post('/api/admin/library-heal-preview', async (req, res) => {
+  console.log("➡️ API Request received: /api/admin/library-heal-preview");
+  try {
+    const results = await runHealLogic(true); 
+    console.log("⬅️ HEAL PREVIEW COMPLETE. Found:", results.details.length, "changes.");
+    res.json({ success: true, previewResults: results });
+  } catch (err) {
+    console.error("API ROUTE ERROR:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/admin/library-heal', async (req, res) => {
+  console.log("➡️ API Request received: /api/admin/library-heal");
+  const results = await runHealLogic(false); // false = save to disk
+  res.json({ success: true, results, message: "Library heal applied successfully." });
+});
+
+async function runRevertLogic() {
+  const modelsDir = getAbsoluteModelsPath();
+  const results = { restored: 0, errors: [] };
+
+  async function revertDir(dir) {
+    let entries = fs.readdirSync(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        await revertDir(fullPath);
+      } 
+      else if (entry.name.endsWith('.json.bak')) {
+        try {
+          const originalJsonPath = fullPath.replace('.bak', '');
+          
+          // Restore the backup over the current file
+          fs.copyFileSync(fullPath, originalJsonPath);
+          
+          // Delete the backup file
+          fs.unlinkSync(fullPath);
+          
+          results.restored++;
+          console.log(`⏪ Restored: ${path.basename(originalJsonPath)}`);
+        } catch (err) {
+          results.errors.push({ file: entry.name, error: err.message });
+        }
+      }
+    }
+  }
+
+  console.log("⏪ Starting Library Revert...");
+  await revertDir(modelsDir);
+  return results;
+}
+
+app.post('/api/admin/library-revert', async (req, res) => {
+  try {
+    const results = await runRevertLogic();
+    res.json({ 
+        success: true, 
+        message: `Successfully reverted ${results.restored} models.`,
+        results 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/admin/library-check-backups', async (req, res) => {
+  const modelsDir = getAbsoluteModelsPath();
+  let hasBackups = false;
+
+  const scanForBackups = (dir) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (scanForBackups(path.join(dir, entry.name))) return true;
+      } else if (entry.name.endsWith('.json.bak')) {
+        hasBackups = true;
+        return true;
+      }
+    }
+    return false;
+  };
+
+  scanForBackups(modelsDir);
+  res.json({ hasBackups });
 });
 
 if (!fs.existsSync(COLLECTION_IMAGES_DIR)) fs.mkdirSync(COLLECTION_IMAGES_DIR, { recursive: true });
@@ -2836,7 +3244,7 @@ app.post('/api/collections/:id/images', upload.single('image'), async (req, res)
 
     console.log(`[Upload] Writing file buffer to: ${targetPath}`);
     fs.writeFileSync(targetPath, file.buffer);
-    
+
     const publicPath = `/api/images/collections/${collectionId}/${filename}`;
 
     // 2. Update Database via Queue (Fixes Race Condition)
@@ -2847,7 +3255,7 @@ app.post('/api/collections/:id/images', upload.single('image'), async (req, res)
 
       const updated = { ...currentCols[idx] };
       if (!updated.images) updated.images = [];
-      
+
       // Add new image
       updated.images.push(publicPath);
 
@@ -2907,7 +3315,7 @@ app.post('/api/collections/:id/documents', upload.single('file'), async (req, re
 
     console.log(`[Docs] Writing file buffer to: ${targetPath}`);
     fs.writeFileSync(targetPath, file.buffer);
-    
+
     // Public URL: /api/documents/collections/<id>/<filename>
     const publicPath = `/api/documents/collections/${collectionId}/${filename}`;
 
@@ -2915,13 +3323,13 @@ app.post('/api/collections/:id/documents', upload.single('file'), async (req, re
     const updateTask = (currentCols) => {
       const idx = currentCols.findIndex(c => c.id === collectionId);
       if (idx === -1) {
-          console.warn(`[Docs] Collection ${collectionId} not found in DB.`);
-          throw new Error("Collection not found");
+        console.warn(`[Docs] Collection ${collectionId} not found in DB.`);
+        throw new Error("Collection not found");
       }
 
       const updated = { ...currentCols[idx] };
       if (!updated.documents) updated.documents = [];
-      
+
       updated.documents.push(publicPath);
       updated.lastModified = new Date().toISOString();
 
@@ -2952,38 +3360,38 @@ app.post('/api/collections/:id/documents', upload.single('file'), async (req, re
 
 // [NEW] Endpoint: Delete Document
 app.delete('/api/collections/:id/documents/:filename', async (req, res) => {
-    const { id, filename } = req.params;
-    try {
-        // 1. Remove from DB via Queue
-        const updateTask = (currentCols) => {
-            const idx = currentCols.findIndex(c => c.id === id);
-            if (idx === -1) return currentCols; // Should we throw?
+  const { id, filename } = req.params;
+  try {
+    // 1. Remove from DB via Queue
+    const updateTask = (currentCols) => {
+      const idx = currentCols.findIndex(c => c.id === id);
+      if (idx === -1) return currentCols; // Should we throw?
 
-            const updated = { ...currentCols[idx] };
-            const targetPath = `/api/documents/collections/${id}/${filename}`;
-            
-            if (updated.documents) {
-                updated.documents = updated.documents.filter(d => !d.includes(filename));
-            }
-            updated.lastModified = new Date().toISOString();
-            
-            const newCols = [...currentCols];
-            newCols[idx] = updated;
-            return newCols;
-        };
-        
-        await collectionQueue.add(updateTask);
+      const updated = { ...currentCols[idx] };
+      const targetPath = `/api/documents/collections/${id}/${filename}`;
 
-        // 2. Remove from Disk
-        const filePath = path.join(COLLECTION_DOCS_DIR, id, filename);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
+      if (updated.documents) {
+        updated.documents = updated.documents.filter(d => !d.includes(filename));
+      }
+      updated.lastModified = new Date().toISOString();
 
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ success: false, error: e.message });
+      const newCols = [...currentCols];
+      newCols[idx] = updated;
+      return newCols;
+    };
+
+    await collectionQueue.add(updateTask);
+
+    // 2. Remove from Disk
+    const filePath = path.join(COLLECTION_DOCS_DIR, id, filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 app.post('/api/models/upload-document', upload.single('file'), async (req, res) => {
@@ -2991,59 +3399,49 @@ app.post('/api/models/upload-document', upload.single('file'), async (req, res) 
   const file = req.file;
 
   try {
-      const modelsBaseDir = path.resolve(__dirname, 'models');
-      const relativeFolder = path.dirname(filePath);
-      const absoluteTargetDir = path.join(modelsBaseDir, relativeFolder);
+    const { ProjectModule } = require('./dist-backend/ProjectService');
+    const ProjectService = ProjectModule.ProjectService || ProjectModule;
 
-      const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-      const filename = `${Date.now()}_${safeName}`;
-      const targetPath = path.join(absoluteTargetDir, filename);
+    const modelsBaseDir = path.resolve(__dirname, 'models');
+    const relativeFolder = path.dirname(filePath);
+    const absoluteTargetDir = path.join(modelsBaseDir, relativeFolder);
 
-      // 1. Save the file
-      fs.writeFileSync(targetPath, file.buffer);
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const filename = `${Date.now()}_${safeName}`;
+    const targetPath = path.join(absoluteTargetDir, filename);
 
-      // 2. Identify Extension for Post-Processing
-      const ext = path.extname(filename).toLowerCase();
-      
-      // If it's a 3D file, create its "Munchie Identity" using your existing tools
-      if (['.stl', '.3mf', '.obj'].includes(ext)) {
-          const subMunchieName = filename.replace(ext, `${ext === '.stl' ? '-stl' : ''}-munchie.json`);
-          const subMunchiePath = path.join(absoluteTargetDir, subMunchieName);
+    // 1. Save the file
+    fs.writeFileSync(targetPath, file.buffer);
 
-          if (!fs.existsSync(subMunchiePath)) {
-            const basicMeta = {
-                name: safeName.replace(ext, ''),
-                filePath: path.join(relativeFolder, filename).replace(/\\/g, '/'),
-                dateAdded: new Date().toISOString(),
-                related_files: [],
-                hidden: true,           // <--- ADD THIS: Prevents it appearing in the main grid
-                isRelatedPart: true,    // <--- ADD THIS: Identification for the scanner
-            };
-            fs.writeFileSync(subMunchiePath, JSON.stringify(basicMeta, null, 2));
-            
-            // Call your robust processing tool
-            await postProcessMunchieFile(subMunchiePath);
-        }
+    // 2. Identify Extension for Post-Processing
+    const projectMarkerPath = path.join(absoluteTargetDir, 'project.json');
+    const isProject = fs.existsSync(projectMarkerPath);
+
+    // 3. Use the ProjectService to "Sync" the new file
+
+    // We let the service handle the heavy lifting of updating the JSONs
+    await ProjectService.finalizeProject({
+      mode: isProject ? 'project-update' : 'generic', // A simple update mode
+      destDir: absoluteTargetDir,
+      modelsRoot: modelsBaseDir,
+      importedFiles: fs.readdirSync(absoluteTargetDir).filter(f => f.endsWith('.stl') || f.endsWith('.3mf')),
+      localImagePaths: [], // Service will scan for existing images
+      meta: {
+        id: modelId,
+        name: path.basename(absoluteTargetDir) // Keep existing name
       }
+    });
 
-      // 3. Update the Primary Model's Related Files
-      const primaryMunchie = fs.readdirSync(absoluteTargetDir).find(f => f.includes('munchie') && f.endsWith('.json'));
-      if (primaryMunchie) {
-          const mPath = path.join(absoluteTargetDir, primaryMunchie);
-          const data = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-          if (!data.related_files) data.related_files = [];
-          
-          const newRelPath = path.join(relativeFolder, filename).replace(/\\/g, '/');
-          if (!data.related_files.includes(newRelPath)) {
-              data.related_files.push(newRelPath);
-              fs.writeFileSync(mPath, JSON.stringify(data, null, 2));
-              return res.json({ success: true, model: data });
-          }
-      }
+    // // 4. Return the updated primary model
+    // // Find the munchie that IS NOT hidden (the main one)
+    // const files = fs.readdirSync(absoluteTargetDir);
+    // const mainMunchieName = files.find(f => f.endsWith('munchie.json') && !JSON.parse(fs.readFileSync(path.join(absoluteTargetDir, f))).hidden);
+    // const updatedData = JSON.parse(fs.readFileSync(path.join(absoluteTargetDir, mainMunchieName), 'utf8'));
 
-      res.json({ success: true });
+    res.json({ success: true, model: updatedData });
   } catch (e) {
-      res.status(500).json({ success: false, error: e.message });
+    console.error("Upload document error:", e);
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -3906,7 +4304,6 @@ app.post('/api/gemini-suggest', async (req, res) => {
 });
 
 
-// API endpoint to delete models by ID (deletes specified file types)
 app.delete('/api/models/delete', async (req, res) => {
   const { modelIds, fileTypes } = req.body;
 
@@ -3914,134 +4311,137 @@ app.delete('/api/models/delete', async (req, res) => {
     return res.status(400).json({ success: false, error: 'No model IDs provided' });
   }
 
-  // Default to deleting both file types if not specified (backward compatibility)
-  const typesToDelete = Array.isArray(fileTypes) && fileTypes.length > 0 ? fileTypes : ['3mf', 'json'];
-  console.log(`File types to delete: ${typesToDelete.join(', ')}`);
+  const typesToDelete = Array.isArray(fileTypes) && fileTypes.length > 0 ? fileTypes : ['3mf', 'stl', 'json'];
 
   try {
     const modelsDir = getAbsoluteModelsPath();
     let deleted = [];
     let errors = [];
-
-    // Scan for all models (both 3MF and STL) using the same logic as the main API
     let allModels = [];
 
+    // --- 1. SCAN LIBRARY (LEGACY LOGIC) ---
     function scanForModels(directory) {
       const entries = fs.readdirSync(directory, { withFileTypes: true });
-
       for (const entry of entries) {
         const fullPath = path.join(directory, entry.name);
-
         if (entry.isDirectory()) {
           scanForModels(fullPath);
         } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
           try {
-            const fileContent = fs.readFileSync(fullPath, 'utf8');
-            const model = JSON.parse(fileContent);
+            const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
             const relativePath = path.relative(modelsDir, fullPath);
-
-            // Set the correct filePath based on model type
-            if (entry.name.endsWith('-stl-munchie.json')) {
-              // STL model
-              model.filePath = relativePath.replace('-stl-munchie.json', '.stl');
-            } else {
-              // 3MF model
-              model.filePath = relativePath.replace('-munchie.json', '.3mf');
-            }
-
-            allModels.push(model);
-          } catch (error) {
-            console.error(`Error reading model file ${fullPath}:`, error);
-          }
+            const modelObj = {
+              ...data,
+              jsonPath: fullPath,
+              // Ensure filePath is computed correctly for the reference check
+              fullModelPath: data.filePath ? path.join(modelsDir, data.filePath) : null
+            };
+            allModels.push(modelObj);
+          } catch (error) { /* ignore parse errors */ }
         }
       }
     }
-
     scanForModels(modelsDir);
 
-    for (const modelId of modelIds) {
-      const model = allModels.find(m => m.id === modelId);
-      console.log(`Processing model ID: ${modelId}`);
+    // Identify which models are being targetted for deletion
+    const targets = allModels.filter(m => modelIds.includes(m.id));
+    // Identify all other models (the "Keepers") to check for shared files
+    const keepers = allModels.filter(m => !modelIds.includes(m.id));
 
-      if (!model) {
-        console.log(`Model not found for ID: ${modelId}`);
-        errors.push({ modelId, error: 'Model not found' });
-        continue;
-      }
-
-      console.log(`Found model: ${model.name}, filePath: ${model.filePath}`);
-
+    for (const model of targets) {
       const filesToDelete = [];
+      const modelParentDir = path.dirname(model.jsonPath);
 
-      // Check if model has a valid filePath
-      if (!model.filePath) {
-        console.log(`Model ${modelId} has no file path`);
-        errors.push({ modelId, error: 'Model has no file path' });
-        continue;
+      // --- 2. COLLECT POTENTIAL FILES ---
+      // A. Primary 3D File
+      if (model.filePath) {
+        const absPath = path.join(modelsDir, model.filePath);
+        if (typesToDelete.some(t => absPath.toLowerCase().endsWith(t))) {
+          filesToDelete.push({ type: 'model', path: absPath });
+        }
       }
 
-      // Add the .3mf file only if requested and model is a 3MF model
-      if (typesToDelete.includes('3mf') && model.filePath.endsWith('.3mf')) {
-        const threeMfPath = path.isAbsolute(model.filePath)
-          ? model.filePath
-          : path.join(modelsDir, model.filePath);
-        filesToDelete.push({ type: '3mf', path: threeMfPath });
-      }
-
-      // Add the .stl file only if requested and model is an STL model
-      if (typesToDelete.includes('stl') && (model.filePath.endsWith('.stl') || model.filePath.endsWith('.STL'))) {
-        const stlPath = path.isAbsolute(model.filePath)
-          ? model.filePath
-          : path.join(modelsDir, model.filePath);
-        filesToDelete.push({ type: 'stl', path: stlPath });
-      }
-
-      // Add the corresponding munchie.json file only if requested
+      // B. Linked Assets (Only if deleting JSON)
       if (typesToDelete.includes('json')) {
-        let jsonFileName;
-        if (model.filePath.endsWith('.3mf')) {
-          jsonFileName = model.filePath.replace(/\.3mf$/i, '-munchie.json');
-        } else if (model.filePath.endsWith('.stl') || model.filePath.endsWith('.STL')) {
-          jsonFileName = model.filePath.replace(/\.stl$/i, '-stl-munchie.json').replace(/\.STL$/i, '-stl-munchie.json');
-        }
+        const assetPaths = [
+          ...(model.parsedImages || []),
+          ...(model.userDefined?.images || []),
+          ...(model.related_files || [])
+        ];
 
-        if (jsonFileName) {
-          const jsonPath = path.isAbsolute(jsonFileName)
-            ? jsonFileName
-            : path.join(modelsDir, jsonFileName);
-          filesToDelete.push({ type: 'json', path: jsonPath });
-        }
+        assetPaths.forEach(asset => {
+          if (typeof asset !== 'string') return;
+          let relPath = asset.startsWith('/models/') ? asset.substring(8) : asset;
+          filesToDelete.push({ type: 'asset', path: path.join(modelsDir, relPath) });
+        });
+
+        // C. Thumbnail and JSON itself
+        filesToDelete.push({ type: 'json', path: model.jsonPath });
+        const thumbPath = model.jsonPath.replace(/(-stl)?-munchie\.json$/, (m) => m.includes('stl') ? '.stl-thumb.png' : '.3mf-thumb.png');
+        if (fs.existsSync(thumbPath)) filesToDelete.push({ type: 'thumbnail', path: thumbPath });
       }
 
-      console.log(`Files to delete for ${modelId}:`, filesToDelete);
-
-      // Delete each file
+      // --- 3. SAFETY CHECK: IS FILE SHARED? ---
       for (const fileInfo of filesToDelete) {
         try {
-          console.log(`Attempting to delete file: ${fileInfo.path}`);
-          if (fs.existsSync(fileInfo.path)) {
-            fs.unlinkSync(fileInfo.path);
-            console.log(`Successfully deleted: ${fileInfo.path}`);
-            deleted.push({ modelId, type: fileInfo.type, path: path.relative(modelsDir, fileInfo.path) });
-          } else {
-            console.log(`File does not exist: ${fileInfo.path}`);
+          if (!fs.existsSync(fileInfo.path)) continue;
+
+          // Check if ANY keeper model references this specific file path
+          const isShared = keepers.some(k => {
+            const kAssets = [
+              k.filePath,
+              ...(k.parsedImages || []),
+              ...(k.userDefined?.images || []),
+              ...(k.related_files || [])
+            ].map(p => p?.startsWith('/models/') ? p.substring(8) : p);
+
+            const relTarget = path.relative(modelsDir, fileInfo.path).replace(/\\/g, '/');
+            return kAssets.includes(relTarget);
+          });
+
+          if (isShared) {
+            console.log(`[Safety] Skipping shared file: ${path.basename(fileInfo.path)}`);
+            continue;
           }
+
+          // 4. EXECUTE DELETION
+          fs.unlinkSync(fileInfo.path);
+          deleted.push({ modelId: model.id, type: fileInfo.type, path: path.relative(modelsDir, fileInfo.path) });
+
         } catch (err) {
-          console.error(`Error deleting file ${fileInfo.path}:`, err.message);
-          errors.push({ modelId, type: fileInfo.type, error: err.message });
+          errors.push({ modelId: model.id, error: err.message });
         }
       }
-    }
 
-    console.log(`Deletion summary: ${deleted.length} files deleted, ${errors.length} errors`);
-    safeLog('Deleted files:', deleted);
-    safeLog('Errors:', errors);
+      // --- 5. DIRECTORY CLEANUP ---
+      // We only delete the folder if NO other munchie files exist in it.
+      const relativeParent = path.relative(modelsDir, modelParentDir);
+      const systemFolders = ['', '.', 'uploads', 'imported'];
+
+      if (!systemFolders.includes(relativeParent)) {
+        try {
+          const remainingEntries = fs.readdirSync(modelParentDir);
+          // Check if there are any other projects (.json files) still in this folder
+          const hasOtherModels = remainingEntries.some(f => f.endsWith('munchie.json'));
+
+          if (!hasOtherModels) {
+            // Folder contains no more projects. Clean up hidden files and remove dir.
+            remainingEntries.forEach(entry => {
+              const entryPath = path.join(modelParentDir, entry);
+              if (fs.statSync(entryPath).isFile()) fs.unlinkSync(entryPath);
+            });
+            fs.rmdirSync(modelParentDir);
+            console.log(`[Cleanup] Removed empty project folder: ${relativeParent}`);
+          }
+        } catch (e) { /* Folder was likely already handled or not empty */ }
+      }
+    }
 
     res.json({
       success: errors.length === 0,
       deleted,
       errors,
-      summary: `Deleted ${deleted.length} files for ${modelIds.length} models`
+      summary: `Deleted ${deleted.length} files/assets for ${modelIds.length} models`
     });
 
   } catch (error) {
@@ -4759,8 +5159,6 @@ app.post('/api/printer/print', async (req, res) => {
   }
 });
 
-// TARGETED UPDATE: server.js - Replace the previous /api/printer/job-status endpoint
-
 app.get('/api/printer/job-status', async (req, res) => {
   const config = ConfigManager.loadConfig();
   // Support both legacy single printer and new array
@@ -4874,6 +5272,8 @@ app.use(function (err, req, res, next) {
   }
   return next();
 });
+
+
 
 // Handle React Router - catch all GET requests that aren't API or model routes
 app.get(/^(?!\/api|\/models).*$/, (req, res) => {

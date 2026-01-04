@@ -849,6 +849,19 @@ function AppContent() {
     setActiveCollection(col);
     setCurrentView('collection-view');
     //setIsDrawerOpen(false);
+    const resetFilters = {
+      search: '',
+      category: 'all',
+      printStatus: 'all',
+      license: 'all',
+      fileType: 'all',
+      tags: [],
+      showHidden: true, // Always default to showing hidden in collections
+      showMissingImages: false,
+      sortBy: currentSortBy // Preserve the user's sort preference
+    };
+    
+    setLastCategoryFilter('all');
     try {
       const setIds = new Set(col.modelIds || []);
       const base = models.filter(m => setIds.has(m.id));

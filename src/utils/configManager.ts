@@ -29,7 +29,8 @@ export class ConfigManager {
       autoSave: true,
       modelDirectory: "./models",
       gcodeOverwriteBehavior: 'prompt',
-      gcodeStorageBehavior: 'save-and-link'
+      gcodeStorageBehavior: 'save-and-link',
+      scanStrategy: 'smart',
     },
     filters: {
       defaultCategory: "all",
@@ -65,6 +66,11 @@ export class ConfigManager {
           const theme = config?.settings?.defaultTheme;
           const validated = this.validateTheme(theme);
           return validated !== undefined ? validated : this.defaultConfig.settings.defaultTheme;
+        })(),
+        scanStrategy: ((): 'smart' | 'strict' | 'top-level' => {
+          const val = config?.settings?.scanStrategy;
+          const allowed = ['smart', 'strict', 'top-level'];
+          return allowed.includes(val) ? val : this.defaultConfig.settings.scanStrategy;
         })(),
         defaultView: (() => {
           const view = config?.settings?.defaultView;

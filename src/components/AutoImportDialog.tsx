@@ -51,6 +51,13 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
     setShowConfirm(false);
     setIsLoading(true);
     try {
+      // 1. PERSIST THE SETTING: Tell the server to save this strategy to config.json
+      await fetch('/api/collections/auto-import/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scanStrategy: strategy })
+      });
+      // 2. TRIGGER THE SCAN: This is your existing code
       const response = await fetch('/api/collections/auto-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

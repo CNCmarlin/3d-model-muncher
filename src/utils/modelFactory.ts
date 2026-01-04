@@ -11,6 +11,8 @@ export function createStandardModelIdentity(overrides: Partial<Model>): Model {
     return {
         id: crypto.randomUUID(),
         name,
+        collections: overrides.collections || [],
+        excludedCollections: overrides.excludedCollections || [],
         filePath: "",
         modelUrl: "",
         fileSize: "0",
@@ -36,6 +38,7 @@ export function createStandardModelIdentity(overrides: Partial<Model>): Model {
         related_files: [],
         hidden: false,
         isRelatedPart: false,
+        isProjectRoot: false,
         price: 0,
         userDefined: {
             thumbnail: "parsed:0",

@@ -52,6 +52,7 @@ export interface AppConfig {
     primaryColor?: string | null;
     showPrintedBadge?: boolean;
     verboseScanLogs?: boolean;
+    scanStrategy: 'smart' | 'strict' | 'top-level';
     modelCardPrimary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     modelCardSecondary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     autoSave: boolean;

@@ -4,6 +4,8 @@ export interface Model {
   filePath: string;
   id: string;
   name: string;
+  collections: string[];
+  excludedCollections: string[];
   // Deprecated fields - kept for backward compatibility
   thumbnail?: string;
   images?: string[];
@@ -24,6 +26,7 @@ export interface Model {
   price?: number;
   hidden?: boolean;
   isRelatedPart?: boolean;
+  isProjectRoot?: boolean;
   // List of user-provided related files (relative paths). Example: "prints/part-supports.zip"
   related_files?: string[];
   // Structured user-provided data. The first element is used for user edits such as
@@ -64,7 +67,7 @@ export interface Model {
       nozzleDiameter?: number;
       layerHeight?: number;
       filamentType?: string;
-  };
+    };
   };
 
   // Added for file integrity and duplicate detection
