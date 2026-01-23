@@ -9,8 +9,7 @@ import {
   ArrowLeft, ChevronRight, FileCheck, Folder,
   CloudDownload, FolderPlus,
   Upload, Box, Maximize2, FileText, Sidebar, ExternalLink,
-  X, FileCode,
-  ChevronLeft
+  X, FileCode, ChevronLeft, Settings
 } from 'lucide-react';
 import { Badge } from "./ui/badge";
 import { Checkbox } from "./ui/checkbox";
@@ -75,6 +74,7 @@ export default function CollectionGrid({
   onBulkEdit,
   onBulkDelete,
   onCollectionChanged,
+  onUploadClick,
 }: CollectionGridProps) {
   // 1. USE CONTEXT
   const { viewMode, getGridClasses } = useLayoutSettings();
@@ -342,17 +342,25 @@ export default function CollectionGrid({
             onDeselectAll={onDeselectAll}
           />
 
-          {!isSelectionMode && (
+{!isSelectionMode && (
             <>
-              {/* [UPDATED] Upload Button now opens Edit Drawer */}
-              <Button variant="outline" size="sm" className="gap-2" onClick={handleEditActiveCollection}>
+              {/* NEW: Global Upload Button */}
+              <Button variant="default" size="sm" className="gap-2" onClick={onUploadClick}>
                 <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">Upload / Manage</span>
+                <span className="hidden sm:inline">Upload</span>
               </Button>
+
+              {/* RENAMED: Manage Collection Button */}
+              <Button variant="outline" size="sm" className="gap-2" onClick={handleEditActiveCollection}>
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Manage Collection</span>
+              </Button>
+
               <Button variant="outline" size="sm" className="gap-2 hidden sm:flex" onClick={() => openCreateDialog('folder')}>
                 <FolderPlus className="h-4 w-4" />
                 New Collection
               </Button>
+              
               {activeCollection && (
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => onImportClick?.(activeCollection.id)}>
                   <CloudDownload className="h-4 w-4" />

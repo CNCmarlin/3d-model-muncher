@@ -1,5 +1,7 @@
 import React from 'react';
-import { FileText, X, CheckCircle, Ban, Download, Eye, Box, FileCode, Paperclip, Plus, FolderOpen } from 'lucide-react';
+import { FileText, X, CheckCircle, Ban, Download, Eye, Box, 
+FileCode, Paperclip, Plus, FolderOpen, Star 
+} from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,51 +18,102 @@ function truncatePath(path: string, maxLength: number = 40) {
     return `${start}...${end}`;
 }
 
-const FileThumbnail = ({ path, deriveMunchieCandidate }: { path: string, deriveMunchieCandidate: any }) => {
+const ModelFileCard = ({ 
+    path, 
+    deriveMunchieCandidate, 
+    isActive, 
+    refreshKey,
+    onJump, 
+    onPromote, 
+    onDownload 
+}: { 
+    path: string, 
+    deriveMunchieCandidate: any,
+    isActive: boolean,
+    refreshKey: number,
+    onJump: () => void,
+    onPromote: () => void,
+    onDownload: (e: React.MouseEvent) => void
+}) => {
     const [thumb, setThumb] = React.useState<string | null>(null);
+    const [isProjectMain, setIsProjectMain] = React.useState(false);
 
     React.useEffect(() => {
-        const fetchThumb = async () => {
+        const fetchData = async () => {
             try {
                 const candidate = deriveMunchieCandidate(path);
                 if (!candidate) return;
-                const resp = await fetch(`/models/${candidate}`);
+                const resp = await fetch(`/models/${candidate}`, { cache: 'no-store' });
                 if (resp.ok) {
                     const data = await resp.json();
                     
-                    // [FIX] Ensure the thumbnail path has the leading /models/ prefix
-                    let rawThumb = data.userDefined?.thumbnail || data.thumbnail || (data.parsedImages && data.parsedImages[0]);
+                    // 1. Determine "Main" status from the file's own JSON
+                    setIsProjectMain(data.isProjectRoot === true);
+
+                    // 2. Resolve Thumbnail pointer or direct URL
+                    let rawThumb = data.userDefined?.thumbnail || data.thumbnail || (data.parsedImages?.[0]) || (data.images?.[0]);
                     
-                    // If it's a 'parsed:0' descriptor, resolve it to the actual path
-                    if (typeof rawThumb === 'string' && rawThumb.startsWith('parsed:')) {
-                        const idx = parseInt(rawThumb.split(':')[1]);
-                        rawThumb = data.parsedImages?.[idx];
+                    // NEW: Handle both 'parsed:' and 'user:' pointers safely
+                    if (typeof rawThumb === 'string' && (rawThumb.startsWith('parsed:') || rawThumb.startsWith('user:'))) {
+                        const [type, indexStr] = rawThumb.split(':');
+                        const idx = parseInt(indexStr);
+                        if (type === 'parsed') rawThumb = data.parsedImages?.[idx];
+                        else if (type === 'user') rawThumb = data.userDefined?.images?.[idx];
                     }
 
-                    if (rawThumb) {
+                    // 3. Final path assembly (only if rawThumb is now a real path string)
+                    if (rawThumb && typeof rawThumb === 'string' && !rawThumb.includes(':')) {
                         const finalPath = rawThumb.startsWith('/') ? rawThumb : `/models/${rawThumb}`;
                         setThumb(finalPath);
+                    } else {
+                        setThumb(null);
                     }
                 }
-            } catch (e) { /* silent fail */ }
+            } catch (e) { }
         };
-        fetchThumb();
-    }, [path, deriveMunchieCandidate]);
-
-    
+        fetchData();
+    }, [path, deriveMunchieCandidate, refreshKey]);
 
     return (
-        <div className="aspect-square w-full overflow-hidden rounded bg-muted/20 border border-border/20 flex items-center justify-center group-hover:border-primary/40 transition-colors">
-            {thumb ? (
-                <img 
-                    src={thumb} 
-                    alt="" 
-                    className="h-full w-full object-cover transition-transform group-hover:scale-110 duration-500" 
-                    onError={() => setThumb(null)} // Fallback if path is still broken
-                />
-            ) : (
-                <Box className="h-5 w-5 text-muted-foreground/20" />
+        <div
+            className={`group relative p-2 rounded-xl border transition-all cursor-pointer ${isProjectMain ? "bg-primary/10 border-primary/40 ring-1 ring-primary/20 shadow-sm" : isActive ? "bg-accent border-primary/30" : "bg-card/40 border-border/40 hover:border-border"}`}
+            onClick={onJump}
+        >
+            <div className="aspect-square w-full overflow-hidden rounded bg-muted/20 border border-border/20 flex items-center justify-center group-hover:border-primary/40 transition-colors">
+                {thumb ? (
+                    <img src={thumb} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-110 duration-500" onError={() => setThumb(null)} />
+                ) : (
+                    <Box className="h-5 w-5 text-muted-foreground/20" />
+                )}
+            </div>
+
+            {isProjectMain && (
+                <div className="absolute top-3 left-3">
+                    <Badge className="h-4 px-1.5 text-[8px] font-black uppercase tracking-tighter bg-primary text-primary-foreground border-none shadow-sm">Main Model</Badge>
+                </div>
             )}
+
+            <div className="mt-2 px-1">
+                <p className={`text-[10px] font-mono truncate ${isProjectMain ? 'text-primary font-bold' : 'text-foreground/60'}`}>{path.split('/').pop()}</p>
+            </div>
+
+            <div className="absolute top-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                {!isProjectMain && (
+                    <Button
+                        size="icon" variant="secondary" className="h-6 w-6 rounded-full shadow-md text-amber-500 hover:text-amber-600"
+                        title="Promote to Main Model"
+                        onClick={(e) => { e.stopPropagation(); onPromote(); }}
+                    >
+                        <Star className="h-3 w-3 fill-current" />
+                    </Button>
+                )}
+                <Button
+                    size="icon" variant="secondary" className="h-6 w-6 rounded-full shadow-md"
+                    onClick={onDownload}
+                >
+                    <Download className="h-3 w-3" />
+                </Button>
+            </div>
         </div>
     );
 };
@@ -105,6 +158,8 @@ export const RelatedFilesSection = ({
     setActive3DFile,
     handleViewDocument
 }: RelatedFilesSectionProps) => {
+
+    const [refreshKey, setRefreshKey] = React.useState(0);
 
     const categorizeFiles = (files: string[]) => {
         const categories = {
@@ -156,6 +211,82 @@ export const RelatedFilesSection = ({
             
         } catch (err) {
             toast?.error?.('Could not load metadata.');
+        }
+    };
+
+    const handleSetMainModel = async (newPath: string) => {
+        try {
+            const oldMainPath = currentModel.filePath;
+    
+            // 1. Guard: Prevent self-demotion
+            if (oldMainPath === newPath && currentModel.isProjectRoot) {
+                toast?.info?.("This is already the Main Model.");
+                return;
+            }
+    
+            // 2. Prepare the Payload
+            // We now send the specific "changes" we want. 
+            // Note: isProjectRoot: true triggers the server's internal demotion scan.
+            const promotionPayload = {
+                filePath: newPath,
+                changes: {
+                    isProjectRoot: true,
+                    isRelatedPart: false,
+                    // We strip these to ensure the subsequent Heal generates fresh paths
+                    thumbnail: undefined,
+                    userDefined: { 
+                        ...currentModel.userDefined, 
+                        thumbnail: undefined 
+                    }
+                }
+            };
+    
+            // 3. Persist via the Unified Save Endpoint
+            const resp = await fetch('/api/save-model', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(promotionPayload),
+            });
+    
+            if (!resp.ok) throw new Error('Promotion failed');
+            
+            // Grab the authoritative state from the server
+            const { refreshedModel } = await resp.json();
+    
+            // 4. OS Grace Period (Ensures file locks are released)
+            await new Promise(resolve => setTimeout(resolve, 150));
+    
+            // 5. Targeted Micro-Heal
+            // This ensures the gallery is synced and neighbors are hidden correctly
+            const folderPath = newPath.split('/').slice(0, -1).join('/');
+            
+            try {
+                const healResp = await fetch('/api/admin/library-heal', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targetPath: folderPath }) 
+                });
+    
+                if (!healResp.ok) {
+                    console.warn("Heal returned non-OK status");
+                }
+            } catch (healErr) {
+                console.warn("Targeted Heal network error", healErr);
+                // Non-blocking: The promotion was successful even if heal logs a warning
+            }
+    
+            // 6. Final UI Update
+            // Use refreshedModel if available, fallback to our constructed object if not
+            onModelUpdate(refreshedModel || { ...currentModel, ...promotionPayload.changes, filePath: newPath });
+            setActive3DFile(newPath);
+            setRefreshKey(prev => prev + 1);
+            
+            const fileName = newPath.split('/').pop() || 'model';
+            toast?.success?.(`Main model set to ${fileName}`);
+    
+        } catch (err) {
+            console.error("Critical failure during model promotion:", err);
+            toast?.error?.('Failed to update project identity.');
         }
     };
 
@@ -273,35 +404,21 @@ export const RelatedFilesSection = ({
                 {/* MODELS GRID - Visual Gallery */}
                 <TabsContent value="models" className="mt-0 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {categories.models.map((path, idx) => {
-                            const isMainSource = currentModel.filePath === path;
-                            const isActive = active3DFile === path;
-                            return (
-                                <div
-                                    key={idx}
-                                    className={`group relative p-2 rounded-xl border transition-all cursor-pointer ${isMainSource ? "bg-primary/10 border-primary/40 ring-1 ring-primary/20 shadow-sm" : isActive ? "bg-accent border-primary/30" : "bg-card/40 border-border/40 hover:border-border"}`}
-                                    onClick={() => handleJumpToModel(path)}
-                                >
-                                    <FileThumbnail path={path} deriveMunchieCandidate={deriveMunchieCandidate} />
-                                    {isMainSource && (
-                                        <div className="absolute top-3 left-3">
-                                            <Badge className="h-4 px-1.5 text-[8px] font-black uppercase tracking-tighter bg-primary text-primary-foreground border-none shadow-sm">Source_File</Badge>
-                                        </div>
-                                    )}
-                                    <div className="mt-2 px-1">
-                                        <p className={`text-[10px] font-mono truncate ${isMainSource ? 'text-primary font-bold' : 'text-foreground/60'}`}>{path.split('/').pop()}</p>
-                                    </div>
-                                    <div className="absolute top-3 right-3 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button
-                                            size="icon" variant="secondary" className="h-6 w-6 rounded-full shadow-md"
-                                            onClick={(e) => { e.stopPropagation(); triggerDownload(path, e.nativeEvent as any, path.split('/').pop() || ''); }}
-                                        >
-                                            <Download className="h-3 w-3" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        {categories.models.map((path, idx) => (
+                            <ModelFileCard 
+                                key={`${path}-${idx}`}
+                                path={path}
+                                deriveMunchieCandidate={deriveMunchieCandidate}
+                                isActive={active3DFile === path}
+                                refreshKey={refreshKey}
+                                onJump={() => handleJumpToModel(path)}
+                                onPromote={() => handleSetMainModel(path)}
+                                onDownload={(e) => {
+                                    e.stopPropagation();
+                                    triggerDownload(path, e.nativeEvent as any, path.split('/').pop() || '');
+                                }}
+                            />
+                        ))}
                     </div>
                 </TabsContent>
 

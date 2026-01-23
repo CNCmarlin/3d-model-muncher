@@ -7,7 +7,7 @@ import { Model } from '../types/model';
 export function createStandardModelIdentity(overrides: Partial<Model>): Model {
     const description = overrides.description || "";
     const name = overrides.name || "New_Project";
-    
+
     return {
         id: crypto.randomUUID(),
         name,
@@ -36,7 +36,7 @@ export function createStandardModelIdentity(overrides: Partial<Model>): Model {
         lastModified: new Date().toISOString(),
         parsedImages: [],
         related_files: [],
-        hidden: false,
+        hidden: overrides.hidden ?? true,
         isRelatedPart: false,
         isProjectRoot: false,
         price: 0,

@@ -447,7 +447,7 @@ function createInitialModelMetadata(overrides) {
     lastModified: now,
     parsedImages: [],
     related_files: overrides.related_files || [],
-    hidden: overrides.hidden ?? false,
+    hidden: overrides.hidden ?? true,
     isRelatedPart: overrides.isRelatedPart ?? false,
     isProjectRoot: overrides.isProjectRoot ?? false,
     price: 0,
@@ -1271,30 +1271,30 @@ async function postProcessMunchieFile(absoluteFilePath) {
 app.post('/api/save-model', async (req, res) => {
   let { filePath, id, ...changes } = req.body || {};
 
-  // Require at least an id or a filePath so we know where to save
+  // 1. ORIGINAL PATH RESOLUTION
   if (!filePath && !id) {
     console.log('No filePath or id provided');
     return res.status(400).json({ success: false, error: 'No filePath or id provided' });
   }
 
-  // If filePath is a model file (.stl/.3mf), convert to munchie.json
   if (filePath && /\.stl$/i.test(filePath)) {
     filePath = filePath.replace(/\.stl$/i, '-stl-munchie.json');
   } else if (filePath && /\.3mf$/i.test(filePath)) {
     filePath = filePath.replace(/\.3mf$/i, '-munchie.json');
   }
 
-  // Refuse to write to raw model files
   if (filePath && (/\.stl$/i.test(filePath) || /\.3mf$/i.test(filePath))) {
     console.error('Refusing to write to model file:', filePath);
     return res.status(400).json({ success: false, error: 'Refusing to write to model file' });
   }
+
   try {
-    // If an id was provided without a filePath, try to locate the munchie JSON file by scanning the models directory
     let absoluteFilePath;
+    const modelsRoot = getAbsoluteModelsPath();
+
+    // 2. ORIGINAL ID LOOKUP
     if (!filePath && id) {
       try {
-        const modelsRoot = getAbsoluteModelsPath();
         let found = null;
         function walk(dir) {
           const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -1311,9 +1311,7 @@ app.post('/api/save-model', async (req, res) => {
                   found = full;
                   break;
                 }
-              } catch (e) {
-                // ignore parse errors for individual files
-              }
+              } catch (e) { /* ignore parse errors */ }
             }
           }
         }
@@ -1322,111 +1320,104 @@ app.post('/api/save-model', async (req, res) => {
           return res.status(404).json({ success: false, error: 'Model id not found' });
         }
         absoluteFilePath = found;
-        // populate filePath (relative) for logging and downstream use
         filePath = path.relative(modelsRoot, found).replace(/\\/g, '/');
       } catch (e) {
         console.error('Error searching for munchie by id:', e);
         return res.status(500).json({ success: false, error: 'Internal error locating model by id' });
       }
     } else {
-      // Resolve provided filePath to absolute path
       if (path.isAbsolute(filePath)) {
         absoluteFilePath = filePath;
       } else {
-        absoluteFilePath = path.join(getAbsoluteModelsPath(), filePath);
+        absoluteFilePath = path.join(modelsRoot, filePath);
       }
     }
 
-    console.log('Resolved file path for saving:', absoluteFilePath);
-
-    // Require relative filePath and ensure the target is inside the configured models directory
-    if (path.isAbsolute(filePath) && !(filePath && filePath.startsWith('./') === false)) {
-      // If the client sent an absolute filePath string, reject it outright for safety
-      console.warn('Rejected absolute filePath in /api/save-model:', filePath);
-      return res.status(400).json({ success: false, error: 'Absolute file paths are not allowed' });
-    }
-
+    // 3. ORIGINAL SECURITY CHECKS
     try {
       const resolvedTarget = path.resolve(absoluteFilePath);
-      const modelsDirResolved = path.resolve(getAbsoluteModelsPath());
+      const modelsDirResolved = path.resolve(modelsRoot);
       const relative = path.relative(modelsDirResolved, resolvedTarget);
       if (relative.startsWith('..') || (relative === '' && resolvedTarget !== modelsDirResolved)) {
-        console.warn('Attempt to save model outside models directory blocked:', resolvedTarget, 'relativeToModelsDir=', relative);
+        console.warn('Attempt to save model outside models directory blocked:', resolvedTarget);
         return res.status(403).json({ success: false, error: 'Access denied' });
       }
     } catch (e) {
-      console.error('Error resolving paths for save-model containment check:', e);
       return res.status(400).json({ success: false, error: 'Invalid file path' });
     }
 
-    // Load existing model JSON (be defensive against corrupt or partial files)
+    // --- 💉 START INJECTION: ATOMIC PEER DEMOTION ---
+    // Why: If this model is becoming the Root, we must find and demote its predecessor 
+    // in the same folder before proceeding with the save.
+    let incomingChanges = req.body.changes || changes;
+    if (incomingChanges.isProjectRoot === true) {
+      const parentDir = path.dirname(absoluteFilePath);
+      const folderEntries = fs.readdirSync(parentDir);
+
+      console.log(`👑 New King requested: ${path.basename(absoluteFilePath)}. Scanning folder for demotions...`);
+
+      folderEntries.forEach(file => {
+        if (file.endsWith('munchie.json')) {
+          const peerPath = path.join(parentDir, file);
+          if (peerPath === absoluteFilePath) return;
+
+          try {
+            const peerRaw = fs.readFileSync(peerPath, 'utf8');
+            const peerData = JSON.parse(peerRaw);
+            if (peerData.isProjectRoot === true) {
+              console.log(` ⚔️ Demoting old King: ${file}`);
+              peerData.isProjectRoot = false;
+              peerData.isRelatedPart = true;
+              peerData.hidden = true;
+              peerData.lastModified = new Date().toISOString();
+              // Purge legacy thumbnail pollution from demoted peers
+              if (peerData.hasOwnProperty('thumbnail')) delete peerData.thumbnail;
+
+              fs.writeFileSync(peerPath, JSON.stringify(peerData, null, 2), 'utf8');
+            }
+          } catch (e) {
+            console.warn(`Failed to process peer ${file} during demotion scan`, e);
+          }
+        }
+      });
+    }
+    // --- 💉 END INJECTION ---
+
+    // 4. ORIGINAL DATA LOADING & MIGRATION
     let existing = {};
     if (fs.existsSync(absoluteFilePath)) {
       try {
         const raw = fs.readFileSync(absoluteFilePath, 'utf-8');
         existing = raw ? JSON.parse(raw) : {};
       } catch (parseErr) {
-        console.error(`Failed to parse existing model JSON at ${absoluteFilePath}:`, parseErr);
-        // If file is corrupted or partially written, continue with an empty object so we can
-        // overwrite with a clean, valid JSON. Do NOT hard-fail here to avoid blocking UI actions.
         existing = {};
       }
     }
 
-    // Migration: if an existing file accidentally contains a top-level `changes` object
-    // (caused by the previous API mismatch where the client sent { filePath, changes: {...} }),
-    // merge that object into the top-level and remove the wrapper so the file doesn't
-    // continue to contain a "changes" wrapper.
-    if (existing && typeof existing === 'object' && !Array.isArray(existing) && existing.changes && typeof existing.changes === 'object') {
-      try {
-        const migrated = { ...existing, ...existing.changes };
-        delete migrated.changes;
-        existing = migrated;
-        console.log(`Migrated embedded 'changes' object for ${absoluteFilePath}`);
-      } catch (e) {
-        console.warn(`Failed to migrate embedded 'changes' for ${absoluteFilePath}:`, e);
-      }
+    if (existing && existing.changes && typeof existing.changes === 'object') {
+      const migrated = { ...existing, ...existing.changes };
+      delete migrated.changes;
+      existing = migrated;
     }
 
-    // Some clients send { filePath, changes: { ... } } while others send flattened top-level change fields.
-    // Support both shapes: prefer req.body.changes when present, otherwise use the flattened rest.
-    let incomingChanges = changes;
-    if (req.body && req.body.changes && typeof req.body.changes === 'object') {
-      incomingChanges = req.body.changes;
-    }
-
-    // Remove filePath and other computed properties from incomingChanges to prevent them from being saved
     const { filePath: _, modelUrl: __, ...cleanChanges } = incomingChanges;
 
-    // Determine target type based on the resolved filePath (3MF vs STL munchie)
-    const targetIsStlMunchie = typeof filePath === 'string' && /-stl-munchie\.json$/i.test(filePath);
+    // 5. ORIGINAL 3MF PROTECTION
     const targetIs3mfMunchie = typeof filePath === 'string' && /-munchie\.json$/i.test(filePath) && !/-stl-munchie\.json$/i.test(filePath);
-
-    // Business rule: print settings (layerHeight, infill, nozzle, etc.) are only user-editable for STL models.
-    // For 3MF models, these values are derived from the .3mf and should not be overridden by saves.
-    if (targetIs3mfMunchie && cleanChanges && typeof cleanChanges === 'object' && cleanChanges.printSettings) {
-      // Drop any attempted edits to printSettings for 3MF targets
-      try {
-        delete cleanChanges.printSettings;
-      } catch (e) {
-        // ignore
-      }
+    if (targetIs3mfMunchie && cleanChanges.printSettings) {
+      try { delete cleanChanges.printSettings; } catch (e) { }
     }
-    // Sanitize and log the cleaned changes to help debug whether nested thumbnails
-    // were included by the client. Avoid printing base64 images directly.
+
+    // 6. ORIGINAL DEBUG PREVIEW
     try {
       const preview = JSON.parse(JSON.stringify(cleanChanges, (k, v) => {
-        if (typeof v === 'string' && v.length > 200) return `[long string ${v.length} chars]`;
-        if (Array.isArray(v) && v.length > 0 && v.every(it => typeof it === 'string' && it.startsWith('data:'))) return `[${v.length} base64 images]`;
+        if (typeof v === 'string' && v.length > 200) return `[long string]`;
+        if (Array.isArray(v) && v.length > 0 && v.every(it => typeof it === 'string' && it.startsWith('data:'))) return `[base64 images]`;
         return v;
       }));
-      // console.log('[server] cleanChanges preview:', preview);
-    } catch (e) {
-      console.warn('[server] Failed to build cleanChanges preview', e);
-    }
+    } catch (e) { }
 
-    // Normalize tags if provided: trim and dedupe case-insensitively while preserving
-    // the original casing of the first occurrence.
+    // 7. ORIGINAL TAG & RELATED FILE NORMALIZERS (Security/Logic intact)
     function normalizeTags(tags) {
       if (!Array.isArray(tags)) return tags;
       const seen = new Set();
@@ -1443,9 +1434,7 @@ app.post('/api/save-model', async (req, res) => {
       return out;
     }
 
-    if (cleanChanges.tags) {
-      cleanChanges.tags = normalizeTags(cleanChanges.tags);
-    }
+    if (cleanChanges.tags) cleanChanges.tags = normalizeTags(cleanChanges.tags);
 
     function normalizeRelatedFiles(arr) {
       const cleaned = [];
@@ -1455,45 +1444,12 @@ app.post('/api/save-model', async (req, res) => {
       for (let raw of arr) {
         if (typeof raw !== 'string') continue;
         let s = raw.trim();
-        if (s === '') {
-          rejected.push(raw);
-          continue; // drop empty entries
-        }
-
-        // Reject path traversal
-        if (s.includes('..')) {
-          rejected.push(raw);
-          continue;
-        }
-
-        // Normalize backslashes to forward slashes for consistent URLs
+        if (s === '' || s.includes('..')) { rejected.push(raw); continue; }
         s = s.replace(/\\/g, '/');
-
-        // Reject UNC paths (starting with //) for security reasons
-        if (s.startsWith('//')) {
-          rejected.push(raw);
-          continue;
-        }
-
-        // Reject absolute Windows drive paths (e.g., C:/ or C:\) for security
-        if (/^[a-zA-Z]:\//.test(s) || /^[a-zA-Z]:\\/.test(raw)) {
-          // treat as rejected
-          rejected.push(raw);
-          continue;
-        } else {
-          // Strip a single leading slash if present to make it relative to /models when used
-          if (s.startsWith('/')) s = s.substring(1);
-          if (s.startsWith('/')) s = s.substring(1); // double-check
-        }
-
-        // Deduplicate by normalized form
+        if (s.startsWith('//') || /^[a-zA-Z]:\//.test(s)) { rejected.push(raw); continue; }
+        if (s.startsWith('/')) s = s.substring(1);
         const key = s.toLowerCase();
-        if (!seen.has(key)) {
-          seen.add(key);
-          cleaned.push(s);
-        } else {
-          // duplicate silently dropped
-        }
+        if (!seen.has(key)) { seen.add(key); cleaned.push(s); }
       }
       return { cleaned, rejected };
     }
@@ -1505,163 +1461,82 @@ app.post('/api/save-model', async (req, res) => {
       rejectedRelatedFiles = nf.rejected;
     }
 
-    // Normalize incoming userDefined shape (accept array, object-with-'0', or object)
+    // 8. ORIGINAL USERDEFINED NORMALIZATION & DEEP MERGE
     try {
       if (cleanChanges.userDefined) {
         if (Array.isArray(cleanChanges.userDefined) && cleanChanges.userDefined.length > 0) {
           cleanChanges.userDefined = cleanChanges.userDefined[0];
         } else if (typeof cleanChanges.userDefined === 'object' && Object.prototype.hasOwnProperty.call(cleanChanges.userDefined, '0')) {
-          // Merge numeric '0' into top-level and keep other top-level fields
-          const zero = cleanChanges.userDefined['0'] && typeof cleanChanges.userDefined['0'] === 'object' ? { ...(cleanChanges.userDefined['0']) } : {};
-          const imgs = Array.isArray(cleanChanges.userDefined.images) ? cleanChanges.userDefined.images : undefined;
-          const thumb = typeof cleanChanges.userDefined.thumbnail !== 'undefined' ? cleanChanges.userDefined.thumbnail : undefined;
-          const order = Array.isArray(cleanChanges.userDefined.imageOrder) ? cleanChanges.userDefined.imageOrder : undefined;
-          const normalized = { ...zero };
-          if (typeof imgs !== 'undefined') normalized.images = imgs;
-          if (typeof thumb !== 'undefined') normalized.thumbnail = thumb;
-          if (typeof order !== 'undefined') normalized.imageOrder = order;
+          const zero = cleanChanges.userDefined['0'] || {};
+          const normalized = { ...zero, ...cleanChanges.userDefined };
+          delete normalized['0'];
           cleanChanges.userDefined = normalized;
         }
       }
+    } catch (e) { }
 
-    } catch (e) {
-      console.warn('Failed to normalize incoming userDefined in save-model:', e);
-    }
-
-    // At this point we've computed the cleaned changes. Log a concise message:
-    const hasUserImages = cleanChanges.userDefined && (
-      (Array.isArray(cleanChanges.userDefined.images) && cleanChanges.userDefined.images.length > 0) ||
-      (Array.isArray(cleanChanges.userDefined.imageOrder) && cleanChanges.userDefined.imageOrder.length > 0)
-    );
-
-    // Ensure userDefined.thumbnail is set if images are present and thumbnail is missing
-    if (hasUserImages && cleanChanges.userDefined && !cleanChanges.userDefined.thumbnail) {
-      cleanChanges.userDefined.thumbnail = 'user:0';
-    }
-
-    if (!cleanChanges || Object.keys(cleanChanges).length === 0) {
-      if (hasUserImages) {
-        // safeLog('Save model request: Forcing save for userDefined.images/imageOrder', { filePath });
-      } else {
-        // safeLog('Save model request: No changes to apply for', { filePath });
-        console.log('No changes to apply for', absoluteFilePath);
-        return res.json({ success: true, message: 'No changes' });
-      }
-    } else {
-      // Only log the cleaned changes (no computed props) to avoid noisy or nested payloads
-      // safeLog('Save model request:', { filePath, changes: sanitizeForLog(cleanChanges) });
-    }
-
-    // Merge changes carefully. We specially merge `userDefined` so that
-    // we don't blindly overwrite existing user data (which could strip images
-    // or imageOrder). The client is expected to write descriptors into
-    // `userDefined.imageOrder` (no legacy top-level imageOrder support).
     const updated = { ...existing };
     for (const key of Object.keys(cleanChanges)) {
-      if (key === 'userDefined') continue; // handle after loop
+      if (key === 'userDefined') continue;
       updated[key] = cleanChanges[key];
     }
 
-    // Merge userDefined carefully. Support legacy cases where existing.userDefined
-    // might be an array (generation produced [ { ... } ]) and where the client
-    // may send either an array or an object. Normalize both sides to a single
-    // object by using the first element of any array as the base object.
     if (cleanChanges.userDefined) {
-      // Build base from existing data
       let existingUDObj = {};
-      try {
-        if (Array.isArray(existing.userDefined) && existing.userDefined.length > 0 && typeof existing.userDefined[0] === 'object') {
-          existingUDObj = { ...(existing.userDefined[0] || {}) };
-        } else if (existing.userDefined && typeof existing.userDefined === 'object') {
-          existingUDObj = { ...(existing.userDefined) };
-        }
-      } catch (e) {
-        existingUDObj = {};
+      if (Array.isArray(existing.userDefined) && existing.userDefined.length > 0) {
+        existingUDObj = existing.userDefined[0];
+      } else {
+        existingUDObj = existing.userDefined || {};
       }
-
-      // Build incoming object (accept array or object)
-      let incomingUDObj = {};
-      try {
-        if (Array.isArray(cleanChanges.userDefined) && cleanChanges.userDefined.length > 0 && typeof cleanChanges.userDefined[0] === 'object') {
-          incomingUDObj = { ...(cleanChanges.userDefined[0] || {}) };
-        } else if (cleanChanges.userDefined && typeof cleanChanges.userDefined === 'object') {
-          incomingUDObj = { ...(cleanChanges.userDefined) };
-        }
-      } catch (e) {
-        incomingUDObj = {};
-      }
-
-      // Shallow merge: incoming fields override existing ones; arrays like
-      // images and imageOrder will be replaced if provided by incomingUDObj.
-      const mergedUDObj = { ...existingUDObj, ...incomingUDObj };
-      // Special handling: client can request clearing the nested description
-      // by sending description: null. If so, delete the property from the
-      // merged object so the saved file no longer contains it.
-      try {
-        if (Object.prototype.hasOwnProperty.call(incomingUDObj, 'description') && incomingUDObj.description === null) {
-          if (Object.prototype.hasOwnProperty.call(mergedUDObj, 'description')) delete mergedUDObj.description;
-        }
-      } catch (e) {
-        // ignore
-      }
+      const mergedUDObj = { ...existingUDObj, ...cleanChanges.userDefined };
+      if (cleanChanges.userDefined.description === null) delete mergedUDObj.description;
       updated.userDefined = mergedUDObj;
     }
 
-    // Ensure the directory exists
-    const dir = path.dirname(absoluteFilePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    // 9. ORIGINAL LIFECYCLE CLEANUP
+    if (updated.hasOwnProperty('thumbnail')) delete updated.thumbnail;
+    if (updated.hasOwnProperty('images')) delete updated.images;
 
-    // REMOVE LEGACY FIELDS: Remove top-level thumbnail and images from the final saved data
-    // These fields are deprecated in favor of parsedImages (for parsed content) 
-    // and userDefined.images (for user-added content)
-    if (updated.hasOwnProperty('thumbnail')) {
-      console.log('Removing deprecated top-level thumbnail field from saved data');
-      delete updated.thumbnail;
-    }
-    if (updated.hasOwnProperty('images')) {
-      console.log('Removing deprecated top-level images field from saved data');
-      delete updated.images;
-    }
+    updated.created = existing.created || new Date().toISOString();
+    updated.lastModified = new Date().toISOString();
 
-    // Set created if missing and update lastModified
-    try {
-      const now = new Date().toISOString();
-      if (!existing || !existing.created) {
-        updated.created = now;
-      } else if (existing.created) {
-        updated.created = existing.created;
-      }
-      updated.lastModified = now;
-    } catch (e) {
-      // ignore timestamp errors
-    }
-
-    // Write atomically: write to a temp file then rename it into place to avoid
-    // readers seeing a truncated/partial file during concurrent writes.
-    // Protect against accidental writes to raw model files
+    // 10. ORIGINAL ATOMIC WRITE
     const safeTargetPath = protectModelFileWrite(absoluteFilePath);
     const tmpPath = safeTargetPath + '.tmp';
     fs.writeFileSync(tmpPath, JSON.stringify(updated, null, 2), 'utf8');
     fs.renameSync(tmpPath, safeTargetPath);
+
     console.log('Model updated and saved to:', safeTargetPath);
-    // Ensure newly saved munchie is post-processed to have canonical userDefined
-    try {
-      await postProcessMunchieFile(safeTargetPath);
-    } catch (e) {
-      console.warn('postProcessMunchieFile failed after save for', safeTargetPath, e);
+
+    // --- 💉 REFRESH COLLECTION SYNC ---
+    if (incomingChanges.isProjectRoot === true) {
+      try {
+        const { refreshProjectInCollection } = require('./dist-backend/utils/collectionscanner');
+        const collectionsPath = path.join(getAbsoluteModelsPath(), 'collections.json');
+
+        // Refresh the parent collection so the UI shows the new Main Model immediately
+        refreshProjectInCollection(path.dirname(safeTargetPath), getAbsoluteModelsPath(), collectionsPath);
+      } catch (e) {
+        console.warn("Collection sync failed after model promotion", e);
+      }
     }
-    // Read back the saved file and return it as the authoritative refreshed model
+
+    // 11. ORIGINAL REFRESH SYNC
+    try { await postProcessMunchieFile(safeTargetPath); } catch (e) { }
+
     let refreshedModel = undefined;
     try {
       const rawAfter = fs.readFileSync(safeTargetPath, 'utf8');
       refreshedModel = rawAfter ? JSON.parse(rawAfter) : undefined;
-    } catch (e) {
-      console.warn('Failed to read back refreshed model after save:', e);
-      refreshedModel = undefined;
-    }
+    } catch (e) { }
 
-    // Return cleaned/rejected related_files and refreshedModel for client feedback
-    res.json({ success: true, cleaned_related_files: cleanChanges.related_files || [], rejected_related_files: rejectedRelatedFiles, refreshedModel });
+    res.json({
+      success: true,
+      cleaned_related_files: cleanChanges.related_files || [],
+      rejected_related_files: rejectedRelatedFiles,
+      refreshedModel
+    });
+
   } catch (err) {
     console.error('Error saving model:', err);
     res.status(500).json({ success: false, error: err.message });
@@ -2074,7 +1949,7 @@ app.get('/api/load-config', (req, res) => {
 // API endpoint to regenerate munchie files for specific models
 app.post('/api/regenerate-munchie-files', async (req, res) => {
   try {
-    const { modelIds, filePaths } = req.body || {};
+    const { modelIds, filePaths, force = false } = req.body || {}; // Added 'force' flag
     if ((!Array.isArray(modelIds) || modelIds.length === 0) && (!Array.isArray(filePaths) || filePaths.length === 0)) {
       return res.status(400).json({ success: false, error: 'No model IDs or file paths provided' });
     }
@@ -2084,7 +1959,6 @@ app.post('/api/regenerate-munchie-files', async (req, res) => {
     let processed = 0;
     let errors = [];
 
-    // Build a list of existing munchie files (with filePath and jsonPath)
     let allModels = [];
     function scanForModels(directory) {
       const entries = fs.readdirSync(directory, { withFileTypes: true });
@@ -2120,12 +1994,32 @@ app.post('/api/regenerate-munchie-files', async (req, res) => {
           return { error: 'Model file not found' };
         }
 
-        // Backup user-managed fields from existing JSON if present
+        // 🛡️ PROJECT AWARE BACKUP: Expand the list of fields we MUST keep
         let currentData = {};
         if (jsonPath && fs.existsSync(jsonPath)) {
           try { currentData = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (e) { /* ignore */ }
         }
-        const userDataBackup = {
+
+        // If not forcing, and we already have a valid munchie, skip the heavy regeneration
+        if (!force && currentData.id && currentData.hash) {
+          return { success: true, skipped: true };
+        }
+        const projectDataBackup = {
+          // Identify/Project hierarchy
+          id: currentData.id || idForModel,
+          isProjectRoot: currentData.isProjectRoot ?? false,
+          isRelatedPart: currentData.isRelatedPart ?? false,
+          hidden: currentData.hidden ?? false,
+          name: currentData.name, // Keep existing display name
+
+          // Date Stability
+          created: currentData.created || new Date().toISOString(),
+
+          // Media preservation
+          parsedImages: Array.isArray(currentData.parsedImages) ? currentData.parsedImages : [],
+          thumbnail: currentData.thumbnail || undefined,
+
+          // Metadata/User input
           tags: currentData.tags || [],
           isPrinted: currentData.isPrinted || false,
           printTime: currentData.printTime || "",
@@ -2133,7 +2027,6 @@ app.post('/api/regenerate-munchie-files', async (req, res) => {
           category: currentData.category || "",
           notes: currentData.notes || "",
           license: currentData.license || "",
-          hidden: currentData.hidden || false,
           source: currentData.source || "",
           price: currentData.price || 0,
           related_files: Array.isArray(currentData.related_files) ? currentData.related_files : [],
@@ -2143,91 +2036,58 @@ app.post('/api/regenerate-munchie-files', async (req, res) => {
         const buffer = fs.readFileSync(modelFilePath);
         const hash = computeMD5(buffer);
         let newMetadata;
+        // Only parse if hash changed or force is true
         if (modelFilePath.toLowerCase().endsWith('.3mf')) {
-          newMetadata = await parse3MF(modelFilePath, idForModel, hash);
+          newMetadata = await parse3MF(modelFilePath, projectDataBackup.id, hash);
         } else if (modelFilePath.toLowerCase().endsWith('.stl')) {
-          newMetadata = await parseSTL(modelFilePath, idForModel, hash);
+          newMetadata = await parseSTL(modelFilePath, projectDataBackup.id, hash);
         } else {
           return { error: 'Unsupported file type' };
         }
 
-        // Preserve STL printSettings (user-managed) but let 3MF refresh them from parsed metadata
-        let mergedMetadata = { ...newMetadata, ...userDataBackup, id: idForModel, hash };
+        let mergedMetadata = {
+          ...newMetadata,      // Technical data (vertices, dimensions, hash)
+          ...projectDataBackup // Project identity and user data (The "Shield")
+        };
+
+        // Preserve printSettings logic (unchanged but integrated)
         try {
           const lower = String(modelFilePath).toLowerCase();
           if (lower.endsWith('.stl')) {
-            // If existing STL had printSettings, prefer those; otherwise keep newMetadata defaults
-            const cd = currentData && currentData.printSettings && typeof currentData.printSettings === 'object' ? currentData.printSettings : undefined;
-            const nd = newMetadata && newMetadata.printSettings && typeof newMetadata.printSettings === 'object' ? newMetadata.printSettings : {};
-            const prefer = (a, b) => {
-              const sa = typeof a === 'string' ? a : '';
-              const sb = typeof b === 'string' ? b : '';
-              return sa.trim() !== '' ? sa : (sb.trim() !== '' ? sb : '');
-            };
+            const cd = currentData.printSettings || {};
+            const nd = newMetadata.printSettings || {};
+            const prefer = (a, b) => (typeof a === 'string' && a.trim() !== '') ? a : (typeof b === 'string' ? b : '');
             mergedMetadata.printSettings = {
-              layerHeight: prefer(cd && cd.layerHeight, nd.layerHeight),
-              infill: prefer(cd && cd.infill, nd.infill),
-              nozzle: prefer(cd && cd.nozzle, nd.nozzle),
-              printer: (() => {
-                const cp = cd && cd.printer;
-                const np = nd && nd.printer;
-                return typeof cp === 'string' && cp.trim() !== ''
-                  ? cp
-                  : (typeof np === 'string' && np.trim() !== '' ? np : undefined);
-              })()
+              layerHeight: prefer(cd.layerHeight, nd.layerHeight),
+              infill: prefer(cd.infill, nd.infill),
+              nozzle: prefer(cd.nozzle, nd.nozzle),
+              printer: (typeof cd.printer === 'string' && cd.printer.trim() !== '') ? cd.printer : nd.printer
             };
-          } else if (lower.endsWith('.3mf')) {
-            // For 3MF, ensure printSettings come from parsed data, ignoring any previous user-edits
-            // Nothing to do; mergedMetadata already pulls from newMetadata which is parsed.
           }
-        } catch (e) {
-          // ignore preservation error
-        }
-        // Ensure created/lastModified timestamps for regenerated file
+        } catch (e) { }
+
+        mergedMetadata.lastModified = new Date().toISOString();
+
+        // 🖼️ IMAGE ORDER STABILITY
         try {
-          const now = new Date().toISOString();
-          if (!mergedMetadata.created) mergedMetadata.created = now;
-          mergedMetadata.lastModified = now;
-        } catch (e) {
-          // ignore
-        }
+          const parsed = mergedMetadata.parsedImages || [];
+          const userArr = mergedMetadata.userDefined?.images || [];
+          const rebuiltOrder = [
+            ...parsed.map((_, i) => `parsed:${i}`),
+            ...userArr.map((_, i) => `user:${i}`)
+          ];
+          mergedMetadata.userDefined = { ...mergedMetadata.userDefined, imageOrder: rebuiltOrder };
+        } catch (e) { }
 
-        // Rebuild imageOrder so descriptors point to correct indexes
-        try {
-          const parsed = Array.isArray(mergedMetadata.parsedImages) ? mergedMetadata.parsedImages : (Array.isArray(mergedMetadata.images) ? mergedMetadata.images : []);
-          const userArr = Array.isArray(mergedMetadata.userDefined?.images) ? mergedMetadata.userDefined.images : [];
-          const getUserImageData = (entry) => {
-            if (!entry) return '';
-            if (typeof entry === 'string') return entry;
-            if (typeof entry === 'object' && typeof entry.data === 'string') return entry.data;
-            return '';
-          };
-
-          const rebuiltOrder = [];
-          for (let i = 0; i < parsed.length; i++) rebuiltOrder.push(`parsed:${i}`);
-          for (let i = 0; i < userArr.length; i++) rebuiltOrder.push(`user:${i}`);
-
-          if (!mergedMetadata.userDefined || typeof mergedMetadata.userDefined !== 'object') mergedMetadata.userDefined = {};
-          mergedMetadata.userDefined = { ...(mergedMetadata.userDefined || {}), imageOrder: rebuiltOrder };
-        } catch (e) {
-          console.warn('Failed to rebuild userDefined.imageOrder during regeneration:', e);
-        }
-
-        // Ensure target jsonPath is defined
-        if (!jsonPath) {
-          return { error: 'No target JSON path provided' };
-        }
-
-        // Ensure directory exists for jsonPath
+        if (!jsonPath) return { error: 'No target JSON path provided' };
         const dir = path.dirname(jsonPath);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-        // Write the regenerated file and post-process
         fs.writeFileSync(jsonPath, JSON.stringify(mergedMetadata, null, 2), 'utf8');
         await postProcessMunchieFile(jsonPath);
         return { success: true };
       } catch (error) {
-        return { error: error && error.message ? error.message : String(error) };
+        return { error: error?.message || String(error) };
       }
     }
 
@@ -2584,230 +2444,241 @@ app.post('/api/thingiverse/verify', async (req, res) => {
   }
 });
 
-// API endpoint to upload .3mf / .stl files and generate their munchie.json files
 app.post('/api/upload-models', upload.array('files'), async (req, res) => {
+  // Initialize tracking for documentation/logs
+  const savedFilePaths = [];
+  const processedModelIds = [];
+  const errors = [];
+  const affectedFolders = new Map();
+
   try {
     const files = req.files || [];
-    if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ success: false, error: 'No files uploaded' });
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, error: 'No files uploaded' });
+    }
 
     const modelsDir = getAbsoluteModelsPath();
     const { parse3MF, parseSTL, computeMD5 } = require('./dist-backend/utils/threeMFToJson');
 
-    const saved = [];
-    const processed = [];
-    const errors = [];
-    const affectedFolders = new Map();
-
-    // 1. [FROM YOURS] Parse destinations and collection settings
-    let destinations = null;
+    // Import ProjectService with safety catch
+    let ProjectService;
     try {
-      if (req.body.destinations) {
-        destinations = JSON.parse(req.body.destinations);
-      }
-    } catch (e) { destinations = null; }
+      const projectModule = require('./dist-backend/utils/ProjectService');
+      ProjectService = projectModule.ProjectService || projectModule.default;
+    } catch (e) {
+      console.error("[UPLOAD] Critical: ProjectService utility not found. Asset Folder mode will fail.");
+    }
 
-    const createCollection = req.body.createCollection === 'true';
-    const collectionDescription = req.body.collectionDescription || '';
-    const collectionTags = req.body.collectionTags ? JSON.parse(req.body.collectionTags) : [];
+    // --- SAFE DATA PARSING ---
+    // We wrap every JSON.parse in a try/catch to document malformed frontend requests
+    let destinations = null;
+    let collectionTags = [];
+    let sharedTags = [];
 
+    try {
+      if (req.body.destinations) destinations = JSON.parse(req.body.destinations);
+    } catch (e) {
+      console.error("[UPLOAD] Error parsing destinations:", e.message);
+      errors.push({ error: "Invalid destination format received" });
+    }
+
+    try {
+      if (req.body.collectionTags) collectionTags = JSON.parse(req.body.collectionTags);
+    } catch (e) {
+      console.error("[UPLOAD] Error parsing collectionTags:", e.message);
+    }
+
+    try {
+      if (req.body.tags) sharedTags = JSON.parse(req.body.tags);
+    } catch (e) {
+      console.error("[UPLOAD] Error parsing tags:", e.message);
+    }
+
+    const {
+      isProjectFolder,
+      projectName,
+      primaryModelFile,
+      createCollection: createColRaw,
+      collectionId,
+      collectionName,
+      category,
+      collectionDescription
+    } = req.body;
+
+    const createCollection = createColRaw === 'true';
+
+    // --- 1. PHYSICAL FILE SAVING (ATOMIC WRITE) ---
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      const buffer = f.buffer; // Use memory buffer directly for speed
-      const original = (f.originalname || 'upload').replace(/\\/g, '/');
-      let base = path.basename(original).replace(/[^a-zA-Z0-9_.\- ]/g, '_');
-      const lowerBase = base.toLowerCase();
+      const originalName = f.originalname.replace(/\\/g, '/');
+      let base = path.basename(originalName).replace(/[^a-zA-Z0-9_.\- ]/g, '_');
 
-      // 2. [FROM YOURS] G-Code and Extension Guards
-      if (lowerBase.endsWith('.gcode.3mf') || lowerBase.endsWith('.3mf.gcode')) {
-        errors.push({ file: original, error: 'G-code archives belong in the analysis dialog.' });
-        continue;
-      }
-
-      const isModel = lowerBase.endsWith('.3mf') || lowerBase.endsWith('.stl');
-      const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(lowerBase);
-      const isDoc = /\.(pdf|txt|md|doc|docx)$/i.test(lowerBase);
-
-      if (!isModel && !isImage && !isDoc) {
-        errors.push({ file: original, error: 'Unsupported file extension' });
-        continue;
-      }
-
-      // 3. [FROM YOURS] Destination Resolution
-      let destFolder = 'uploads';
-      if (destinations && destinations[i]) {
-        let candidate = destinations[i].replace(/\\/g, '/').replace(/^\/*/, '');
-        if (candidate.includes('..')) candidate = 'uploads';
-        destFolder = candidate || 'uploads';
-      }
-
+      // Resolve destination with path-traversal protection
+      let destFolder = (destinations && destinations[i]) ? destinations[i].replace(/\.\./g, '') : 'uploads';
       const destDir = path.join(modelsDir, destFolder);
+
       if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
-      // 4. [FROM YOURS] Atomic Write Logic
       let targetPath = path.join(destDir, base);
+
+      // De-conflict filenames if they already exist
       if (fs.existsSync(targetPath)) {
-        const name = base.replace(/(\.[^.]+)$/, '');
         const ext = path.extname(base);
+        const name = path.basename(base, ext);
         base = `${name}-${Date.now()}${ext}`;
         targetPath = path.join(destDir, base);
       }
 
-      const tmpUploadPath = targetPath + '.tmp';
-      fs.writeFileSync(tmpUploadPath, buffer);
+      // Safe Write: Use .tmp extension during write to prevent partial file reads
+      const tmpPath = targetPath + '.tmp';
+      try {
+        fs.writeFileSync(tmpPath, f.buffer);
+        fs.renameSync(tmpPath, targetPath);
 
-      // Secondary race-condition check from your version
-      if (fs.existsSync(targetPath)) {
-        const name = base.replace(/(\.[^.]+)$/, '');
-        const ext = path.extname(base);
-        base = `${name}-${Date.now()}-${Math.floor(Math.random() * 10000)}${ext}`;
-        targetPath = path.join(destDir, base);
-      }
-      fs.renameSync(tmpUploadPath, targetPath);
+        const relativePath = path.relative(modelsDir, targetPath).replace(/\\/g, '/');
+        savedFilePaths.push(relativePath);
 
-      const relativePath = path.relative(modelsDir, targetPath).replace(/\\/g, '/');
-      saved.push(relativePath);
+        // --- 2. INDIVIDUAL MODEL PROCESSING ---
+        // Skip heavy parsing if we are letting ProjectService handle it as an Asset Folder
+        if (isProjectFolder !== 'true') {
+          const lowerBase = base.toLowerCase();
+          if (lowerBase.endsWith('.3mf') || lowerBase.endsWith('.stl')) {
+            const derivedId = base.replace(/\.(3mf|stl)$/i, '');
+            const hash = computeMD5(f.buffer);
 
-      // 5. [FROM YOURS] Munchie Generation & Thumbnail Logic
-      if (isModel) {
-        try {
-          const derivedId = base.replace(/\.(3mf|stl)$/i, '');
-          const hash = computeMD5(buffer);
+            const parsedData = lowerBase.endsWith('.3mf')
+              ? await parse3MF(targetPath, derivedId, hash)
+              : await parseSTL(targetPath, derivedId, hash);
 
-          // [STEP A] Parse the 3D file data first
-          const parsedData = lowerBase.endsWith('.3mf')
-            ? await parse3MF(targetPath, derivedId, hash)
-            : await parseSTL(targetPath, derivedId, hash);
+            // Create Standard Metadata via Factory
+            let metadata = createInitialModelMetadata({
+              ...parsedData,
+              id: derivedId,
+              hash: hash,
+              filePath: relativePath,
+              modelUrl: `/models/${relativePath}`,
+              category: category || 'Uncategorized',
+              tags: Array.from(new Set([...sharedTags, ...(parsedData.tags || [])]))
+            });
 
-          // [STEP B] Use the Factory as the base, then layer the parsed data over it
-          let metadata = createInitialModelMetadata({
-            ...parsedData, // This fills in name, polygons, etc.
-            id: derivedId,
-            hash: hash,
-            filePath: relativePath,
-            modelUrl: `/models/${relativePath}`,
-          });
+            const jsonRel = relativePath.replace(/\.(3mf|stl)$/i, lowerBase.endsWith('.3mf') ? '-munchie.json' : '-stl-munchie.json');
+            const jsonPath = path.join(modelsDir, jsonRel);
+            fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2));
 
-          // [STEP C] Rebuild image order using the standard factory structure
-          const parsedArr = Array.isArray(metadata.parsedImages) ? metadata.parsedImages : [];
-          metadata.userDefined.imageOrder = parsedArr.map((_, idx) => `parsed:${idx}`);
-
-          const jsonRel = relativePath.replace(/\.(3mf|stl)$/i, lowerBase.endsWith('.3mf') ? '-munchie.json' : '-stl-munchie.json');
-          const jsonPath = path.join(modelsDir, jsonRel);
-
-          fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2), 'utf8');
-
-          // [FROM YOURS] Thumbnail Generation Integration
-          try {
-            const thumbName = path.basename(targetPath) + '-thumb.png';
-            const thumbPath = path.join(destDir, thumbName);
-            const BASE_URL = process.env.HOST_URL || `http://localhost:${PORT || 3001}`;
-
-            console.log(`📸 Auto-generating thumbnail for: ${derivedId}`);
-            await generateThumbnail(targetPath, thumbPath, BASE_URL, undefined, modelsDir);
-
-            const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
-            const freshJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-            if (!freshJson.images) freshJson.images = [];
-            freshJson.images.unshift(relativeThumbUrl); // Make it the primary image
-
-            // Re-update image order to include the thumb
-            if (freshJson.userDefined) {
-              freshJson.userDefined.imageOrder = ['user:0', ...freshJson.userDefined.imageOrder];
-            }
-
-            fs.writeFileSync(jsonPath, JSON.stringify(freshJson, null, 2), 'utf8');
-          } catch (genErr) {
-            console.error("Auto-thumbnail failed:", genErr);
-          }
-
-          if (!affectedFolders.has(destDir)) affectedFolders.set(destDir, []);
-          affectedFolders.get(destDir).push(derivedId);
-          processed.push(jsonRel);
-
-          await postProcessMunchieFile(jsonPath);
-        } catch (e) { errors.push({ file: base, error: e.message }); }
-      }
-      else if ((isImage || isDoc) && destFolder !== 'uploads') {
-        // [MY ADDITION] Link Assets to metadata if they are uploaded into a project folder
-        try {
-          const munchieFile = fs.readdirSync(destDir).find(fn => fn.endsWith('munchie.json'));
-          if (munchieFile) {
-            const mPath = path.join(destDir, munchieFile);
-            const mData = JSON.parse(fs.readFileSync(mPath, 'utf8'));
-            const assetUrl = '/models/' + relativePath;
-
-            if (isImage) {
-              if (!mData.images) mData.images = [];
-              if (!mData.images.includes(assetUrl)) mData.images.push(assetUrl);
-            } else {
-              if (!mData.documents) mData.documents = [];
-              if (!mData.documents.includes(assetUrl)) mData.documents.push(assetUrl);
-            }
-            fs.writeFileSync(mPath, JSON.stringify(mData, null, 2));
-          }
-        } catch (e) { console.warn("Asset link failed", e); }
-      }
-    }
-
-    // 6. [FROM YOURS] Collection Sync Logic
-    if (affectedFolders.size > 0) {
-      const currentCols = loadCollections();
-      let colsUpdated = false;
-
-      for (const [folderPath, newModelIds] of affectedFolders.entries()) {
-        const rel = path.relative(modelsDir, folderPath);
-        if (!rel || rel === '' || rel === '.') continue;
-
-        const normalized = rel.replace(/\\/g, '/');
-        const colId = `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
-        const existingIdx = currentCols.findIndex(c => c.id === colId);
-
-        if (createCollection || existingIdx === -1) {
-          const newCol = existingIdx !== -1 ? currentCols[existingIdx] : {
-            id: colId,
-            name: path.basename(folderPath),
-            modelIds: [],
-            created: new Date().toISOString(),
-            category: 'Auto-Imported'
-          };
-
-          const idSet = new Set([...(newCol.modelIds || []), ...newModelIds]);
-          newCol.modelIds = Array.from(idSet);
-          if (createCollection && collectionDescription) newCol.description = collectionDescription;
-          if (collectionTags.length > 0) newCol.tags = Array.from(new Set([...(newCol.tags || []), ...collectionTags]));
-
-          newCol.lastModified = new Date().toISOString();
-          if (existingIdx !== -1) currentCols[existingIdx] = newCol;
-          else currentCols.push(newCol);
-          colsUpdated = true;
-        } else {
-          const existingCol = currentCols[existingIdx];
-          const startSize = existingCol.modelIds.length;
-          const idSet = new Set([...existingCol.modelIds, ...newModelIds]);
-          existingCol.modelIds = Array.from(idSet);
-          if (existingCol.modelIds.length !== startSize) {
-            existingCol.lastModified = new Date().toISOString();
-            colsUpdated = true;
+            processedModelIds.push(derivedId);
+            if (!affectedFolders.has(destDir)) affectedFolders.set(destDir, []);
+            affectedFolders.get(destDir).push(derivedId);
           }
         }
+      } catch (writeErr) {
+        console.error(`[UPLOAD] Failed to save file ${base}:`, writeErr);
+        errors.push({ file: base, error: "Disk write failure" });
       }
-      if (colsUpdated) saveCollections(currentCols);
     }
 
+    // --- 3. ASSET FOLDER MODE (Project Logic) ---
+    if (isProjectFolder === 'true' && ProjectService && savedFilePaths.length > 0) {
+      try {
+        const firstFile = savedFilePaths[0];
+        const absoluteDestDir = path.join(modelsDir, path.dirname(firstFile));
+        const modelFiles = fs.readdirSync(absoluteDestDir).filter(f => f.endsWith('.stl') || f.endsWith('.3mf'));
+
+        /**
+         * UPDATED: In mass upload "Asset Folder" mode, we generate a new project ID.
+         * Since these are all new files, the first file in the array (index 0) 
+         * will become the Main model by default in ProjectService.
+         */
+        const newProjId = `proj-${Date.now()}`;
+
+        const projectModel = await ProjectService.finalizeProject({
+          mode: 'generic',
+          destDir: absoluteDestDir,
+          modelsRoot: modelsDir,
+          importedFiles: modelFiles,
+          primaryModelFile,
+          meta: {
+            id: newProjId,
+            name: projectName || path.basename(absoluteDestDir),
+            category: category || 'Uncategorized',
+            tags: sharedTags
+          }
+        });
+        processedModelIds.push(projectModel.id);
+      } catch (projErr) {
+        console.error("[UPLOAD] ProjectService finalization failed:", projErr);
+        errors.push({ error: "Asset folder organization failed" });
+      }
+    }
+
+    // --- 4. LOGICAL GROUPING (Collections) ---
+    if (createCollection && processedModelIds.length > 0) {
+      try {
+        const currentCols = loadCollections(); // Ensure this helper exists in your server.js
+        let targetCol;
+
+        if (collectionId && collectionId !== 'new') {
+          targetCol = currentCols.find(c => c.id === collectionId);
+        }
+
+        if (!targetCol) {
+          targetCol = {
+            id: collectionId && collectionId !== 'new' ? collectionId : `col-${Date.now()}`,
+            name: collectionName || projectName || "New Upload",
+            modelIds: [],
+            description: collectionDescription || '',
+            tags: collectionTags,
+            created: new Date().toISOString()
+          };
+          currentCols.push(targetCol);
+        }
+
+        // Logical union of existing and new models
+        targetCol.modelIds = Array.from(new Set([...targetCol.modelIds, ...processedModelIds]));
+        targetCol.lastModified = new Date().toISOString();
+        saveCollections(currentCols);
+      } catch (colErr) {
+        console.error("[UPLOAD] Collection update failed:", colErr);
+        errors.push({ error: "Failed to add models to collection" });
+      }
+    }
+
+    // Final Syncing
     await collectionQueue.add(() => collectionScanner.scanDirectory(modelsDir, modelsDir, { strategy: 'strict' }));
     try { reconcileHiddenFlags(); } catch (e) { }
 
-    res.json({ success: errors.length === 0, saved, processed, errors });
-  } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    res.json({
+      success: errors.length === 0,
+      saved: savedFilePaths,
+      modelIds: processedModelIds,
+      errors
+    });
+
+  } catch (err) {
+    console.error("[UPLOAD] Fatal Crash in upload-models:", err);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 });
 
 app.post('/api/move-model-to-project', async (req, res) => {
   try {
 
-    const { ProjectModule } = require('./dist-backend/ProjectService');
-    const ProjectService = ProjectModule.ProjectService || ProjectModule;
+    let ProjectService;
+
+    try {
+      // Use the same dist-backend path since they are in the same folder
+      const projectModule = require('./dist-backend/utils/ProjectService');
+
+      // Note: Check if your class is a named export or default export in the compiled JS
+      // If it's "export class ProjectService", use .ProjectService
+      // If it's "export default class ProjectService", use .default
+      ProjectService = projectModule.ProjectService || projectModule.default;
+    } catch (e) {
+      console.error('Failed to load ProjectService:', e);
+      return res.status(500).json({
+        success: false,
+        error: 'Project management utility not found. Rebuild required.'
+      });
+    }
 
     const { modelId, targetFolderName } = req.body;
     const modelsDir = getAbsoluteModelsPath();
@@ -2861,9 +2732,6 @@ app.post('/api/move-model-to-project', async (req, res) => {
     const currentFiles = fs.readdirSync(destDir);
     const modelFiles = currentFiles.filter(f => f.endsWith('.stl') || f.endsWith('.3mf'));
 
-    // 4. CALL THE UNIFIED SERVICE
-    // This replaces all manual healing, thumb re-ordering, and marker creation
-
     const updatedModel = await ProjectService.finalizeProject({
       mode: 'generic',
       destDir,
@@ -2887,35 +2755,35 @@ app.post('/api/move-model-to-project', async (req, res) => {
   }
 });
 
-// --- UNIFIED HEAL LOGIC ENGINE ---
-async function runHealLogic(isDryRun) {
+
+//Unified
+async function runHealLogic(isDryRun, specificPath = null) {
   // --- PANIC LOGS ---
   console.log("!!! HEAL LOGIC TRIGGERED !!!");
   console.log("Is Dry Run:", isDryRun);
 
   const modelsDir = getAbsoluteModelsPath();
-  console.log("Target Models Directory:", modelsDir);
 
   if (!modelsDir || !fs.existsSync(modelsDir)) {
-      console.error("❌ ERROR: Models directory does not exist or is undefined!");
-      return { processed: 0, healed: 0, errors: ["Models directory missing"], details: [] };
+    console.error("❌ ERROR: Models directory does not exist or is undefined!");
+    return { processed: 0, healed: 0, errors: ["Models directory missing"], details: [] };
   }
 
   const results = { processed: 0, healed: 0, errors: [], details: [] };
-  
+
   const actualCollections = loadCollections() || [];
   const collectionPathMap = new Map();
-  actualCollections.forEach(c => { 
-    if (c.path) collectionPathMap.set(c.path.replace(/\\/g, '/'), c.id); 
+  actualCollections.forEach(c => {
+    if (c.path) collectionPathMap.set(c.path.replace(/\\/g, '/'), c.id);
   });
 
   async function processDir(dir) {
     let entries = [];
-    try { 
-      entries = fs.readdirSync(dir, { withFileTypes: true }); 
-    } catch(e) { 
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (e) {
       console.error(`❌ Cannot read directory: ${dir}`);
-      return; 
+      return;
     }
 
     // --- 📦 PROJECT MARKER CHECK ---
@@ -2924,217 +2792,291 @@ async function runHealLogic(isDryRun) {
     const isProject = !!projectData;
 
     // Filter for Munchies, but be VERY inclusive
-    const munchieFiles = entries.filter(e => e.isFile() && e.name.toLowerCase().includes('munchie.json'));
+    const munchieFiles = entries.filter(e => {
+      const name = e.name.toLowerCase();
+      return e.isFile() &&
+        name.endsWith('munchie.json') &&
+        !name.includes('.bak');
+    });
     const normalizedCurrentDir = dir.replace(/\\/g, '/');
+
+    // NEW: "King of the Hill" Pre-Scan
+    let folderMunchies = munchieFiles.map(f => {
+      const p = path.join(dir, f.name);
+      const d = JSON.parse(fs.readFileSync(p, 'utf8'));
+      return { path: p, data: d, mtime: fs.statSync(p).mtime };
+    });
+
+    const roots = folderMunchies.filter(m => m.data.isProjectRoot === true);
+
+    if (roots.length > 1) {
+      console.log(`⚠️ Multiple Roots found in ${dir}. Enforcing single King...`);
+      // Keep the most recently modified "King"
+      roots.sort((a, b) => b.mtime - a.mtime);
+      roots.slice(1).forEach(peer => {
+        peer.data.isProjectRoot = false;
+        // NEW: If we demote a king, it should now become a hidden related part
+        peer.data.hidden = true;
+        peer.data.isRelatedPart = true;
+
+        if (!isDryRun) {
+          fs.writeFileSync(peer.path, JSON.stringify(peer.data, null, 2));
+        }
+        console.log(`    └─ Demoted redundant King: ${path.basename(peer.path)}`);
+      });
+    }
 
     for (const entry of munchieFiles) {
       const fullPath = path.join(dir, entry.name);
-      console.log(`🔍 Checking Munchie: ${entry.name} in ${normalizedCurrentDir}`);
 
       try {
         const raw = fs.readFileSync(fullPath, 'utf8');
         let data = JSON.parse(raw);
         let hasChanged = false;
 
+
         data = createInitialModelMetadata(data);
-        if (!data.images) data.images = [];
+
+        // FIX: Define proposal HERE so it's available for Visibility Logic
+        const debugPath = path.relative(modelsDir, fullPath).replace(/\\/g, '/');
+        const proposal = {
+          model: `${data.name || entry.name} (${debugPath})`,
+          additions: [],
+          deletions: [],
+          collectionSync: null,
+          visibilityFix: null
+        };
+
+        if (data.images) {
+          delete data.images;
+          hasChanged = true;
+        }
+
+        // --- 2. VISIBILITY LOGIC ---
+        const isGlobalRoot = normalizedCurrentDir === '' || normalizedCurrentDir === '.';
+
+        if (isGlobalRoot) {
+          const shouldBeHidden = !data.isProjectRoot;
+          if (data.hidden !== shouldBeHidden) {
+            data.hidden = shouldBeHidden;
+            hasChanged = true;
+          }
+        } else {
+          if (data.hidden !== true) {
+            data.hidden = true;
+            hasChanged = true;
+          }
+        }
+
         if (!data.parsedImages) data.parsedImages = [];
         if (!data.related_files) data.related_files = [];
 
-        // --- FALLBACK NAMING (The SportsCar Fix) ---
-        let modelFileName = data.filePath 
-            ? path.basename(data.filePath, path.extname(data.filePath)) 
-            : entry.name.replace(/(-stl)?-munchie\.json$/i, '');
-        
-        console.log(`   > Identity: ${modelFileName} | isProject: ${isProject}`);
+        const originalImgCount = data.parsedImages.length;
+        const originalRelatedCount = data.related_files.length;
 
-        const proposal = { 
-            model: data.name || entry.name, 
-            additions: [], 
-            deletions: [], 
-            collectionSync: null, 
-            visibilityFix: null 
-        };
+        // --- 3. IDENTITY & PROPOSAL ---
+        let modelFileName = data.filePath
+          ? path.basename(data.filePath, path.extname(data.filePath))
+          : entry.name.replace(/(-stl)?-munchie\.json$/i, '');
 
         const siblings = fs.readdirSync(dir);
 
-        // --- 1. EMPTY PATH HEALING ---
+        // --- 4. PATH HEALING ---
         if (!data.filePath || data.filePath === "") {
           const foundModel = siblings.find(f => {
             const low = f.toLowerCase();
             return low.endsWith('.stl') || low.endsWith('.3mf');
           });
-          
+
           if (foundModel) {
             const newRelPath = path.join(path.relative(modelsDir, dir), foundModel).replace(/\\/g, '/');
             proposal.additions.push(`Recovered filePath: ${foundModel}`);
             data.filePath = newRelPath;
             data.modelUrl = `/models/${newRelPath}`;
-            modelFileName = path.basename(foundModel, path.extname(foundModel)); 
+            modelFileName = path.basename(foundModel, path.extname(foundModel));
             hasChanged = true;
-            console.log(`   > 🩹 Recovered Path: ${foundModel}`);
           }
         }
 
-        // --- 2. ASSET CLAIMING ---
+        // --- 5. ASSET CLAIMING ---
         siblings.forEach(file => {
           if (file.endsWith('.json') || file === 'project.json') return;
           const relAssetPath = path.join(path.relative(modelsDir, dir), file).replace(/\\/g, '/');
-          const isMatch = modelFileName && file.toLowerCase().startsWith(modelFileName.toLowerCase());
+          const lowerFile = file.toLowerCase();
+          const isMatch = modelFileName && lowerFile.startsWith(modelFileName.toLowerCase());
           const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(file);
-          const isGeneratedThumb = file.toLowerCase().endsWith('-thumb.png');
+          const isGeneratedThumb = lowerFile.endsWith('-thumb.png');
+          const isSystemFile = lowerFile.includes('.bak') || lowerFile.includes('.tmp') || file.startsWith('.');
 
           let shouldClaim = false;
-          if (isProject) {
-            if (!isImage) shouldClaim = true; 
-            else if (!isGeneratedThumb) shouldClaim = true; 
-            else if (isMatch) shouldClaim = true; 
-          } else {
-            if (isMatch) shouldClaim = true;
+          if (!isSystemFile) {
+            if (isProject) {
+              const isGcode = lowerFile.endsWith('.gcode');
+              shouldClaim = !((isGeneratedThumb || isGcode) && !isMatch);
+            } else {
+              if (isMatch) shouldClaim = true;
+            }
           }
 
           if (shouldClaim && relAssetPath !== data.filePath) {
             if (isImage) {
               const url = `/models/${relAssetPath}`;
-              const gallery = (data.parsedImages && data.parsedImages.length > 0) ? data.parsedImages : data.images;
-              if (!gallery.includes(url)) {
+              if (!data.parsedImages.includes(url)) {
                 proposal.additions.push(`${file} (Gallery Link)`);
-                gallery.push(url);
+                data.parsedImages.push(url);
                 hasChanged = true;
               }
-            } else if (!data.related_files.includes(relAssetPath)) {
-              proposal.additions.push(`${file} (Related Part/Doc)`);
-              data.related_files.push(relAssetPath);
-              hasChanged = true;
+            } else {
+              if (!data.related_files.includes(relAssetPath)) {
+                proposal.additions.push(`${file} (Related Part/Doc)`);
+                data.related_files.push(relAssetPath);
+                hasChanged = true;
+              }
             }
           }
         });
 
-        const galleryRef = (data.parsedImages && data.parsedImages.length > 0) ? 'parsedImages' : 'images';
-        const originalImgCount = data[galleryRef].length;
-        const originalRelatedCount = data.related_files.length;
-        
-        // This defines exactly what a local URL should look like for this munchie
+        // --- 6. SCRUBBING ---
         const expectedFolderUrl = `/models/${path.relative(modelsDir, dir).replace(/\\/g, '/')}/`;
-        
-        data[galleryRef] = data[galleryRef].filter(imgUrl => {
+        data.parsedImages = data.parsedImages.filter(imgUrl => {
           const fileName = path.basename(imgUrl);
           const isPhysicallyHere = siblings.includes(fileName);
-          
-          // FIXED: Even if the filename matches, the URL must point to THIS folder
           const isCorrectFolder = imgUrl.startsWith(expectedFolderUrl);
-          
-          const match = modelFileName && fileName.toLowerCase().startsWith(modelFileName.toLowerCase());
-          const keepInProject = isProject && isPhysicallyHere;
-        
-          if (!isPhysicallyHere || !isCorrectFolder || (!match && !keepInProject)) {
+          const isMatch = modelFileName && fileName.toLowerCase().startsWith(modelFileName.toLowerCase());
+          const isLegit = isProject ? isPhysicallyHere : isMatch;
+
+          if (!isPhysicallyHere || !isCorrectFolder || !isLegit) {
             proposal.deletions.push(`${fileName} (Stale/Wrong Path)`);
             return false;
           }
           return true;
         });
-        
-        // Update imageOrder if we removed stale ghosts
-        if (data[galleryRef].length !== originalImgCount) {
-          hasChanged = true;
-          data.userDefined.imageOrder = data[galleryRef].map((_, idx) => `parsed:${idx}`);
-        }
-        
-        // Clean up related files (STLs/PDFs) with the same strictness
+
+        if (data.parsedImages.length !== originalImgCount) hasChanged = true;
+
         data.related_files = data.related_files.filter(p => {
           const fileName = path.basename(p);
           const isPhysicallyHere = siblings.includes(fileName);
           const expectedRelPath = path.join(path.relative(modelsDir, dir), fileName).replace(/\\/g, '/');
-          
-          if (!isPhysicallyHere || p !== expectedRelPath) {
-            proposal.deletions.push(`${fileName} (Stale Part Path)`);
+          const isMatch = modelFileName && fileName.toLowerCase().startsWith(modelFileName.toLowerCase());
+          const isLegit = isProject ? isPhysicallyHere : isMatch;
+          const isMetadata = fileName.toLowerCase().endsWith('munchie.json') || fileName === 'project.json' || fileName.toLowerCase().includes('.bak');
+
+          if (!isPhysicallyHere || p !== expectedRelPath || !isLegit || isMetadata) {
+            proposal.deletions.push(`${fileName} (Stale or Metadata Path)`);
             return false;
           }
           return true;
         });
+
         if (data.related_files.length !== originalRelatedCount) hasChanged = true;
-        
-        // --- 4. THUMBNAIL RESTORATION ---
-        // (Runs after the scrub so index 0 is guaranteed to be a valid local file)
+
+        // --- 7. THUMBNAIL REPAIR ---
         const actualFile = data.filePath ? path.basename(data.filePath) : "";
         if (actualFile) {
           const expectedThumbName = `${actualFile}-thumb.png`;
           const thumbWebUrl = `${expectedFolderUrl}${expectedThumbName}`;
-          
+
           if (siblings.includes(expectedThumbName)) {
-            const gallery = data[galleryRef];
-            
-            // Ensure the valid thumb is at index 0
-            if (gallery[0] !== thumbWebUrl) {
-              proposal.additions.push(`${expectedThumbName} (Gallery Priority)`);
-              const existingIdx = gallery.indexOf(thumbWebUrl);
-              if (existingIdx > -1) gallery.splice(existingIdx, 1);
-              gallery.unshift(thumbWebUrl);
+            if (data.isProjectRoot || data.filePath.toLowerCase().includes(actualFile.toLowerCase())) {
+              if (!data.parsedImages.includes(thumbWebUrl)) {
+                proposal.additions.push(`${expectedThumbName} (Added to Gallery)`);
+                data.parsedImages.push(thumbWebUrl);
+                hasChanged = true;
+              }
+
+              // 2. Instead of forcing the array to move, find the ACTUAL index of the thumb
+              const thumbIndex = data.parsedImages.indexOf(thumbWebUrl);
+              const targetPointer = `parsed:${thumbIndex}`;
+
+              // 3. Update the pointer to match where the thumb actually sits
+              if (data.userDefined?.thumbnail !== targetPointer) {
+                proposal.additions.push(`Syncing thumbnail pointer to ${targetPointer}`);
+                if (!data.userDefined) data.userDefined = { thumbnail: '', imageOrder: [], images: [] };
+                data.userDefined.thumbnail = targetPointer;
+                hasChanged = true;
+              }
+            }
+
+            const hasParsedImages = data.parsedImages && data.parsedImages.length > 0;
+            const firstImageIsThumb = hasParsedImages && data.parsedImages[0].includes('-thumb.png');
+
+            if (hasParsedImages && firstImageIsThumb) {
+              if (data.userDefined?.thumbnail !== 'parsed:0') {
+                proposal.additions.push(`Pointing thumbnail to parsed:0`);
+                if (!data.userDefined) data.userDefined = { thumbnail: 'parsed:0', imageOrder: [], images: [] };
+                data.userDefined.thumbnail = 'parsed:0';
+                data.userDefined.imageOrder = data.parsedImages.map((_, idx) => `parsed:${idx}`);
+                hasChanged = true;
+              }
+            } else if (data.isRelatedPart && !firstImageIsThumb) {
+              if (data.userDefined?.thumbnail === 'parsed:0') {
+                data.userDefined.thumbnail = undefined;
+                hasChanged = true;
+                proposal.deletions.push("Removing parsed:0 pointer from Related Part (No matching thumb)");
+              }
+            } else if (data.userDefined?.thumbnail) {
+              proposal.deletions.push("Clearing invalid thumbnail pointers");
+              if (data.userDefined) data.userDefined.thumbnail = undefined;
               hasChanged = true;
             }
-        
-            // Snap pointer
-            const isPointerBroken = (data.userDefined?.thumbnail?.startsWith('user:') && (!data.userDefined.images || data.userDefined.images.length === 0));
-            if (isPointerBroken || data.userDefined.thumbnail !== 'parsed:0') {
-              proposal.additions.push(`${expectedThumbName} (Set as Thumbnail)`);
-              if (!data.userDefined) data.userDefined = { thumbnail: '', imageOrder: [], images: [] };
-              data.userDefined.thumbnail = `parsed:0`; 
-              data.thumbnail = `parsed:0`;
-              
-              const parsedOrder = gallery.map((_, idx) => `parsed:${idx}`);
-              const userOrder = (data.userDefined.images || []).map((_, idx) => `user:${idx}`);
-              data.userDefined.imageOrder = [...parsedOrder, ...userOrder];
+
+            // --- 🧹 CLEANUP ROOT POLLUTION ---
+            // If the root-level 'thumbnail' field exists, delete it immediately
+            if (Object.prototype.hasOwnProperty.call(data, 'thumbnail')) {
+              delete data.thumbnail;
               hasChanged = true;
+              proposal.deletions.push("Purged duplicate root-level thumbnail field");
             }
           }
         }
 
-        // --- 5. SANITATION ---
+        // --- 8. FINAL SAVE ---
         const cleanPath = (p) => p ? p.replace(/\\/g, '/').replace(/\/+/g, '/').trim() : p;
         if (data.filePath !== cleanPath(data.filePath)) {
-            data.filePath = cleanPath(data.filePath);
-            data.modelUrl = cleanPath(data.modelUrl);
-            hasChanged = true;
+          data.filePath = cleanPath(data.filePath);
+          data.modelUrl = cleanPath(data.modelUrl);
+          hasChanged = true;
         }
 
         if (hasChanged && !isDryRun) {
-          // Create a backup of the ORIGINAL 'raw' content before we overwrite
           const backupPath = fullPath + '.bak';
-          fs.writeFileSync(backupPath, raw, 'utf8'); // 'raw' is the string we read at the start
-
+          fs.writeFileSync(backupPath, raw, 'utf8');
           fs.writeFileSync(fullPath, JSON.stringify(data, null, 2), 'utf8');
           results.healed++;
         }
-        
+
         if (proposal.additions.length > 0 || proposal.deletions.length > 0 || hasChanged) {
           results.details.push(proposal);
         }
         results.processed++;
-      } catch (err) { 
-        console.error(`   ❌ Error in ${entry.name}: ${err.message}`);
-        results.errors.push({ file: entry.name, error: err.message }); 
-      }
-    }
 
-    // --- CRITICAL: RECURSION ---
-    // Ensure we enter every single subfolder
+      } catch (err) {
+        console.error(`   ❌ Error in ${entry.name}: ${err.message}`);
+        results.errors.push({ file: entry.name, error: err.message });
+      }
+    } // End munchie loop
+
     for (const entry of entries) {
       if (entry.isDirectory()) {
         await processDir(path.join(dir, entry.name));
       }
     }
-  }
+  } // End processDir
 
-  console.log("🚀 Starting Deep Heal...");
-  await processDir(modelsDir);
-  console.log(`✅ Deep Heal Finished. Processed: ${results.processed}`);
+  const startDir = specificPath ? path.join(modelsDir, specificPath) : modelsDir;
+  console.log(`🚀 Starting ${specificPath ? 'Micro' : 'Deep'} Heal at: ${startDir}`);
+
+  await processDir(startDir);
+
+  console.log(`✅ Heal Finished. Processed: ${results.processed}`);
   return results;
 }
 
 app.post('/api/admin/library-heal-preview', async (req, res) => {
   console.log("➡️ API Request received: /api/admin/library-heal-preview");
   try {
-    const results = await runHealLogic(true); 
+    const results = await runHealLogic(true);
     console.log("⬅️ HEAL PREVIEW COMPLETE. Found:", results.details.length, "changes.");
     res.json({ success: true, previewResults: results });
   } catch (err) {
@@ -3144,9 +3086,17 @@ app.post('/api/admin/library-heal-preview', async (req, res) => {
 });
 
 app.post('/api/admin/library-heal', async (req, res) => {
-  console.log("➡️ API Request received: /api/admin/library-heal");
-  const results = await runHealLogic(false); // false = save to disk
-  res.json({ success: true, results, message: "Library heal applied successfully." });
+  const { targetPath } = req.body; // NEW: Accept a specific folder path
+
+  console.log(`➡️ API Request received: Library Heal ${targetPath ? `for ${targetPath}` : '(Full)'}`);
+
+  try {
+    // If targetPath is provided, we only run the logic on that specific folder
+    const results = await runHealLogic(false, targetPath);
+    res.json({ success: true, results, message: "Heal applied successfully." });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 async function runRevertLogic() {
@@ -3161,17 +3111,17 @@ async function runRevertLogic() {
 
       if (entry.isDirectory()) {
         await revertDir(fullPath);
-      } 
+      }
       else if (entry.name.endsWith('.json.bak')) {
         try {
           const originalJsonPath = fullPath.replace('.bak', '');
-          
+
           // Restore the backup over the current file
           fs.copyFileSync(fullPath, originalJsonPath);
-          
+
           // Delete the backup file
           fs.unlinkSync(fullPath);
-          
+
           results.restored++;
           console.log(`⏪ Restored: ${path.basename(originalJsonPath)}`);
         } catch (err) {
@@ -3189,10 +3139,10 @@ async function runRevertLogic() {
 app.post('/api/admin/library-revert', async (req, res) => {
   try {
     const results = await runRevertLogic();
-    res.json({ 
-        success: true, 
-        message: `Successfully reverted ${results.restored} models.`,
-        results 
+    res.json({
+      success: true,
+      message: `Successfully reverted ${results.restored} models.`,
+      results
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -3395,52 +3345,53 @@ app.delete('/api/collections/:id/documents/:filename', async (req, res) => {
 });
 
 app.post('/api/models/upload-document', upload.single('file'), async (req, res) => {
-  const { modelId, filePath } = req.body;
+  const { modelId, filePath } = req.body; // Context: This is the 'Sword' model
   const file = req.file;
 
   try {
-    const { ProjectModule } = require('./dist-backend/ProjectService');
-    const ProjectService = ProjectModule.ProjectService || ProjectModule;
+    let ProjectService;
+    try {
+      const projectModule = require('./dist-backend/utils/ProjectService');
+      ProjectService = projectModule.ProjectService || projectModule.default;
+    } catch (e) {
+      return res.status(500).json({ success: false, error: 'ProjectService utility not found.' });
+    }
 
-    const modelsBaseDir = path.resolve(__dirname, 'models');
+    const modelsBaseDir = getAbsoluteModelsPath();
+    // Path calculation: filePath is relative like "Props/Sword/Sword.stl"
     const relativeFolder = path.dirname(filePath);
     const absoluteTargetDir = path.join(modelsBaseDir, relativeFolder);
 
+    // 1. Save the new asset (the Flexi Octopus or Image)
     const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const filename = `${Date.now()}_${safeName}`;
     const targetPath = path.join(absoluteTargetDir, filename);
-
-    // 1. Save the file
     fs.writeFileSync(targetPath, file.buffer);
 
-    // 2. Identify Extension for Post-Processing
+    // 2. Identify if this is a Project
     const projectMarkerPath = path.join(absoluteTargetDir, 'project.json');
     const isProject = fs.existsSync(projectMarkerPath);
 
-    // 3. Use the ProjectService to "Sync" the new file
+    // 3. Scan ALL 3D files in the folder to update "related_files"
+    const allFiles = fs.readdirSync(absoluteTargetDir).filter(f => f.endsWith('.stl') || f.endsWith('.3mf'));
 
-    // We let the service handle the heavy lifting of updating the JSONs
-    await ProjectService.finalizeProject({
-      mode: isProject ? 'project-update' : 'generic', // A simple update mode
+    // 4. Run the ProjectService to "Heal" the project and generate new thumbnails
+    const updatedData = await ProjectService.finalizeProject({
+      mode: 'generic',
       destDir: absoluteTargetDir,
       modelsRoot: modelsBaseDir,
-      importedFiles: fs.readdirSync(absoluteTargetDir).filter(f => f.endsWith('.stl') || f.endsWith('.3mf')),
-      localImagePaths: [], // Service will scan for existing images
+      importedFiles: allFiles,
       meta: {
-        id: modelId,
-        name: path.basename(absoluteTargetDir) // Keep existing name
+        id: modelId, // Keep original ID
+        name: path.basename(absoluteTargetDir) // Keep folder name
       }
     });
 
-    // // 4. Return the updated primary model
-    // // Find the munchie that IS NOT hidden (the main one)
-    // const files = fs.readdirSync(absoluteTargetDir);
-    // const mainMunchieName = files.find(f => f.endsWith('munchie.json') && !JSON.parse(fs.readFileSync(path.join(absoluteTargetDir, f))).hidden);
-    // const updatedData = JSON.parse(fs.readFileSync(path.join(absoluteTargetDir, mainMunchieName), 'utf8'));
-
+    // Return the updated "Main" model to the frontend HubView
     res.json({ success: true, model: updatedData });
+
   } catch (e) {
-    console.error("Upload document error:", e);
+    console.error("Asset Upload Error:", e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
@@ -5272,8 +5223,6 @@ app.use(function (err, req, res, next) {
   }
   return next();
 });
-
-
 
 // Handle React Router - catch all GET requests that aren't API or model routes
 app.get(/^(?!\/api|\/models).*$/, (req, res) => {

@@ -550,7 +550,7 @@ export function SettingsPage({
 
     setIsReverting(true);
     try {
-      const res = await fetch('/api/api/admin/library-revert', { method: 'POST' });
+      const res = await fetch('/api/admin/library-revert', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         toast.success(data.message);

@@ -35,6 +35,11 @@ interface ModelMetadata {
     images?: string[];
     imageOrder?: string[];
   };
+  isProjectRoot?: boolean;
+  isRelatedPart?: boolean;
+  hidden?: boolean;
+  created?: string;
+  lastModified?: string;
 }
 
 function bytesToMB(bytes: number): string {
@@ -369,55 +374,72 @@ export async function scanDirectory(dir: string, fileType: "3mf" | "stl" = "3mf"
         localProcessed += subResult.processed;
         localSkipped += subResult.skipped;
       } else if (entry.isFile()) {
-        if (fileType === "3mf" && entry.name.endsWith(".3mf")) {
-          // Skip .gcode.3mf and .3mf.gcode files (G-code archives, not models)
-          const lowerName = entry.name.toLowerCase();
-          if (lowerName.endsWith(".gcode.3mf") || lowerName.endsWith(".3mf.gcode")) {
-            console.log(`⏭️ Skipping G-code archive: ${fullPath}`);
-            localSkipped++;
-            continue;
-          }
-          
-          const outPath = fullPath.replace(/\.3mf$/, "-munchie.json");
-          
-          // Skip parsing if munchie.json already exists
-          if (fs.existsSync(outPath)) {
-            console.log(`⏭️ Skipping 3MF (JSON exists): ${fullPath}`);
-            localSkipped++;
-            continue;
-          }
+        const lowerName = entry.name.toLowerCase();
+        
+        // Determine if this is a target 3D file
+        const isTarget3mf = fileType === "3mf" && lowerName.endsWith(".3mf") && 
+                           !lowerName.endsWith(".gcode.3mf") && !lowerName.endsWith(".3mf.gcode");
+        const isTargetStl = fileType === "stl" && lowerName.endsWith(".stl");
 
-          console.log(`Parsing 3MF: ${fullPath}`);
-          // Generate hash first to create unique ID
+        if (isTarget3mf || isTargetStl) {
+          const outPath = isTarget3mf 
+            ? fullPath.replace(/\.3mf$/, "-munchie.json")
+            : fullPath.replace(/\.stl$/i, "-stl-munchie.json");
+
+          console.log(`Processing ${fileType.toUpperCase()}: ${fullPath}`);
+          
+          // 1. Generate Fresh Metadata from the physical file
           const buffer = fs.readFileSync(fullPath);
           const hash = computeMD5(buffer);
           const uniqueId = generateUniqueId(fullPath, hash);
-          const metadata = await parse3MF(fullPath, uniqueId, hash);
+          const freshMetadata = isTarget3mf 
+            ? await parse3MF(fullPath, uniqueId, hash)
+            : await parseSTL(fullPath, uniqueId, hash);
 
-          fs.writeFileSync(outPath, JSON.stringify(metadata, null, 2), "utf-8");
-          console.log(`✅ Created JSON for: ${outPath}`);
-          localProcessed++;
-        } else if (fileType === "stl" && entry.name.toLowerCase().endsWith(".stl")) {
-          // For STL files, include the extension in the munchie.json filename to avoid conflicts
-          const outPath = fullPath.replace(/\.stl$/i, "-stl-munchie.json");
-          
-          // Skip parsing if munchie.json already exists
+          let finalData: any = freshMetadata;
+
+          // 2. SAFE MERGE: If JSON exists, preserve User-Controlled fields
           if (fs.existsSync(outPath)) {
-            console.log(`⏭️ Skipping STL (JSON exists): ${fullPath}`);
-            localSkipped++;
-            continue;
+            try {
+              const existingRaw = fs.readFileSync(outPath, "utf-8");
+              const existing = JSON.parse(existingRaw);
+
+              finalData = {
+                ...existing,       // Preserve all existing user data
+                ...freshMetadata,  // Update with fresh file-based data (hash, size)
+                
+                // --- LOCK DOWN CRITICAL IDENTITY FIELDS ---
+                // We never want the scanner to reset these to defaults if they exist
+                id: existing.id || freshMetadata.id,
+                isProjectRoot: existing.isProjectRoot ?? freshMetadata.isProjectRoot,
+                isRelatedPart: existing.isRelatedPart ?? freshMetadata.isRelatedPart,
+                hidden: existing.hidden ?? freshMetadata.hidden,
+                category: (existing.category && existing.category !== "Uncategorized") 
+                  ? existing.category 
+                  : freshMetadata.category,
+                
+                // Preserve user-added tags while merging with any new file-found tags
+                tags: Array.from(new Set([...(existing.tags || []), ...(freshMetadata.tags || [])])),
+                
+                // Ensure timestamps are handled logically
+                created: existing.created || freshMetadata.created,
+                lastModified: new Date().toISOString()
+              };
+              
+              console.log(`🔄 Merged existing data for: ${outPath}`);
+            } catch (mergeErr) {
+              console.warn(`⚠️ Could not parse existing JSON at ${outPath}, overwriting.`, mergeErr);
+            }
+          } else {
+            console.log(`✅ Created new JSON for: ${outPath}`);
           }
 
-          console.log(`Parsing STL: ${fullPath}`);
-          // Generate hash first to create unique ID
-          const buffer = fs.readFileSync(fullPath);
-          const hash = computeMD5(buffer);
-          const uniqueId = generateUniqueId(fullPath, hash);
-          const metadata = await parseSTL(fullPath, uniqueId, hash);
-
-          fs.writeFileSync(outPath, JSON.stringify(metadata, null, 2), "utf-8");
-          console.log(`✅ Created JSON for STL: ${outPath}`);
+          // 3. Atomic Write
+          fs.writeFileSync(outPath, JSON.stringify(finalData, null, 2), "utf-8");
           localProcessed++;
+        } else if (lowerName.endsWith(".gcode.3mf") || lowerName.endsWith(".3mf.gcode")) {
+          console.log(`⏭️ Skipping G-code archive: ${fullPath}`);
+          localSkipped++;
         }
       }
     }

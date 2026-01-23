@@ -770,6 +770,7 @@ function AppContent() {
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [uploadTargetFolder, setUploadTargetFolder] = useState<string | undefined>(undefined);
+  const [uploadTargetCollectionName, setUploadTargetCollectionName] = useState<string | undefined>(undefined); // NEW
   const [importTargetCollectionId, setImportTargetCollectionId] = useState<string | undefined>(undefined);
   const [importTargetFolder, setImportTargetFolder] = useState<string | undefined>(undefined);
 
@@ -780,12 +781,17 @@ function AppContent() {
         const b64 = activeCollection.id.substring(4);
         const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
         setUploadTargetFolder(relPath);
+        
+        // NEW: Capture the current collection name to pre-fill the "Group into Collection" field
+        setUploadTargetCollectionName(activeCollection.name);
       } catch (e) {
         console.warn("Could not decode collection path", e);
         setUploadTargetFolder(undefined);
+        setUploadTargetCollectionName(undefined);
       }
     } else {
       setUploadTargetFolder(undefined);
+      setUploadTargetCollectionName(undefined);
     }
     setIsUploadDialogOpen(true);
   };
@@ -1522,9 +1528,12 @@ function AppContent() {
           onClose={() => {
             setIsUploadDialogOpen(false)
             setUploadTargetFolder(undefined);
+            setUploadTargetCollectionName(undefined); // Reset
           }}
           onUploaded={() => { handleRefreshModels(); }}
           initialFolder={uploadTargetFolder}
+          // NEW: We will need to update the Dialog interface to accept this next
+          initialCollectionId={uploadTargetCollectionName} 
         />
       </div>
     </TagsProvider>
