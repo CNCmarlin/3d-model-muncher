@@ -1,15 +1,15 @@
-import { useState } from "react";
-import { Folder, ChevronRight, MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
+import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { getLabel } from "../constants/labels";
+import { useDialog } from "../hooks/useDialog";
+import type { Category } from "../types/category";
+import type { Collection } from "../types/collection";
+import { ConfigManager } from "../utils/configManager";
+import CollectionEditDrawer from "./CollectionEditDrawer";
+import { ConfirmDialog } from "./shared/ConfirmDialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import CollectionEditDrawer from "./CollectionEditDrawer";
-import type { Collection } from "../types/collection";
-import type { Category } from "../types/category";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
-import { ConfigManager } from "../utils/configManager";
-import { getLabel } from "../constants/labels";
 
 export interface CollectionCardProps {
   collection: Collection;
@@ -22,8 +22,8 @@ export interface CollectionCardProps {
 }
 
 export function CollectionCard({ collection, categories, collections, onOpen, onChanged, onDeleted, fallbackImage }: CollectionCardProps) {
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const editDialog = useDialog(false);
+  const deleteDialog = useDialog(false);
 
   if (fallbackImage) console.log(`[CardRender] '${collection.name}' received fallback:`, fallbackImage);
 
@@ -41,14 +41,14 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
   const confirmDelete = async () => {
     if (!collection?.id) {
       console.warn('Delete requested for collection without id');
-      setIsDeleteOpen(false);
+      deleteDialog.close();
       return;
     }
     try {
       const resp = await fetch(`/api/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' });
       if (!resp.ok) throw new Error('Failed to delete collection');
       onDeleted?.(collection.id);
-      setIsDeleteOpen(false);
+      deleteDialog.close();
     } catch (e) {
       console.error('Delete collection failed:', e);
     }
@@ -94,10 +94,10 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                <DropdownMenuItem onClick={() => { setIsEditOpen(true); }}>
+                <DropdownMenuItem onClick={editDialog.open}>
                   <Pencil className="h-4 w-4 mr-2" /> Edit
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={deleteDialog.open} className="text-destructive focus:text-destructive">
                   <Trash2 className="h-4 w-4 mr-2" /> Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -165,23 +165,26 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
       </CardFooter>
 
       {/* Edit drawer */}
-      <CollectionEditDrawer open={isEditOpen} onOpenChange={setIsEditOpen} collection={collection ?? null} collections={collections} categories={categories} onSaved={handleSaved} />
+      <CollectionEditDrawer
+        open={editDialog.isOpen}
+        onOpenChange={editDialog.setIsOpen}
+        collection={collection ?? null}
+        collections={collections}
+        categories={categories}
+        onSaved={handleSaved}
+      />
 
       {/* Delete confirmation */}
-      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this collection?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove the collection "{collection?.name || ''}" but won’t delete any models inside it.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={async () => { await confirmDelete(); }}>{"Delete"}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={deleteDialog.isOpen}
+        onOpenChange={deleteDialog.setIsOpen}
+        title="Delete this collection?"
+        description={`This will remove the collection "${collection?.name || ''}" but won’t delete any models inside it.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={async () => { await confirmDelete(); }}
+      />
     </Card>
   );
 }

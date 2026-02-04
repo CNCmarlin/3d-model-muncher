@@ -1,34 +1,30 @@
-import { useState, useEffect, useMemo } from "react";
-import { FilterSidebar } from "./components/FilterSidebar";
-import { ModelGrid } from "./components/ModelGrid";
-import { ModelHubView } from "./components/ModelHubView";
+import { useEffect, useMemo, useState } from "react";
 import { BulkEditDrawer } from "./components/BulkEditDrawer";
-import { DonationDialog } from "./components/DonationDialog";
-import { SettingsPage } from "./components/SettingsPage";
 import { DemoPage } from "./components/DemoPage";
-import { ThemeProvider } from "./components/ThemeProvider";
+import { DonationDialog } from "./components/DonationDialog";
+import { FilterSidebar } from "./components/FilterSidebar";
+import { ModelHubView } from "./components/ModelHubView";
+import { SettingsPage } from "./components/SettingsPage";
 import { TagsProvider } from "./components/TagsContext";
+import { ThemeProvider } from "./components/ThemeProvider";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { Model } from "./types/model";
+import { CollectionsView } from "./components/views/CollectionsView";
+import { CollectionView } from "./components/views/CollectionView";
+import { ModelsView } from "./components/views/ModelsView";
+import { useModelData } from "./hooks/useModelData";
+import { useSelectionMode } from "./hooks/useSelectionMode";
 import { Category } from "./types/category";
 import { AppConfig } from "./types/config";
+import { Model } from "./types/model";
 import { ConfigManager } from "./utils/configManager";
 // Import package.json to read the last published version
-import * as pkg from '../package.json';
-import { applyFiltersToModels, FilterState } from "./utils/filterUtils";
-import { sortModels, sortCollections, SortKey } from "./utils/sortUtils";
-import { RefreshCw, Heart, FileCheck, Files, Box, Upload, List, Sidebar } from "lucide-react";
-import ModelUploadDialog from "./components/ModelUploadDialog";
-import { Button } from "./components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "./components/ui/dropdown-menu";
-import { Checkbox } from "./components/ui/checkbox";
-import { Toaster } from "./components/ui/sonner";
+import { Box, FileCheck, Files, Heart, List, RefreshCw, Sidebar, Upload } from "lucide-react";
 import { toast } from "sonner";
+import * as pkg from '../package.json';
+import { LayoutSettingsProvider } from "./components/LayoutSettingsContext";
+import ModelUploadDialog from "./components/ModelUploadDialog";
+import { PrinterStatusHub } from "./components/PrinterStatusHub";
+import { ThingiverseImportDialog } from "./components/ThingiverseImportDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,18 +35,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./components/ui/alert-dialog";
+import { Button } from "./components/ui/button";
+import { Checkbox } from "./components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./components/ui/dropdown-menu";
 import { Separator } from "./components/ui/separator";
-import CollectionGrid from "./components/CollectionGrid";
-import type { Collection } from "./types/collection";
-import { applyThemeColor } from "./utils/themeUtils";
-import { ThingiverseImportDialog } from "./components/ThingiverseImportDialog";
-import { CollectionCard } from "./components/CollectionCard";
-import { LayoutSettingsProvider } from "./components/LayoutSettingsContext";
-import { CollectionListRow } from "./components/CollectionListRow";
-import { useLayoutSettings } from "./components/LayoutSettingsContext";
-import { LayoutControls } from "./components/LayoutControls";
+import { Toaster } from "./components/ui/sonner";
 import { SpoolmanProvider } from "./context/SpoolmanContext";
-import { PrinterStatusHub } from "./components/PrinterStatusHub";
+import type { Collection } from "./types/collection";
+import { applyFiltersToModels, FilterState } from "./utils/filterUtils";
+import { SortKey, sortModels } from "./utils/sortUtils";
+import { applyThemeColor } from "./utils/themeUtils";
 
 // Initial type for view
 type ViewType = 'models' | 'settings' | 'demo' | 'collections' | 'collection-view' | 'model-hero';
@@ -67,16 +66,39 @@ const getRecursiveModelIds = (col: Collection, allCols: Collection[]): Set<strin
 };
 
 function AppContent() {
-  const { viewMode, getGridClasses } = useLayoutSettings();
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
-  const [models, setModels] = useState<Model[]>([]);
+
+  // Custom Hooks
+  const {
+    models,
+    setModels,
+    isModelsLoading,
+    setIsModelsLoading,
+    isRefreshing,
+    refreshModels
+  } = useModelData();
+
   const [filteredModels, setFilteredModels] = useState<Model[]>([]);
+
+  // Pass filteredModels to selection hook so range selection works correctly
+  const {
+    isSelectionMode,
+    setIsSelectionMode,
+    selectedModelIds,
+    setSelectedModelIds,
+    toggleSelectionMode,
+    handleModelSelection,
+    selectAllModels,
+    deselectAllModels,
+    exitSelectionMode,
+    getSelectedModels
+  } = useSelectionMode(filteredModels);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentView, setCurrentView] = useState<ViewType>('models');
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isModelsLoading, setIsModelsLoading] = useState(false);
+  // isRefreshing & isModelsLoading moved to useModelData
   const [lastCategoryFilter, setLastCategoryFilter] = useState<string>('all');
 
   // Dialog states
@@ -85,9 +107,10 @@ function AppContent() {
   const [dontShowReleaseNotes, setDontShowReleaseNotes] = useState(false);
 
   // Bulk selection state
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
-  const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null);
+  // Bulk selection state moved to useSelectionMode
+  // const [isSelectionMode, setIsSelectionMode] = useState(false);
+  // const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+  // const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null);
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
@@ -201,17 +224,13 @@ function AppContent() {
         setAppConfig(config);
         setCategories(config.categories);
 
-        setIsModelsLoading(true);
-        toast("Loading model metadata...", {
-          description: "Models are being loaded. This may take a minute for large libraries. Please wait."
-        });
+        setAppConfig(config);
+        setCategories(config.categories);
 
-        const response = await fetch('/api/models');
-        if (!response.ok) {
-          throw new Error('Failed to fetch models');
-        }
-        const loadedModels = await response.json();
-        setModels(loadedModels);
+        // Load models via hook
+        // We pass true for isInitial to trigger the loading toast
+        const loadedModels = await refreshModels(true);
+        if (!loadedModels) throw new Error('Failed to fetch models');
 
         const defaultFilters = config.filters || { defaultCategory: 'all', defaultPrintStatus: 'all', defaultLicense: 'all' };
         const initialFilterState = {
@@ -313,14 +332,14 @@ function AppContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          
+
           ...updatedModel      // Sends the rest of the changes (isPrinted, etc)
         }),
 
       });
-  
+
       if (!response.ok) throw new Error('Failed to save to server');
-      
+
       console.log("Model saved successfully!");
     } catch (error) {
       console.error('Failed to persist model change:', error);
@@ -336,62 +355,8 @@ function AppContent() {
     setFilteredModels(updatedFilteredModels);
   };
 
-  const toggleSelectionMode = () => {
-    setIsSelectionMode(!isSelectionMode);
-    if (isSelectionMode) {
-      setSelectedModelIds([]);
-      setSelectionAnchorIndex(null);
-    }
-  };
-
-  const handleModelSelection = (modelId: string, opts?: { shiftKey?: boolean; index?: number }) => {
-    const currentIndex = typeof opts?.index === 'number' ? opts!.index as number : filteredModels.findIndex(m => m.id === modelId);
-
-    if (opts?.shiftKey && selectionAnchorIndex !== null && currentIndex !== -1) {
-      const start = Math.min(selectionAnchorIndex, currentIndex);
-      const end = Math.max(selectionAnchorIndex, currentIndex);
-      const rangeIds = filteredModels.slice(start, end + 1).map(m => m.id);
-      setSelectedModelIds(prev => {
-        const set = new Set(prev);
-        const allSelected = rangeIds.every(id => set.has(id));
-        if (allSelected) {
-          rangeIds.forEach(id => set.delete(id));
-        } else {
-          rangeIds.forEach(id => set.add(id));
-        }
-        return Array.from(set);
-      });
-      return;
-    }
-
-    setSelectedModelIds(prev =>
-      prev.includes(modelId)
-        ? prev.filter(id => id !== modelId)
-        : [...prev, modelId]
-    );
-    if (currentIndex !== -1) setSelectionAnchorIndex(currentIndex);
-  };
-
-  const selectAllModels = () => {
-    const allVisibleIds = filteredModels.map(model => model.id);
-    setSelectedModelIds(allVisibleIds);
-    setSelectionAnchorIndex(0);
-  };
-
-  const deselectAllModels = () => {
-    setSelectedModelIds([]);
-    setSelectionAnchorIndex(null);
-  };
-
-  const exitSelectionMode = () => {
-    setSelectedModelIds([]);
-    setIsSelectionMode(false);
-    setSelectionAnchorIndex(null);
-  };
-
-  const getSelectedModels = (): Model[] => {
-    return models.filter(model => selectedModelIds.includes(model.id));
-  };
+  // Selection helpers moved to useSelectionMode hook
+  // handleModelSelection, selectAllModels, deselectAllModels, exitSelectionMode, getSelectedModels are now from hook
 
   const handleBulkEdit = () => {
     if (selectedModelIds.length === 0) {
@@ -676,8 +641,9 @@ function AppContent() {
     const sortKey = (filters.sortBy || 'none') as SortKey;
     const sorted = sortModels(filtered as any[], sortKey);
     setFilteredModels(sorted);
+    setFilteredModels(sorted);
     setLastFilters({ ...filters });
-    setSelectionAnchorIndex(null);
+    // setSelectionAnchorIndex(null); // Internal to hook now
     setLastCategoryFilter(incomingCategory);
 
     if (isSelectionMode) {
@@ -689,39 +655,31 @@ function AppContent() {
   };
 
   const handleRefreshModels = async () => {
-    setIsRefreshing(true);
-    try {
-      toast("Reloading model metadata...", { description: "Refreshing from existing JSON files" });
-      const response = await fetch('/api/models');
-      if (!response.ok) throw new Error('Failed to fetch models');
-      const updatedModels = await response.json() as Model[];
+    // Uses hook to refresh, then reapplies filters
+    const updatedModels = await refreshModels(false);
+    if (!updatedModels) return;
 
-      setModels(updatedModels);
-      if (currentView === 'collection-view' && activeCollection) {
-        const setIds = new Set(activeCollection.modelIds || []);
-        let base = updatedModels.filter(m => setIds.has(m.id));
-        const filtersForCollection = {
-          ...lastFilters,
-          fileType: lastFilters.fileType?.toLowerCase() === 'collections' ? 'all' : lastFilters.fileType,
-        } as any as FilterState;
-        const filtered = applyFiltersToModels(base, filtersForCollection);
+    // Note: isRefreshing is handled by the hook, but we need to re-apply logic
+    // models state is already updated by the hook
+
+    if (currentView === 'collection-view' && activeCollection) {
+      const setIds = new Set(activeCollection.modelIds || []);
+      let base = updatedModels.filter(m => setIds.has(m.id));
+      const filtersForCollection = {
+        ...lastFilters,
+        fileType: lastFilters.fileType?.toLowerCase() === 'collections' ? 'all' : lastFilters.fileType,
+      } as any as FilterState;
+      const filtered = applyFiltersToModels(base, filtersForCollection);
+      const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
+      setFilteredModels(sorted);
+    } else {
+      if ((lastFilters.fileType || '').toLowerCase() === 'collections') {
+        setFilteredModels([]);
+      } else {
+        const filtered = applyFiltersToModels(updatedModels, lastFilters as FilterState);
         const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
         setFilteredModels(sorted);
-      } else {
-        if ((lastFilters.fileType || '').toLowerCase() === 'collections') {
-          setFilteredModels([]);
-        } else {
-          const filtered = applyFiltersToModels(updatedModels, lastFilters as FilterState);
-          const sorted = sortModels(filtered as any[], (lastFilters.sortBy as SortKey) || 'none');
-          setFilteredModels(sorted);
-        }
       }
-      toast("Models reloaded successfully");
-    } catch (error) {
-      console.error('Failed to refresh models:', error);
-      toast("Failed to reload models");
-    } finally {
-      setIsRefreshing(false);
     }
   };
 
@@ -781,7 +739,7 @@ function AppContent() {
         const b64 = activeCollection.id.substring(4);
         const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
         setUploadTargetFolder(relPath);
-        
+
         // NEW: Capture the current collection name to pre-fill the "Group into Collection" field
         setUploadTargetCollectionName(activeCollection.name);
       } catch (e) {
@@ -855,18 +813,7 @@ function AppContent() {
     setActiveCollection(col);
     setCurrentView('collection-view');
     //setIsDrawerOpen(false);
-    const resetFilters = {
-      search: '',
-      category: 'all',
-      printStatus: 'all',
-      license: 'all',
-      fileType: 'all',
-      tags: [],
-      showHidden: true, // Always default to showing hidden in collections
-      showMissingImages: false,
-      sortBy: currentSortBy // Preserve the user's sort preference
-    };
-    
+
     setLastCategoryFilter('all');
     try {
       const setIds = new Set(col.modelIds || []);
@@ -1085,9 +1032,9 @@ function AppContent() {
   
   visible opacity-100 translate-x-0
 `}>
-  <FilterSidebar
-    key={sidebarResetKey}
-    isOpen={isSidebarOpen}
+          <FilterSidebar
+            key={sidebarResetKey}
+            isOpen={isSidebarOpen}
             onFilterChange={handleFilterChange}
             onCategoryChosen={(label) => {
               if (currentView === 'settings') setCurrentView('models');
@@ -1215,17 +1162,14 @@ function AppContent() {
               </div>
             )}
             {currentView === 'models' ? (
-              <ModelGrid
-                models={filteredModels}
-                collections={sortCollections(collectionsForDisplay, currentSortBy)}
+              <ModelsView
+                filteredModels={filteredModels}
+                collectionsForDisplay={collectionsForDisplay}
                 allCollections={collections}
-                sortBy={currentSortBy}
+                sortBy={(currentSortBy || 'none') as SortKey}
                 onModelClick={handleModelClick}
-                onOpenCollection={(id) => {
-                  const col = collections.find(c => c.id === id);
-                  if (col) openCollection(col);
-                }}
-                onCollectionChanged={refreshCollections}
+                onOpenCollection={openCollection}
+                onRefresh={handleRefreshModels}
                 isSelectionMode={isSelectionMode}
                 selectedModelIds={selectedModelIds}
                 onModelSelection={handleModelSelection}
@@ -1253,73 +1197,25 @@ function AppContent() {
                 onCollectionCreatedForBulkEdit={handleCollectionCreatedForBulkEdit}
               />
             ) : currentView === 'collections' ? (
-              <div className="h-full flex flex-col">
-                {/* ... header ... */}
-                {/* Collections Header with Layout Controls */}
-                <div className="p-4 lg:p-6 pb-0 flex justify-between items-center">
-                  <h2 className="text-lg font-semibold">All Collections</h2>
-                  <LayoutControls />
-                </div>
-
-                <div className="p-4 lg:p-6 flex-1 overflow-auto">
-                  {collections.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">No collections yet...</div>
-                  ) : (
-                    // DYNAMIC VIEW FOR COLLECTIONS
-                    viewMode === 'grid' ? (
-                      <div className={`grid ${getGridClasses()} gap-3`}>
-                        {sortCollections(collectionsForDisplay, currentSortBy).map(c => {
-                          let fallback: string | undefined = undefined;
-                          if (c.modelIds && c.modelIds.length > 0) {
-                            for (const id of c.modelIds) {
-                              const m = models.find(mod => mod.id === id);
-                              if (m && m.images && m.images.length > 0) {
-                                fallback = m.images[0];
-                                break;
-                              }
-                            }
-                          }
-
-                          return (
-                            <CollectionCard
-                              key={c.id}
-                              collection={c}
-                              categories={categories}
-                              collections={collections}
-                              onOpen={() => openCollection(c)}
-                              onChanged={refreshCollections}
-                              fallbackImage={fallback} />
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {sortCollections(collectionsForDisplay, currentSortBy).map(c => (
-                          <CollectionListRow
-                            key={c.id}
-                            collection={c}
-                            categories={categories}
-                            collections={collections}
-                            onOpen={() => openCollection(c)}
-                            onChanged={refreshCollections}
-                          />
-                        ))}
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
+              <CollectionsView
+                collections={collections}
+                collectionsForDisplay={collectionsForDisplay}
+                currentSortBy={currentSortBy}
+                models={models}
+                categories={categories}
+                onOpenCollection={openCollection}
+                onRefresh={refreshCollections}
+              />
             ) : currentView === 'collection-view' && activeCollection ? (
-              <CollectionGrid
-                name={activeCollection.name}
-                modelIds={activeCollection.modelIds}
-                models={filteredModels}
+              <CollectionView
+                activeCollection={activeCollection}
+                filteredModels={filteredModels}
                 collections={collections}
                 onOpenCollection={openCollection}
                 onImportClick={handleOpenImport}
                 onUploadClick={handleCollectionUpload}
                 onBack={() => {
-                  // 1. FILTER RESET: If filtering, clear filters but STAY in the collection.
+                  // 1. FILTER RESET
                   if (hasActiveFilters) {
                     handleFilterChange({
                       search: '',
@@ -1328,15 +1224,14 @@ function AppContent() {
                       license: 'all',
                       fileType: 'all',
                       tags: [],
-                      showHidden: true, // Always show hidden items when inside a collection
+                      showHidden: true,
                       showMissingImages: false,
                       sortBy: currentSortBy
                     });
-                    setSidebarResetKey(k => k + 1); // Reset the sidebar UI (uncheck boxes)
+                    setSidebarResetKey(k => k + 1);
                     return;
                   }
-
-                  // 2. HIERARCHY NAV: Go up one level
+                  // 2. HIERARCHY NAV
                   if (activeCollection?.parentId) {
                     const parent = collections.find(c => c.id === activeCollection.parentId);
                     if (parent) {
@@ -1344,8 +1239,7 @@ function AppContent() {
                       return;
                     }
                   }
-
-                  // 3. EXIT NAV: Go Home
+                  // 3. EXIT NAV
                   setActiveCollection(null);
                   setCurrentView('models');
                   setSidebarResetKey(k => k + 1);
@@ -1354,7 +1248,6 @@ function AppContent() {
                 }}
                 onModelClick={handleModelClick}
                 config={appConfig}
-                activeCollection={activeCollection}
                 isFiltering={hasActiveFilters}
                 isSelectionMode={isSelectionMode}
                 selectedModelIds={selectedModelIds}
@@ -1364,7 +1257,7 @@ function AppContent() {
                 onDeselectAll={deselectAllModels}
                 onBulkEdit={handleBulkEdit}
                 onBulkDelete={handleBulkDeleteClick}
-                onCollectionChanged={refreshCollections}
+                onRefresh={refreshCollections}
               />
             ) : currentView === 'model-hero' && selectedModel ? (
               <ModelHubView
@@ -1395,7 +1288,7 @@ function AppContent() {
         {/* Bulk Edit Drawer */}
         {(currentView === 'models' || currentView === 'collection-view') && (
           <BulkEditDrawer
-            models={getSelectedModels()}
+            models={getSelectedModels(models)}
             isOpen={isBulkEditOpen}
             onClose={() => setIsBulkEditOpen(false)}
             onBulkUpdate={handleBulkUpdateModels}
@@ -1533,7 +1426,7 @@ function AppContent() {
           onUploaded={() => { handleRefreshModels(); }}
           initialFolder={uploadTargetFolder}
           // NEW: We will need to update the Dialog interface to accept this next
-          initialCollectionId={uploadTargetCollectionName} 
+          initialCollectionId={uploadTargetCollectionName}
         />
       </div>
     </TagsProvider>

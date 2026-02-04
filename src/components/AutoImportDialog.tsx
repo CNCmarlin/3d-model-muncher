@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
-import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "./ui/alert-dialog";
+import { AlertTriangle, CheckCircle2, FolderOpen, GitFork, Layers, Loader2, Package } from "lucide-react";
+import { useEffect, useState } from 'react';
+import { toast } from "sonner";
+import { useDialog } from "../hooks/useDialog";
+import { ConfirmDialog } from "./shared/ConfirmDialog";
 import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Checkbox } from "./ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Label } from "./ui/label";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Checkbox } from "./ui/checkbox";
-import { Loader2, FolderOpen, CheckCircle2, AlertTriangle, Layers, GitFork, Package } from "lucide-react";
-import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 interface AutoImportDialogProps {
   open: boolean;
@@ -20,10 +21,12 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
   const [selectedFolder, setSelectedFolder] = useState<string>("(Root)");
   const [strategy, setStrategy] = useState<"smart" | "strict" | "top-level">("smart");
   const [clearPrevious, setClearPrevious] = useState(false);
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{ count: number; message: string } | null>(null);
-  const [showConfirm, setShowConfirm] = useState(false);
+
+  // Refactored to use generic hook
+  const confirmDialog = useDialog(false);
 
   useEffect(() => {
     if (open) {
@@ -41,14 +44,14 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
 
   const handleStartClick = () => {
     if (clearPrevious) {
-      setShowConfirm(true);
+      confirmDialog.open();
     } else {
       runImport();
     }
   };
 
   const runImport = async () => {
-    setShowConfirm(false);
+    confirmDialog.close();
     setIsLoading(true);
     try {
       // 1. PERSIST THE SETTING: Tell the server to save this strategy to config.json
@@ -109,7 +112,7 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
               <div className="grid gap-3">
                 <Label className="text-base">Organization Strategy</Label>
                 <RadioGroup value={strategy} onValueChange={(v) => setStrategy(v as any)} className="grid gap-3">
-                  
+
                   {/* Option 1: Smart Grouping */}
                   <div className={`flex items-start space-x-3 border p-3 rounded-md cursor-pointer transition-colors ${strategy === 'smart' ? 'bg-accent/50 border-primary' : 'hover:bg-accent/20'}`} onClick={() => setStrategy('smart')}>
                     <RadioGroupItem value="smart" id="smart" className="mt-1" />
@@ -139,7 +142,7 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
                         Recreates your exact folder hierarchy. Empty folders are preserved if they contain other collections.
                       </p>
                       <div className="text-xs bg-muted p-2 rounded text-foreground/80 mt-2 font-mono">
-                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> <br/>
+                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> <br />
                         Collection: <strong>"3D Prints"</strong> → <strong>"Cars"</strong> → <strong>"SportsCar"</strong>
                       </div>
                     </div>
@@ -170,8 +173,8 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
                 <div className="grid gap-1.5 leading-none">
                   <Label htmlFor="clearPrevious" className="text-sm font-medium text-destructive">Clean Re-Import (Reset)</Label>
                   <p className="text-xs text-muted-foreground">
-                    Check this to <b>delete all existing auto-imported collections</b> before scanning. 
-                    <br/><span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
+                    Check this to <b>delete all existing auto-imported collections</b> before scanning.
+                    <br /><span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
                   </p>
                 </div>
               </div>
@@ -197,25 +200,26 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={showConfirm} onOpenChange={setShowConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Confirm Reset?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action is <b>not reversible</b>. It will delete all collections marked as "Auto-Imported" and rebuild them from scratch.
-              <br/><br/>
-              If you manually added items to these collections, those links will be lost.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={runImport} className="bg-destructive hover:bg-destructive/90">Yes, Wipe & Rebuild</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirmDialog.isOpen}
+        onOpenChange={confirmDialog.setIsOpen}
+        title={
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            Confirm Reset?
+          </div>
+        }
+        description={
+          <>
+            This action is <b>not reversible</b>. It will delete all collections marked as "Auto-Imported" and rebuild them from scratch.
+            <br /><br />
+            If you manually added items to these collections, those links will be lost.
+          </>
+        }
+        confirmLabel="Yes, Wipe & Rebuild"
+        variant="destructive"
+        onConfirm={runImport}
+      />
     </>
   );
 }

@@ -1,27 +1,26 @@
+import { Clock, CloudDownload, FolderPlus, HardDrive, Weight } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Model } from "../types/model";
-import { AppConfig } from "../types/config";
 import type { Collection } from "../types/collection";
-import { ModelCard } from "./ModelCard";
+import { AppConfig } from "../types/config";
+import { Model } from "../types/model";
+import { ConfigManager } from "../utils/configManager";
+import { downloadMultipleModels } from "../utils/downloadUtils";
+import { SortKey, getCollectionTimestamp, getModelTimestamp } from "../utils/sortUtils";
+import { resolveModelThumbnail } from '../utils/thumbnailUtils';
 import { CollectionCard } from "./CollectionCard";
+import CollectionEditDrawer from "./CollectionEditDrawer";
+import { CollectionEditorDialog } from './CollectionEditorDialog';
 import { CollectionListRow } from "./CollectionListRow";
 import { ImageWithFallback } from "./ImageWithFallback";
-import { resolveModelThumbnail } from '../utils/thumbnailUtils';
-import { ConfigManager } from "../utils/configManager";
-import { ScrollArea } from "./ui/scroll-area";
+import { LayoutControls } from "./LayoutControls";
+import { useLayoutSettings } from "./LayoutSettingsContext";
+import { ModelCard } from "./ModelCard";
+import { SelectionModeControls } from "./SelectionModeControls";
+import { ViewLayout } from "./shared/ViewLayout";
+import { ThingiverseImportDialog } from './ThingiverseImportDialog';
+import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
-import { Clock, Weight, HardDrive, CloudDownload } from "lucide-react";
-import { Badge } from "./ui/badge";
-import CollectionEditDrawer from "./CollectionEditDrawer";
-import { SortKey, getModelTimestamp, getCollectionTimestamp } from "../utils/sortUtils";
-import { SelectionModeControls } from "./SelectionModeControls";
-import { ThingiverseImportDialog } from './ThingiverseImportDialog';
-import { useLayoutSettings } from "./LayoutSettingsContext";
-import { LayoutControls } from "./LayoutControls";
-import { downloadMultipleModels } from "../utils/downloadUtils";
-import { CollectionEditorDialog } from './CollectionEditorDialog';
-import { FolderPlus } from "lucide-react"; // Add FolderPlus
 
 interface ModelGridProps {
   models: Model[];
@@ -41,8 +40,6 @@ interface ModelGridProps {
   config?: AppConfig | null;
   sortBy?: SortKey;
 }
-
-
 
 export function ModelGrid({
   models,
@@ -142,413 +139,421 @@ export function ModelGrid({
   }, [collections, models, sortBy]);
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-4 lg:p-6 border-b bg-card shadow-sm shrink-0">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4 flex-wrap">
-            <p className="text-muted-foreground text-sm font-medium">
-              {models.length > 0
-                ? `${models.length} model${models.length !== 1 ? 's' : ''} found`
-                : collections.length > 0
-                  ? `${collections.length} collection${collections.length !== 1 ? 's' : ''}`
-                  : 'No items found'}
-            </p>
-
-
-            {!isSelectionMode && (
-              <LayoutControls />
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <SelectionModeControls
-              isSelectionMode={isSelectionMode}
-              selectedCount={selectedModelIds.length}
-              onEnterSelectionMode={onToggleSelectionMode}
-              onExitSelectionMode={onToggleSelectionMode}
-              onBulkEdit={onBulkEdit}
-              onCreateCollection={() => setIsCreateCollectionOpen(true)}
-              onBulkDelete={onBulkDelete ? handleBulkDeleteClick : undefined}
-              onBulkDownload={handleBulkDownload}
-              onSelectAll={onSelectAll}
-              onDeselectAll={onDeselectAll}
-            />
-            {!isSelectionMode && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setCreateCollectionMode('folder'); setIsEditorOpen(true); }}
-                  className="gap-2 hidden sm:flex"
-                >
-                  <FolderPlus className="h-4 w-4" />
-                  New Collection
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsImportOpen(true)}
-                  className="gap-2"
-                  title="Import from Thingiverse"
-                >
-                  <CloudDownload className="h-4 w-4" />
-                  <span className="hidden sm:inline">Thingiverse Import</span>
-                </Button>
-              </>
-            )}
-          </div>
+    <ViewLayout
+      className="h-full"
+      title={
+        <div className="flex items-center gap-4 flex-wrap">
+          <p className="text-muted-foreground text-sm font-medium">
+            {models.length > 0
+              ? `${models.length} model${models.length !== 1 ? 's' : ''} found`
+              : collections.length > 0
+                ? `${collections.length} collection${collections.length !== 1 ? 's' : ''}`
+                : 'No items found'}
+          </p>
+          {!isSelectionMode && (
+            <LayoutControls />
+          )}
         </div>
-      </div>
-
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="p-4 lg:p-6 pb-8 lg:pb-12">
-          {(models.length === 0 && collections.length === 0) ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <h2 className="font-semibold text-lg">No items found</h2>
-              <p className="text-muted-foreground text-sm">Try adjusting your search or filters</p>
-              <img src="/images/munchie-front.png" alt="No items found" width="418" />
-            </div>
-          ) : viewMode === 'grid' ? (
-            // [NEW] Dynamic grid classes
-            <div className={`grid ${getGridClasses()} gap-4 lg:gap-6`}>
-              {unifiedItems ? (
-                unifiedItems.map((it, idx) => {
-                  if (it.kind === 'collection') {
-                    const c = it.data;
-                    return (
-                      <CollectionCard
-                        key={`col-${c.id}`}
-                        collection={c}
-                        categories={config.categories || []}
-                        onOpen={(id) => onOpenCollection?.(id)}
-                        onChanged={() => onCollectionChanged?.()}
-                        onDeleted={() => onCollectionChanged?.()} collections={[]}                      />
-                    );
-                  }
-                  const model = it.data;
-                  const index = modelIndexMap.get(model.id) ?? idx;
+      }
+      actions={
+        <div className="flex items-center gap-2">
+          <SelectionModeControls
+            isSelectionMode={isSelectionMode}
+            selectedCount={selectedModelIds.length}
+            onEnterSelectionMode={onToggleSelectionMode}
+            onExitSelectionMode={onToggleSelectionMode}
+            onBulkEdit={onBulkEdit}
+            onCreateCollection={() => setIsCreateCollectionOpen(true)}
+            onBulkDelete={onBulkDelete ? handleBulkDeleteClick : undefined}
+            onBulkDownload={handleBulkDownload}
+            onSelectAll={onSelectAll}
+            onDeselectAll={onDeselectAll}
+          />
+          {!isSelectionMode && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setCreateCollectionMode('folder'); setIsEditorOpen(true); }}
+                className="gap-2 hidden sm:flex"
+              >
+                <FolderPlus className="h-4 w-4" />
+                New Collection
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImportOpen(true)}
+                className="gap-2"
+                title="Import from Thingiverse"
+              >
+                <CloudDownload className="h-4 w-4" />
+                <span className="hidden sm:inline">Thingiverse Import</span>
+              </Button>
+            </>
+          )}
+        </div>
+      }
+    >
+      <div className="pb-8 lg:pb-12">
+        {(models.length === 0 && collections.length === 0) ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <h2 className="font-semibold text-lg">No items found</h2>
+            <p className="text-muted-foreground text-sm">Try adjusting your search or filters</p>
+            <img src="/images/munchie-front.png" alt="No items found" width="418" />
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className={`grid ${getGridClasses()} gap-4 lg:gap-6`}>
+            {unifiedItems ? (
+              unifiedItems.map((it, idx) => {
+                if (it.kind === 'collection') {
+                  const c = it.data;
                   return (
-                    <ModelCard
-                      key={model.id}
-                      model={model}
-                      onClick={(e) => handleModelInteraction(e, model, index)}
-                      isSelectionMode={isSelectionMode}
-                      isSelected={selectedModelIds.includes(model.id)}
-                      onSelectionChange={(id, shiftKey) => onModelSelection?.(id, { index, shiftKey })}
-                      config={config}
-                    />
-                  );
-                })
-              ) : (
-                <>
-                  {collections.filter(Boolean).map((c) => (
                     <CollectionCard
                       key={`col-${c.id}`}
                       collection={c}
                       categories={config.categories || []}
                       onOpen={(id) => onOpenCollection?.(id)}
                       onChanged={() => onCollectionChanged?.()}
-                      onDeleted={() => onCollectionChanged?.()} collections={[]}                    />
-                  ))}
-                  {models.map((model, index) => (
-                    <ModelCard
-                      key={model.id}
-                      model={model}
-                      onClick={(e) => handleModelInteraction(e, model, index)}
-                      isSelectionMode={isSelectionMode}
-                      isSelected={selectedModelIds.includes(model.id)}
-                      onSelectionChange={(id, shiftKey) => onModelSelection?.(id, { index, shiftKey })}
-                      config={config}
-                    />
-                  ))}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {unifiedItems ? (
-                unifiedItems.map((it, idx) => {
-                  if (it.kind === 'collection') {
-                    const c = it.data;
-                    return (
-                      <CollectionListRow
-                        key={`col-row-${c.id}`}
-                        collection={c}
-                        categories={config.categories || []}
-                        onOpen={(id) => onOpenCollection?.(id)}
-                        onChanged={() => onCollectionChanged?.()}
-                        onDeleted={() => onCollectionChanged?.()} collections={[]}                      />
-                    );
-                  }
-                  const model = it.data;
-                  const index = modelIndexMap.get(model.id) ?? idx;
-                  return (
-                    <div
-                      key={model.id}
-                      data-testid={`row-${model.id}`}
-                      onClick={(e) => handleModelInteraction(e, model, index)}
-                      onMouseDown={(e) => {
-                        if (isSelectionMode && e.shiftKey) e.preventDefault();
-                      }}
-                      className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
-                        ? 'border-primary bg-primary/5'
-                        : ''
-                        }`}
-                    >
-                      {isSelectionMode && (
-                        <div className="flex-shrink-0 pl-1">
-                          <Checkbox
-                            checked={selectedModelIds.includes(model.id)}
-                            onCheckedChange={() => { /* handled by click */ }}
-                            onClick={(e: React.MouseEvent<HTMLButtonElement>) => handleCheckboxClick(e, model.id, index)}
-                            data-testid={`checkbox-${model.id}`}
-                            className="w-5 h-5"
-                          />
-                        </div>
-                      )}
-                      <div className="flex-shrink-0">
-                        <div className="relative">
-                          <ImageWithFallback
-                            src={resolveModelThumbnail(model)}
-                            alt={model.name}
-                            className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
-                              ? 'border-primary'
-                              : ''
-                              }`}
-                          />
-                          {(() => {
-                            const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
-                            const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
-                            if (!model.isPrinted) {
-                              return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-yellow-500`} />;
-                            }
-                            if (model.isPrinted && showBadge) {
-                              return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-green-700`} />;
-                            }
-                            return null;
-                          })()}
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <div className="min-w-0 flex-1">
-                            <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${isSelectionMode && selectedModelIds.includes(model.id)
-                              ? 'text-primary'
-                              : 'text-card-foreground'
-                              }`}>
-                              {model.name}
-                            </h3>
-                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                              {model.description}
-                            </p>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Badge variant="outline" className="text-xs font-medium">
-                                {model.category}
-                              </Badge>
-                              {model.hidden && (
-                                <Badge variant="outline" className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-300">
-                                  Hidden
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {(model.tags || []).slice(0, 4).map((tag) => (
-                                <Badge key={tag} variant="secondary" className="text-xs">
-                                  {tag}
-                                </Badge>
-                              ))}
-                              {(model.tags || []).length > 4 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{(model.tags || []).length - 4}
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-3 ml-6">
-                            {(() => {
-                              const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
-                              const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
-                              if (!showBadge) return null;
-                              return (
-                                <Badge
-                                  variant={model.isPrinted ? "default" : "secondary"}
-                                  className="font-medium"
-                                >
-                                  {model.isPrinted ? "✓ Printed" : "○ Not Printed"}
-                                </Badge>
-                              );
-                            })()}
-                            <div className="text-xs text-muted-foreground text-right space-y-1">
-                              <div className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                <span>{model.printTime}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Weight className="h-3 w-3" />
-                                <span>{model.filamentUsed}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <HardDrive className="h-3 w-3" />
-                                <span>{model.fileSize}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                      onDeleted={() => onCollectionChanged?.()} collections={[]} />
                   );
-                })
-              ) : (
-                <>
-                  {collections.filter(Boolean).map((c) => (
+                }
+                const model = it.data;
+                const index = modelIndexMap.get(model.id) ?? idx;
+                return (
+                  <ModelCard
+                    key={model.id}
+                    model={model}
+                    onClick={(e) => handleModelInteraction(e, model, index)}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedModelIds.includes(model.id)}
+                    onSelectionChange={(id, shiftKey) => onModelSelection?.(id, { index, shiftKey })}
+                    config={config}
+                  />
+                );
+              })
+            ) : (
+              <>
+                {collections.filter(Boolean).map((c) => (
+                  <CollectionCard
+                    key={`col-${c.id}`}
+                    collection={c}
+                    categories={config.categories || []}
+                    onOpen={(id) => onOpenCollection?.(id)}
+                    onChanged={() => onCollectionChanged?.()}
+                    onDeleted={() => onCollectionChanged?.()} collections={[]} />
+                ))}
+                {models.map((model, index) => (
+                  <ModelCard
+                    key={model.id}
+                    model={model}
+                    onClick={(e) => handleModelInteraction(e, model, index)}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={selectedModelIds.includes(model.id)}
+                    onSelectionChange={(id, shiftKey) => onModelSelection?.(id, { index, shiftKey })}
+                    config={config}
+                  />
+                ))}
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {unifiedItems ? (
+              unifiedItems.map((it, idx) => {
+                if (it.kind === 'collection') {
+                  const c = it.data;
+                  return (
                     <CollectionListRow
                       key={`col-row-${c.id}`}
                       collection={c}
                       categories={config.categories || []}
                       onOpen={(id) => onOpenCollection?.(id)}
                       onChanged={() => onCollectionChanged?.()}
-                      onDeleted={() => onCollectionChanged?.()} collections={[]}                    />
-                  ))}
-                  {models.map((model, index) => (
-                    <div
-                      key={model.id}
-                      data-testid={`row-${model.id}`}
-                      onClick={(e) => handleModelInteraction(e, model, index)}
-                      onMouseDown={(e) => {
-                        if (isSelectionMode && e.shiftKey) e.preventDefault();
-                      }}
-                      className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
-                        ? 'border-primary bg-primary/5'
-                        : ''
-                        }`}
-                    >
-                      {/* Selection Checkbox - Only show in selection mode */}
-                      {isSelectionMode && (
-                        <div className="flex-shrink-0 pl-1">
-                          <Checkbox
-                            checked={selectedModelIds.includes(model.id)}
-                            // handle clicks to capture shiftKey; avoid double firing on change
-                            onCheckedChange={() => { /* handled by click */ }}
-                            onClick={(e: React.MouseEvent<HTMLButtonElement>) => handleCheckboxClick(e, model.id, index)}
-                            data-testid={`checkbox-${model.id}`}
-                            className="w-5 h-5"
-                          />
-                        </div>
-                      )}
+                      onDeleted={() => onCollectionChanged?.()} collections={[]} />
+                  );
+                }
+                const model = it.data;
+                const index = modelIndexMap.get(model.id) ?? idx;
+                return (
+                  <div
+                    key={model.id}
+                    data-testid={`row-${model.id}`}
+                    onClick={(e) => handleModelInteraction(e, model, index)}
+                    onMouseDown={(e) => {
+                      if (isSelectionMode && e.shiftKey) e.preventDefault();
+                    }}
+                    className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
+                      ? 'border-primary bg-primary/5'
+                      : ''
+                      }`}
+                  >
+                    {isSelectionMode && (
+                      <div className="flex-shrink-0 pl-1">
+                        <Checkbox
+                          checked={selectedModelIds.includes(model.id)}
+                          onCheckedChange={() => { /* handled by click */ }}
+                          onClick={(e: React.MouseEvent<HTMLButtonElement>) => handleCheckboxClick(e, model.id, index)}
+                          data-testid={`checkbox-${model.id}`}
+                          className="w-5 h-5"
+                        />
+                      </div>
+                    )}
 
-                      {/* Thumbnail */}
-                      <div className="flex-shrink-0">
-                        <div className="relative">
-                          <ImageWithFallback
-                            src={resolveModelThumbnail(model)}
-                            alt={model.name}
-                            className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
-                              ? 'border-primary'
-                              : ''
-                              }`}
-                          />
-                          {/* Print status overlay (hideable via config.showPrintedBadge) */}
+                    {/* Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <div className="relative">
+                        <ImageWithFallback
+                          src={resolveModelThumbnail(model)}
+                          alt={model.name}
+                          className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
+                            ? 'border-primary'
+                            : ''
+                            }`}
+                        />
+                        {/* Print status overlay */}
+                        {(() => {
+                          const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
+                          const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
+
+                          if (!model.isPrinted) {
+                            return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-yellow-500`} />;
+                          }
+
+                          if (model.isPrinted && showBadge) {
+                            return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-green-700`} />;
+                          }
+
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Model Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${isSelectionMode && selectedModelIds.includes(model.id)
+                            ? 'text-primary'
+                            : 'text-card-foreground'
+                            }`}>
+                            {model.name}
+                          </h3>
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                            {model.description}
+                          </p>
+
+                          {/* Category */}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Badge variant="outline" className="text-xs font-medium">
+                              {model.category}
+                            </Badge>
+                            {model.hidden && (
+                              <Badge variant="outline" className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-300">
+                                Hidden
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Tags */}
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {(model.tags || []).slice(0, 4).map((tag) => (
+                              <Badge key={tag} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                            {(model.tags || []).length > 4 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{(model.tags || []).length - 4}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Status and Stats */}
+                        <div className="flex flex-col items-end gap-3 ml-6">
                           {(() => {
                             const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
                             const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
+                            if (!showBadge) return null;
 
-                            // If model is NOT printed, always show the not-printed dot
-                            if (!model.isPrinted) {
-                              return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-yellow-500`} />;
-                            }
-
-                            // If model is printed, only show the printed (green) dot when allowed
-                            if (model.isPrinted && showBadge) {
-                              return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-green-700`} />;
-                            }
-
-                            return null;
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* Model Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <div className="min-w-0 flex-1">
-                            <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${isSelectionMode && selectedModelIds.includes(model.id)
-                              ? 'text-primary'
-                              : 'text-card-foreground'
-                              }`}>
-                              {model.name}
-                            </h3>
-                            <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                              {model.description}
-                            </p>
-
-                            {/* Category */}
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              <Badge variant="outline" className="text-xs font-medium">
-                                {model.category}
+                            return (
+                              <Badge
+                                variant={model.isPrinted ? "default" : "secondary"}
+                                className="font-medium"
+                              >
+                                {model.isPrinted ? "✓ Printed" : "○ Not Printed"}
                               </Badge>
-                              {model.hidden && (
-                                <Badge variant="outline" className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-300">
-                                  Hidden
-                                </Badge>
-                              )}
+                            );
+                          })()}
+
+                          <div className="text-xs text-muted-foreground text-right space-y-1">
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              <span>{model.printTime}</span>
                             </div>
-
-                            {/* Tags */}
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {(model.tags || []).slice(0, 4).map((tag) => (
-                                <Badge key={tag} variant="secondary" className="text-xs">
-                                  {tag}
-                                </Badge>
-                              ))}
-                              {(model.tags || []).length > 4 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{(model.tags || []).length - 4}
-                                </Badge>
-                              )}
+                            <div className="flex items-center gap-1">
+                              <Weight className="h-3 w-3" />
+                              <span>{model.filamentUsed}</span>
                             </div>
-                          </div>
-
-                          {/* Status and Stats */}
-                          <div className="flex flex-col items-end gap-3 ml-6">
-                            {(() => {
-                              const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
-                              const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
-                              if (!showBadge) return null;
-
-                              return (
-                                <Badge
-                                  variant={model.isPrinted ? "default" : "secondary"}
-                                  className="font-medium"
-                                >
-                                  {model.isPrinted ? "✓ Printed" : "○ Not Printed"}
-                                </Badge>
-                              );
-                            })()}
-
-                            <div className="text-xs text-muted-foreground text-right space-y-1">
-                              <div className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                <span>{model.printTime}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Weight className="h-3 w-3" />
-                                <span>{model.filamentUsed}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <HardDrive className="h-3 w-3" />
-                                <span>{model.fileSize}</span>
-                              </div>
+                            <div className="flex items-center gap-1">
+                              <HardDrive className="h-3 w-3" />
+                              <span>{model.fileSize}</span>
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  ))}
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+                  </div>
+                );
+              })
+            ) : (
+              <>
+                {collections.filter(Boolean).map((c) => (
+                  <CollectionListRow
+                    key={`col-row-${c.id}`}
+                    collection={c}
+                    categories={config.categories || []}
+                    onOpen={(id) => onOpenCollection?.(id)}
+                    onChanged={() => onCollectionChanged?.()}
+                    onDeleted={() => onCollectionChanged?.()} collections={[]} />
+                ))}
+                {models.map((model, index) => (
+                  <div
+                    key={model.id}
+                    data-testid={`row-${model.id}`}
+                    onClick={(e) => handleModelInteraction(e, model, index)}
+                    onMouseDown={(e) => {
+                      if (isSelectionMode && e.shiftKey) e.preventDefault();
+                    }}
+                    className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
+                      ? 'border-primary bg-primary/5'
+                      : ''
+                      }`}
+                  >
+                    {isSelectionMode && (
+                      <div className="flex-shrink-0 pl-1">
+                        <Checkbox
+                          checked={selectedModelIds.includes(model.id)}
+                          onCheckedChange={() => { /* handled by click */ }}
+                          onClick={(e: React.MouseEvent<HTMLButtonElement>) => handleCheckboxClick(e, model.id, index)}
+                          data-testid={`checkbox-${model.id}`}
+                          className="w-5 h-5"
+                        />
+                      </div>
+                    )}
+
+                    {/* Thumbnail */}
+                    <div className="flex-shrink-0">
+                      <div className="relative">
+                        <ImageWithFallback
+                          src={resolveModelThumbnail(model)}
+                          alt={model.name}
+                          className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
+                            ? 'border-primary'
+                            : ''
+                            }`}
+                        />
+                        {/* Print status overlay */}
+                        {(() => {
+                          const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
+                          const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
+
+                          if (!model.isPrinted) {
+                            return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-yellow-500`} />;
+                          }
+
+                          if (model.isPrinted && showBadge) {
+                            return <div className={`absolute top-2 right-2 w-3 h-3 rounded-full border-2 border-card bg-green-700`} />;
+                          }
+
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+
+                    {/* Model Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <h3 className={`font-semibold group-hover:text-primary transition-colors truncate text-lg ${isSelectionMode && selectedModelIds.includes(model.id)
+                            ? 'text-primary'
+                            : 'text-card-foreground'
+                            }`}>
+                            {model.name}
+                          </h3>
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                            {model.description}
+                          </p>
+
+                          {/* Category */}
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Badge variant="outline" className="text-xs font-medium">
+                              {model.category}
+                            </Badge>
+                            {model.hidden && (
+                              <Badge variant="outline" className="text-xs bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950 dark:border-orange-800 dark:text-orange-300">
+                                Hidden
+                              </Badge>
+                            )}
+                          </div>
+
+                          {/* Tags */}
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {(model.tags || []).slice(0, 4).map((tag) => (
+                              <Badge key={tag} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                            {(model.tags || []).length > 4 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{(model.tags || []).length - 4}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Status and Stats */}
+                        <div className="flex flex-col items-end gap-3 ml-6">
+                          {(() => {
+                            const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
+                            const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
+                            if (!showBadge) return null;
+
+                            return (
+                              <Badge
+                                variant={model.isPrinted ? "default" : "secondary"}
+                                className="font-medium"
+                              >
+                                {model.isPrinted ? "✓ Printed" : "○ Not Printed"}
+                              </Badge>
+                            );
+                          })()}
+
+                          <div className="text-xs text-muted-foreground text-right space-y-1">
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              <span>{model.printTime}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Weight className="h-3 w-3" />
+                              <span>{model.filamentUsed}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <HardDrive className="h-3 w-3" />
+                              <span>{model.fileSize}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       <CollectionEditorDialog
         open={isEditorOpen}
@@ -605,6 +610,6 @@ export function ModelGrid({
         }}
       />
 
-    </div>
+    </ViewLayout>
   );
 }

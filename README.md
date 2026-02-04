@@ -4,6 +4,8 @@ Organize, search, and preview your 3D printing models with an intuitive interfac
 
 ![Demo Animation](public/images/demo.gif)
 
+![Antigravity Ready](https://img.shields.io/badge/Antigravity-Ready-blue)
+
 ## Features
 
 - **3D Model Viewer**: Built-in Three.js viewer for .3mf & .stl files with automatic thumbnails
