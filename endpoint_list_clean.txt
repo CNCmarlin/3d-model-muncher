@@ -1,0 +1,65 @@
+﻿154:app.use('/api/images', express.static(path.join(DATA_DIR, 'images')));
+156:app.use('/api/documents', express.static(path.join(DATA_DIR, 'documents')));
+157:app.use(cors());
+158:app.use(express.json({ limit: '100mb' })); // Increased limit for large model payloads
+160:app.use('/models', (req, res, next) => {
+170:app.use('/api', require('./server/routes/system'));
+171:app.use('/api/collections', require('./server/routes/collections'));
+187:app.get('/api/collections', (req, res) => {
+208:app.get('/api/spoolman/status', async (req, res) => {
+226:app.get('/api/spoolman/spools', async (req, res) => {
+248:app.post('/api/spoolman/config', (req, res) => {
+271:app.post('/api/spoolman/use', async (req, res) => {
+356:app.post('/api/collections', async (req, res) => {
+506:app.post('/api/collections/:id/build-plates', async (req, res) => {
+560:app.put('/api/collections/:id/build-plates/:plateId', async (req, res) => {
+605:app.delete('/api/collections/:id/build-plates/:plateId', async (req, res) => {
+638:app.delete('/api/collections/:id', async (req, res) => {
+662:app.post('/api/collections/auto-import', async (req, res) => {
+766:app.post('/api/collections/generate-covers', async (req, res) => {
+898:app.get('/api/images/collections/:colId/:filename', (req, res) => {
+913:app.delete('/api/collections/:id/images/:filename', async (req, res) => {
+958:app.get('/api/download', async (req, res) => {
+1024:app.post('/api/cancel-thumbnails', (req, res) => {
+1168:app.post('/api/save-model', async (req, res) => {
+1444:app.get('/api/models', async (req, res) => {
+1557:app.post('/api/scan-models', async (req, res) => {
+1777:app.post('/api/save-config', (req, res) => {
+1812:app.get('/api/load-config', (req, res) => {
+1847:app.post('/api/regenerate-munchie-files', async (req, res) => {
+2054:app.post('/api/generate-thumbnails', async (req, res) => {
+2203:app.get('/api/spoolman/status', async (req, res) => {
+2221:app.get('/api/spoolman/spools', async (req, res) => {
+2240:app.post('/api/spoolman/config', (req, res) => {
+2264:app.post('/api/import/thingiverse', async (req, res) => {
+2326:app.post('/api/thingiverse/verify', async (req, res) => {
+2344:app.post('/api/upload-models', upload.array('files'), async (req, res) => {
+2559:app.post('/api/move-model-to-project', async (req, res) => {
+2973:app.post('/api/admin/library-heal-preview', async (req, res) => {
+2985:app.post('/api/admin/library-heal', async (req, res) => {
+3036:app.post('/api/admin/library-revert', async (req, res) => {
+3049:app.get('/api/admin/library-check-backups', async (req, res) => {
+3073:app.post('/api/collections/:id/images', upload.single('image'), async (req, res) => {
+3143:app.post('/api/collections/:id/documents', upload.single('file'), async (req, res) => {
+3209:app.delete('/api/collections/:id/documents/:filename', async (req, res) => {
+3244:app.post('/api/models/upload-document', upload.single('file'), async (req, res) => {
+3297:app.post('/api/parse-gcode', upload.single('file'), async (req, res) => {
+3548:app.get('/api/model-folders', (req, res) => {
+3579:app.post('/api/create-model-folder', express.json(), (req, res) => {
+3603:app.get('/api/munchie-files', (req, res) => {
+3649:app.post('/api/hash-check', async (req, res) => {
+3839:app.get('/api/load-model', async (req, res) => {
+3945:app.post('/api/delete-models', (req, res) => {
+3968:app.post('/api/verify-file', (req, res) => {
+4012:app.get('/api/validate-3mf', async (req, res) => {
+4096:app.post('/api/gemini-suggest', async (req, res) => {
+4155:app.delete('/api/models/delete', async (req, res) => {
+4302:app.post('/api/backup-munchie-files', async (req, res) => {
+4384:app.post('/api/restore-munchie-files', async (req, res) => {
+4586:app.post('/api/restore-munchie-files/upload', upload.single('backupFile'), async (req, res) => {
+4799:app.post('/api/model/metadata', async (req, res) => {
+4861:app.get('/capture.html', (req, res) => {
+4875:app.use(express.static(path.join(__dirname, 'build')));
+4876:app.use('/data/covers', express.static(path.join(process.cwd(), 'data', 'covers')));
+4880:app.use(function (err, req, res, next) {
+4902:app.get(/^(?!\/api|\/models).*$/, (req, res) => {

@@ -1,19 +1,17 @@
-import { useCallback, useRef, useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from './ui/dialog';
-import { Button } from './ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { ScrollArea } from './ui/scroll-area';
-import { Input } from './ui/input';
-import { FolderPlus, Trash, Layers, Tag, Upload, RefreshCw, Box } from 'lucide-react';
-import { Checkbox } from './ui/checkbox';
-import { Label } from './ui/label';
-import { Textarea } from './ui/textarea';
-import { toast } from 'sonner';
-import { RendererPool } from '../utils/rendererPool';
-import TagsInput from './TagsInput';
-import { ConfigManager } from '../utils/configManager';
 import { Model } from '@/types/model';
 import { Separator } from '@radix-ui/react-select';
+import { Box, FolderPlus, RefreshCw, Tag, Trash, Upload } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { ConfigManager } from '../utils/configManager';
+import TagsInput from './TagsInput';
+import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import { ScrollArea } from './ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 
 interface ModelUploadDialogProps {
   isOpen: boolean;
@@ -36,7 +34,7 @@ const needsIsolation = (model: Model) => {
   // If markers are missing, we check if it's in the root 'uploads/' folder.
   const path = model.filePath || "";
   const parts = path.split('/');
-  
+
   // It's "Loose" if it's in the root (no slashes) 
   // OR if it's directly inside 'uploads/' (e.g., "uploads/my_model.stl")
   const isLoose = parts.length <= 1 || (parts[0] === 'uploads' && parts.length === 2);
@@ -44,27 +42,22 @@ const needsIsolation = (model: Model) => {
   return isLoose;
 };
 
-export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, onClose, onUploaded, initialFolder, initialCollectionId, targetModel, onIsMovingChange }: ModelUploadDialogProps) => {
+export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, onClose, onUploaded, initialCollectionId, targetModel, onIsMovingChange }: ModelUploadDialogProps) => {
   const [files, setFiles] = useState<File[]>([] as File[]);
   const [isUploading, setIsUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const [folders, setFolders] = useState<string[]>(['uploads']);
-  const [singleDestination, setSingleDestination] = useState<string>(initialFolder || 'uploads');
 
   const [isGroupUpload, setIsGroupUpload] = useState(false);
-  const [groupDescription, setGroupDescription] = useState('');
   const [autoTagFolder, setAutoTagFolder] = useState(true);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [collectionsList, setCollectionsList] = useState<any[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('new');
   const [createPhysicalFolder, setCreatePhysicalFolder] = useState(false);
   const [parentFolder, setParentFolder] = useState('uploads');
-  const isSyncing = useRef(false);
 
   const [generatePreviews, setGeneratePreviews] = useState<boolean>(true);
-  const [previewGenerating, setPreviewGenerating] = useState<boolean>(false);
-  const [previewProgress, setPreviewProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
   const [availableCategories, setAvailableCategories] = useState<string[]>(['Uncategorized']);
   const [selectedCategory, setSelectedCategory] = useState<string>('Uncategorized');
   const [applyTags, setApplyTags] = useState<string[]>([]);
@@ -105,7 +98,7 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
 
     if (gcodeArchives.length > 0) {
       const names = gcodeArchives.map(f => f.name).join(', ');
-      toast.error(`G-code archives (${names}) belong in the G-code analysis dialog.`);
+      toast.error(`G - code archives(${names}) belong in the G - code analysis dialog.`);
     }
 
     if (rejectedFiles.length > 0) {
@@ -137,37 +130,6 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
     setFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  async function applyCategoryAndTagsTo(relPath: string, candidateModel: any | null) {
-    const trimmedCat = (selectedCategory || 'Uncategorized').trim() || 'Uncategorized';
-    let finalTags = [...applyTags];
-    if (autoTagFolder) {
-      // Use parentFolder if we are just uploading loose files, 
-      // otherwise use the specific destination folder name.
-      const targetPath = createPhysicalFolder ? singleDestination : parentFolder;
-      const folderName = targetPath.split('/').pop() || targetPath;
-
-      if (folderName && folderName !== 'uploads' && !finalTags.includes(folderName)) {
-        finalTags.push(folderName);
-      }
-    }
-    let jsonPath = '';
-    if (relPath.toLowerCase().endsWith('.3mf')) jsonPath = relPath.replace(/\.3mf$/i, '-munchie.json');
-    else if (relPath.toLowerCase().endsWith('.stl')) jsonPath = relPath.replace(/\.stl$/i, '-stl-munchie.json');
-    else jsonPath = `${relPath}-munchie.json`;
-
-    const changes: any = { filePath: jsonPath, category: trimmedCat };
-    if (finalTags.length > 0) {
-      const baseTags: string[] = Array.isArray(candidateModel?.tags) ? candidateModel.tags : [];
-      const union = new Map<string, string>();
-      for (const t of baseTags) if (typeof t === 'string' && t.trim()) union.set(t.trim().toLowerCase(), t.trim());
-      for (const t of finalTags) if (typeof t === 'string' && t.trim()) union.set(t.trim().toLowerCase(), t.trim());
-      changes.tags = Array.from(union.values());
-    }
-
-    try {
-      await fetch('/api/save-model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes) });
-    } catch (e) { console.warn('Failed to save metadata', e); }
-  }
 
   const handleSubmit = async () => {
     if (files.length === 0) {
@@ -231,7 +193,7 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
 
         if (createPhysicalFolder) {
           // MODE: Asset Folder - Thingiverse Style
-          const folderName = cleanName || `Import_${Date.now()}`;
+          const folderName = cleanName || `Import_${Date.now()} `;
           const targetPath = `${parentFolder}/${folderName}`;
           fd.append('destinations', JSON.stringify(files.map(() => targetPath)));
           fd.append('isProjectFolder', 'true');
@@ -276,21 +238,9 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
   };
 
   useEffect(() => {
-    if (isGroupUpload) {
-      const cleanParent = parentFolder === 'root' ? '' : parentFolder;
-      const cleanName = newCollectionName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
-      const fullPath = cleanParent ? `${cleanParent}/${cleanName}` : cleanName;
-      setSingleDestination(fullPath || 'uploads');
-    } else {
-      setSingleDestination(parentFolder);
-    }
-  }, [isGroupUpload, parentFolder, newCollectionName]);
-
-  useEffect(() => {
     if (!isOpen) return;
     setFiles([]);
     setPrimaryModelFile(null);
-    setParentFolder(initialFolder || 'uploads');
     setSelectedCollectionId(initialCollectionId || 'new');
     setNewCollectionName('');
     setIsGroupUpload(!!initialCollectionId);

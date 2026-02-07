@@ -1,5 +1,4 @@
 import { Collection } from '../../types/collection';
-import { AppConfig } from '../../types/config';
 import { Model } from '../../types/model';
 import { SortKey, sortCollections } from '../../utils/sortUtils';
 import { ModelGrid } from '../ModelGrid';
@@ -10,7 +9,6 @@ interface ModelsViewProps {
     allCollections: Collection[];
     sortBy: SortKey;
     onModelClick: (model: Model) => void;
-    onOpenCollection: (collection: Collection) => void;
     onRefresh: () => void;
     isSelectionMode: boolean;
     selectedModelIds: string[];
@@ -20,7 +18,6 @@ interface ModelsViewProps {
     onDeselectAll: () => void;
     onBulkEdit: () => void;
     onBulkDelete: () => void;
-    config: AppConfig | null;
 }
 
 export function ModelsView({
@@ -29,7 +26,6 @@ export function ModelsView({
     allCollections,
     sortBy,
     onModelClick,
-    onOpenCollection,
     onRefresh,
     isSelectionMode,
     selectedModelIds,
@@ -39,7 +35,6 @@ export function ModelsView({
     onDeselectAll,
     onBulkEdit,
     onBulkDelete,
-    config
 }: ModelsViewProps) {
 
     return (
@@ -49,10 +44,6 @@ export function ModelsView({
             allCollections={allCollections}
             sortBy={sortBy}
             onModelClick={onModelClick}
-            onOpenCollection={(id) => {
-                const col = allCollections.find(c => c.id === id);
-                if (col) onOpenCollection(col);
-            }}
             onCollectionChanged={onRefresh}
             isSelectionMode={isSelectionMode}
             selectedModelIds={selectedModelIds}
@@ -62,7 +53,6 @@ export function ModelsView({
             onDeselectAll={onDeselectAll}
             onBulkEdit={onBulkEdit}
             onBulkDelete={onBulkDelete}
-            config={config}
         />
     );
 }

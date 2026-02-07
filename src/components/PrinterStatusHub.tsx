@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Printer, Loader2 } from 'lucide-react';
+import { Loader2, Printer } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { AppConfig, PrinterConfig } from '../types/config';
 
 interface PrinterStatusHubProps {
@@ -17,9 +17,9 @@ interface PrinterStatus {
 export function PrinterStatusHub({ config }: PrinterStatusHubProps) {
   const [apiPrinters, setApiPrinters] = useState<PrinterStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // 1. Determine enabled printers from CONFIG (Source of Truth)
-  const configPrinters: PrinterConfig[] = config.integrations?.printers || 
+  const configPrinters: PrinterConfig[] = config.integrations?.printers ||
     (config.integrations?.printer ? [config.integrations.printer] : []);
 
   // Filter only those with URLs (Active configurations)
@@ -66,11 +66,11 @@ export function PrinterStatusHub({ config }: PrinterStatusHubProps) {
 
   return (
     <div className="hidden md:flex items-center gap-2">
-      {activeConfigs.map((conf, i) => {
+      {activeConfigs.map((conf) => {
         // 2. Match API data to Config data
         // We try to find the status update for this specific printer index
         const statusData = apiPrinters.find(p => p.index === conf.originalIndex);
-        
+
         // Default Color
         const color = conf.color || '#3b82f6';
         const displayName = conf.name || `Printer ${conf.originalIndex + 1}`;
@@ -82,39 +82,39 @@ export function PrinterStatusHub({ config }: PrinterStatusHubProps) {
         let isOnline = false;
 
         if (statusData) {
-            displayStatus = statusData.status;
-            progress = statusData.progress;
-            timeLeft = statusData.timeLeft;
-            isOnline = statusData.status !== 'offline' && statusData.status !== 'error' && statusData.status !== 'disconnected';
+          displayStatus = statusData.status;
+          progress = statusData.progress;
+          timeLeft = statusData.timeLeft;
+          isOnline = statusData.status !== 'offline' && statusData.status !== 'error' && statusData.status !== 'disconnected';
         } else if (!isLoading) {
-            displayStatus = 'Offline'; // API returned but didn't have data for this index
+          displayStatus = 'Offline'; // API returned but didn't have data for this index
         }
 
         return (
           <div key={conf.originalIndex} className="flex items-center gap-2 px-3 py-1.5 bg-muted/40 rounded-full border border-border/40 hover:bg-muted/60 transition-colors">
-            <div 
+            <div
               className={`flex items-center justify-center w-6 h-6 rounded-full text-white shadow-sm ${!isOnline && !isLoading ? 'opacity-50 grayscale' : ''}`}
               style={{ backgroundColor: isOnline || isLoading ? color : undefined }}
             >
               {isLoading && !statusData ? (
-                 <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
               ) : (
-                 <Printer className="w-3.5 h-3.5" />
+                <Printer className="w-3.5 h-3.5" />
               )}
             </div>
-            
+
             <div className="flex flex-col text-[10px] leading-tight min-w-[60px]">
-               <div className="font-semibold flex justify-between">
-                  <span className="truncate max-w-[80px]" title={displayName}>{displayName}</span>
-               </div>
-               
-               <div className="text-muted-foreground">
-                 {displayStatus === 'printing' ? (
-                    <span className="text-primary font-medium">{Math.round(progress)}% {timeLeft ? `(${formatTime(timeLeft)})` : ''}</span>
-                 ) : (
-                    <span className="capitalize">{displayStatus}</span>
-                 )}
-               </div>
+              <div className="font-semibold flex justify-between">
+                <span className="truncate max-w-[80px]" title={displayName}>{displayName}</span>
+              </div>
+
+              <div className="text-muted-foreground">
+                {displayStatus === 'printing' ? (
+                  <span className="text-primary font-medium">{Math.round(progress)}% {timeLeft ? `(${formatTime(timeLeft)})` : ''}</span>
+                ) : (
+                  <span className="capitalize">{displayStatus}</span>
+                )}
+              </div>
             </div>
           </div>
         );

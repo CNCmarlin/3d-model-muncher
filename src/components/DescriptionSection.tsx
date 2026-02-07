@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { User, FileText, Edit2, Trash2, Check, X } from 'lucide-react';
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button"; // Ensure Button is imported
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Model } from "@/types/model";
+import { Check, Edit2, Trash2, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 
 interface DescriptionSectionProps {
     isEditing: boolean; // Global editing state
@@ -151,7 +150,7 @@ export const DescriptionSection = ({
                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => setIsLocalEditing(true)}>
                                         <Edit2 className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => { if(window.confirm("Clear description?")) onModelUpdate?.({...currentModel, description: ""}) }}>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => { if (window.confirm("Clear description?")) onModelUpdate?.({ ...currentModel, description: "" }) }}>
                                         <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>

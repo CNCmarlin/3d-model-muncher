@@ -1,9 +1,21 @@
 import { useState } from 'react';
 import { Model } from '../types/model';
 
-export function useSelectionMode(filteredModels: Model[]) {
-    const [isSelectionMode, setIsSelectionMode] = useState(false);
-    const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+export interface UseSelectionModeProps {
+    filteredModels: Model[];
+    isSelectionMode: boolean;
+    setIsSelectionMode: (v: boolean) => void;
+    selectedModelIds: string[];
+    setSelectedModelIds: (ids: string[] | ((prev: string[]) => string[])) => void;
+}
+
+export function useSelectionMode({
+    filteredModels,
+    isSelectionMode,
+    setIsSelectionMode,
+    selectedModelIds,
+    setSelectedModelIds
+}: UseSelectionModeProps) {
     const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null);
 
     const toggleSelectionMode = () => {

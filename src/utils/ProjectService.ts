@@ -43,7 +43,7 @@ export class ProjectService {
   }
 
   static async finalizeProject(options: ProjectOptions) {
-    const { mode, destDir, modelsRoot, importedFiles, localImagePaths = [], targetFolder, meta } = options;
+    const { mode, destDir, modelsRoot, importedFiles, localImagePaths = [], meta } = options;
 
     const destRelPath = path.relative(modelsRoot, destDir).replace(/\\/g, '/');
     const relativeWebFolder = `/models/${destRelPath}`;
@@ -209,7 +209,7 @@ export class ProjectService {
     // Final fallback: try to find any munchie if the primary failed
     const finalMunchies = fs.readdirSync(destDir).filter(f => f.toLowerCase().endsWith('munchie.json'));
     if (finalMunchies.length > 0) {
-        return JSON.parse(fs.readFileSync(path.join(destDir, finalMunchies[0]), 'utf8'));
+      return JSON.parse(fs.readFileSync(path.join(destDir, finalMunchies[0]), 'utf8'));
     }
 
     throw new Error("Could not locate a valid model identity file to return.");

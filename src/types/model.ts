@@ -104,3 +104,9 @@ export interface HashCheckResult {
   corruptedFileDetails: CorruptedFile[];
   lastCheck: string;
 }
+
+export interface TagInfo {
+  name: string;
+  count: number;
+  models: Model[];
+}

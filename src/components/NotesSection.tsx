@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { StickyNote, Plus, Send, History, Trash2, Edit2, Check, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Model } from "@/types/model";
+import { Check, Edit2, History, Plus, Send, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
 
 interface NotesSectionProps {
   currentModel: Model;
@@ -16,8 +16,8 @@ export const NotesSection = ({ currentModel, onSave }: NotesSectionProps) => {
 
   // Helper to get current entries as an array
   const getLogEntries = () => {
-    return currentModel.notes 
-      ? currentModel.notes.split('\n---\n').filter(entry => entry.trim() !== "") 
+    return currentModel.notes
+      ? currentModel.notes.split('\n---\n').filter(entry => entry.trim() !== "")
       : [];
   };
 
@@ -26,7 +26,7 @@ export const NotesSection = ({ currentModel, onSave }: NotesSectionProps) => {
     const timestamp = new Date().toLocaleString();
     const formattedEntry = `[${timestamp}]\n${newEntry}`;
     const entries = getLogEntries();
-    
+
     // Add to the list and save
     onSave([...entries, formattedEntry].join('\n---\n'));
     setNewEntry("");
@@ -79,16 +79,16 @@ export const NotesSection = ({ currentModel, onSave }: NotesSectionProps) => {
         {logEntries.length > 0 ? (
           <div className="space-y-3">
             {logEntries.map((entry, index) => (
-              <div 
-                key={index} 
+              <div
+                key={index}
                 className="relative group p-4 rounded-lg border border-border/40 bg-card/20 backdrop-blur-sm font-mono text-sm leading-relaxed transition-all hover:border-primary/30"
               >
                 {/* Visual Indicator Line */}
                 <div className="absolute left-0 top-4 bottom-4 w-0.5 bg-primary/20 group-hover:bg-primary/50 transition-colors" />
-                
+
                 {editingIndex === index ? (
                   <div className="space-y-2">
-                    <Textarea 
+                    <Textarea
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       className="min-h-[80px] w-full bg-background/50 border-none p-0 focus-visible:ring-0 text-sm font-mono"
@@ -107,13 +107,13 @@ export const NotesSection = ({ currentModel, onSave }: NotesSectionProps) => {
                   <>
                     {/* Action Hover Buttons */}
                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button 
+                      <Button
                         variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary"
                         onClick={() => handleStartEdit(index, entry)}
                       >
                         <Edit2 className="h-3 w-3" />
                       </Button>
-                      <Button 
+                      <Button
                         variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive"
                         onClick={() => handleDeleteEntry(index)}
                       >
@@ -130,7 +130,7 @@ export const NotesSection = ({ currentModel, onSave }: NotesSectionProps) => {
           </div>
         ) : (
           <div className="py-10 text-center border border-dashed rounded-xl bg-muted/5">
-             <p className="text-xs font-mono text-muted-foreground/40 italic"> Awaiting first entry...</p>
+            <p className="text-xs font-mono text-muted-foreground/40 italic"> Awaiting first entry...</p>
           </div>
         )}
       </div>
@@ -162,8 +162,8 @@ export const NotesSection = ({ currentModel, onSave }: NotesSectionProps) => {
           <span className="text-[11px] text-muted-foreground/40 font-mono italic uppercase">
             Ctrl + Enter to Save
           </span>
-          <Button 
-            size="sm" 
+          <Button
+            size="sm"
             onClick={handleAddEntry}
             disabled={!newEntry.trim()}
             className="h-7 gap-2 px-3 text-[10px] font-bold uppercase shadow-lg shadow-primary/10"

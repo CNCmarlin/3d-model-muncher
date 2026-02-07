@@ -1,7 +1,8 @@
 import { Clock, CloudDownload, FolderPlus, HardDrive, Weight } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useConfig } from "../context/ConfigContext";
+import { useNavigation } from "../context/NavigationContext";
 import type { Collection } from "../types/collection";
-import { AppConfig } from "../types/config";
 import { Model } from "../types/model";
 import { ConfigManager } from "../utils/configManager";
 import { downloadMultipleModels } from "../utils/downloadUtils";
@@ -27,7 +28,7 @@ interface ModelGridProps {
   collections?: Collection[];
   allCollections?: Collection[];
   onModelClick: (model: Model) => void;
-  onOpenCollection?: (collectionId: string) => void;
+  // onOpenCollection is handled via NavigationContext
   onCollectionChanged?: () => void;
   isSelectionMode?: boolean;
   selectedModelIds?: string[];
@@ -37,8 +38,8 @@ interface ModelGridProps {
   onDeselectAll?: () => void;
   onBulkEdit?: () => void | Promise<void>;
   onBulkDelete?: () => void | Promise<void>;
-  config?: AppConfig | null;
   sortBy?: SortKey;
+  // Removed config prop
 }
 
 export function ModelGrid({
@@ -46,7 +47,6 @@ export function ModelGrid({
   collections = [],
   allCollections = [],
   onModelClick,
-  onOpenCollection,
   onCollectionChanged,
   isSelectionMode = false,
   selectedModelIds = [],
@@ -56,12 +56,28 @@ export function ModelGrid({
   onDeselectAll,
   onBulkEdit,
   onBulkDelete,
-  config: providedConfig,
   sortBy = 'none'
 }: ModelGridProps) {
-  const config = providedConfig ?? ConfigManager.loadConfig();
+
+  const { appConfig: config } = useConfig();
+  const { openCollection } = useNavigation();
+
+  // Helper to handle navigation if not strictly provided? 
+  // actually ModelGrid was flexible. But for this App, we want to use the context.
+  // If we want to keep ModelGrid reusable without context, we should keep props optional and fall back to context?
+  // "Use contexts where appropriate" -> implies we are coupling it more tightly to the app architecture.
+
+  // handleModelClick is handled directly via props call in handleModelInteraction
+  // or we can wrap it if we want to add context logic later.
+  // For now, we use the prop.
+
+  const handleOpenCollection = (id: string) => {
+    const col = allCollections.find(c => c.id === id);
+    if (col) openCollection(col);
+  };
 
   const { viewMode, getGridClasses } = useLayoutSettings();
+
 
   const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -212,8 +228,8 @@ export function ModelGrid({
                     <CollectionCard
                       key={`col-${c.id}`}
                       collection={c}
-                      categories={config.categories || []}
-                      onOpen={(id) => onOpenCollection?.(id)}
+                      categories={config?.categories || []}
+                      onOpen={(id) => handleOpenCollection(id)}
                       onChanged={() => onCollectionChanged?.()}
                       onDeleted={() => onCollectionChanged?.()} collections={[]} />
                   );
@@ -238,8 +254,8 @@ export function ModelGrid({
                   <CollectionCard
                     key={`col-${c.id}`}
                     collection={c}
-                    categories={config.categories || []}
-                    onOpen={(id) => onOpenCollection?.(id)}
+                    categories={config?.categories || []}
+                    onOpen={(id) => handleOpenCollection(id)}
                     onChanged={() => onCollectionChanged?.()}
                     onDeleted={() => onCollectionChanged?.()} collections={[]} />
                 ))}
@@ -267,8 +283,8 @@ export function ModelGrid({
                     <CollectionListRow
                       key={`col-row-${c.id}`}
                       collection={c}
-                      categories={config.categories || []}
-                      onOpen={(id) => onOpenCollection?.(id)}
+                      categories={config?.categories || []}
+                      onOpen={(id) => handleOpenCollection(id)}
                       onChanged={() => onCollectionChanged?.()}
                       onDeleted={() => onCollectionChanged?.()} collections={[]} />
                   );
@@ -313,7 +329,7 @@ export function ModelGrid({
                         />
                         {/* Print status overlay */}
                         {(() => {
-                          const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
+                          const effectiveCfg = config || ConfigManager.loadConfig();
                           const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
 
                           if (!model.isPrinted) {
@@ -373,7 +389,7 @@ export function ModelGrid({
                         {/* Status and Stats */}
                         <div className="flex flex-col items-end gap-3 ml-6">
                           {(() => {
-                            const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
+                            const effectiveCfg = config || ConfigManager.loadConfig();
                             const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
                             if (!showBadge) return null;
 
@@ -413,8 +429,8 @@ export function ModelGrid({
                   <CollectionListRow
                     key={`col-row-${c.id}`}
                     collection={c}
-                    categories={config.categories || []}
-                    onOpen={(id) => onOpenCollection?.(id)}
+                    categories={config?.categories || []}
+                    onOpen={(id) => handleOpenCollection(id)}
                     onChanged={() => onCollectionChanged?.()}
                     onDeleted={() => onCollectionChanged?.()} collections={[]} />
                 ))}
@@ -456,7 +472,7 @@ export function ModelGrid({
                         />
                         {/* Print status overlay */}
                         {(() => {
-                          const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
+                          const effectiveCfg = config || ConfigManager.loadConfig();
                           const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
 
                           if (!model.isPrinted) {
@@ -516,7 +532,7 @@ export function ModelGrid({
                         {/* Status and Stats */}
                         <div className="flex flex-col items-end gap-3 ml-6">
                           {(() => {
-                            const effectiveCfg = providedConfig ?? ConfigManager.loadConfig();
+                            const effectiveCfg = config || ConfigManager.loadConfig();
                             const showBadge = effectiveCfg?.settings?.showPrintedBadge !== false;
                             if (!showBadge) return null;
 
@@ -560,7 +576,7 @@ export function ModelGrid({
         onOpenChange={setIsEditorOpen}
         collection={null}
         collections={allCollections}
-        categories={config.categories || []}
+        categories={config?.categories || []}
         models={models}
         initialMode={createCollectionMode}
         defaultParentId="root"
@@ -601,7 +617,7 @@ export function ModelGrid({
         }}
         collection={null}
         collections={allCollections} // <--- [ADDED] THIS IS THE MISSING PIECE!
-        categories={config.categories || []}
+        categories={config?.categories || []}
         initialModelIds={selectedModelIds}
         onSaved={() => {
           setIsCreateCollectionOpen(false);

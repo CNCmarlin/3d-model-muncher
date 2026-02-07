@@ -1,15 +1,23 @@
-import React from 'react';
-import {
-    Box, Images, ChevronLeft, ChevronRight, X, Maximize2,
-    Plus, Info, FileText, CheckCircle2
-} from 'lucide-react'; import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
-import { ModelViewer3D } from "./ModelViewer3D";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Model } from "@/types/model";
+import {
+    Box,
+    CheckCircle2,
+    ChevronLeft, ChevronRight,
+    FileText,
+    Images,
+    Info,
+    Maximize2,
+    Plus,
+    X
+} from 'lucide-react';
+import React from 'react';
 import { ModelViewerErrorBoundary } from "./ErrorBoundary";
 import { ImageWithFallback } from "./ImageWithFallback";
-import { Model } from "@/types/model";
+import { ModelViewer3D } from "./ModelViewer3D";
 
 
 interface ModelPreviewSectionProps {
@@ -55,14 +63,15 @@ interface ModelPreviewSectionProps {
 export const ModelPreviewSection = ({
     viewMode, setViewMode, currentModel, allImages, selectedImageIndex,
     setSelectedImageIndex, handleCapturedImage, defaultModelColor,
-    isWindowFullscreen, setIsWindowFullscreen, imageContainerRef,
-    prevButtonRef, thumbnailStripRef, addImageInputRef, handlePreviousImage,
+    isWindowFullscreen,
+    imageContainerRef,
+    thumbnailStripRef,
+    addImageInputRef, handlePreviousImage,
     handleNextImage, handleToggleFullscreen, isEditing, handleSetAsMain,
     handleAddImageClick, handleAddImageFile, addImageProgress, addImageError,
     toggleImageSelection, isImageSelected, handleDragStart, handleDragOver,
     handleDrop, handleDragLeave, handleDragEnd, dragOverIndex, active3DFile,
-    setActive3DFile, onTogglePrinted, activeDocUrl, handleViewDocument,
-}: ModelPreviewSectionProps) => {
+    setActive3DFile, onTogglePrinted, activeDocUrl, }: ModelPreviewSectionProps) => {
 
     const fileToDisplay = React.useMemo(() => {
         // If no specific part is selected, use the project's main modelUrl

@@ -1,10 +1,18 @@
-import React from 'react';
-import { FileText, X, CheckCircle, Ban, Download, Eye, Box, 
-FileCode, Paperclip, Plus, FolderOpen, Star 
-} from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    Ban,
+    Box,
+    CheckCircle,
+    Download, Eye,
+    FileCode,
+    FolderOpen,
+    Paperclip, Plus,
+    Star,
+    X
+} from 'lucide-react';
+import React from 'react';
 import { Model } from "../types/model";
 import { Badge } from './ui/badge';
 
@@ -18,16 +26,16 @@ function truncatePath(path: string, maxLength: number = 40) {
     return `${start}...${end}`;
 }
 
-const ModelFileCard = ({ 
-    path, 
-    deriveMunchieCandidate, 
-    isActive, 
+const ModelFileCard = ({
+    path,
+    deriveMunchieCandidate,
+    isActive,
     refreshKey,
-    onJump, 
-    onPromote, 
-    onDownload 
-}: { 
-    path: string, 
+    onJump,
+    onPromote,
+    onDownload
+}: {
+    path: string,
     deriveMunchieCandidate: any,
     isActive: boolean,
     refreshKey: number,
@@ -46,13 +54,13 @@ const ModelFileCard = ({
                 const resp = await fetch(`/models/${candidate}`, { cache: 'no-store' });
                 if (resp.ok) {
                     const data = await resp.json();
-                    
+
                     // 1. Determine "Main" status from the file's own JSON
                     setIsProjectMain(data.isProjectRoot === true);
 
                     // 2. Resolve Thumbnail pointer or direct URL
                     let rawThumb = data.userDefined?.thumbnail || data.thumbnail || (data.parsedImages?.[0]) || (data.images?.[0]);
-                    
+
                     // NEW: Handle both 'parsed:' and 'user:' pointers safely
                     if (typeof rawThumb === 'string' && (rawThumb.startsWith('parsed:') || rawThumb.startsWith('user:'))) {
                         const [type, indexStr] = rawThumb.split(':');
@@ -136,7 +144,8 @@ interface RelatedFilesSectionProps {
     deriveMunchieCandidate: (path: string) => string | null;
     active3DFile: string | null;
     setActive3DFile: (path: string | null) => void;
-    handleViewDocument: (url: string) => void; // New Prop
+    handleViewDocument: (url: string) => void;
+    handleTargetedUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
 }
 
 export const RelatedFilesSection = ({
@@ -146,20 +155,20 @@ export const RelatedFilesSection = ({
     setFocusRelatedIndex,
     relatedVerifyStatus,
     setRelatedVerifyStatus,
-    invalidRelated,
     currentModel,
     onModelUpdate,
     detailsViewportRef,
     triggerDownload,
     toast,
     deriveMunchieCandidate,
-    availableRelatedMunchie,
     active3DFile,
     setActive3DFile,
-    handleViewDocument
+    handleViewDocument,
+    handleTargetedUpload
 }: RelatedFilesSectionProps) => {
 
     const [refreshKey, setRefreshKey] = React.useState(0);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
     const categorizeFiles = (files: string[]) => {
         const categories = {
@@ -167,16 +176,16 @@ export const RelatedFilesSection = ({
             docs: [] as string[],
             gcode: [] as string[]
         };
-    
+
         // 1. ALWAYS start the models list with the current main model
         if (currentModel.filePath) {
             categories.models.push(currentModel.filePath);
         }
-    
+
         files.forEach((path) => {
             // Skip adding the main model twice
             if (path === currentModel.filePath) return;
-    
+
             const ext = path.split('.').pop()?.toLowerCase() || '';
             if (['stl', '3mf', 'obj', 'step'].includes(ext)) {
                 categories.models.push(path);
@@ -193,22 +202,22 @@ export const RelatedFilesSection = ({
         try {
             let candidate = deriveMunchieCandidate(path);
             if (!candidate) return;
-            
+
             const resp = await fetch(`/models/${candidate}`, { cache: 'no-store' });
             if (!resp.ok) throw new Error('Not found');
-            
+
             const parsed = await resp.json();
-            
+
             // 1. Update the metadata for the whole page
             onModelUpdate(parsed as Model);
-            
+
             // 2. [CRITICAL FIX] Update the 3D viewer to point to the new part's file
             // This prevents the Hero from trying to load the old project's file
-            setActive3DFile(path); 
-            
+            setActive3DFile(path);
+
             // 3. Smooth scroll back to the top Hero area
             detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-            
+
         } catch (err) {
             toast?.error?.('Could not load metadata.');
         }
@@ -217,13 +226,13 @@ export const RelatedFilesSection = ({
     const handleSetMainModel = async (newPath: string) => {
         try {
             const oldMainPath = currentModel.filePath;
-    
+
             // 1. Guard: Prevent self-demotion
             if (oldMainPath === newPath && currentModel.isProjectRoot) {
                 toast?.info?.("This is already the Main Model.");
                 return;
             }
-    
+
             // 2. Prepare the Payload
             // We now send the specific "changes" we want. 
             // Note: isProjectRoot: true triggers the server's internal demotion scan.
@@ -234,39 +243,39 @@ export const RelatedFilesSection = ({
                     isRelatedPart: false,
                     // We strip these to ensure the subsequent Heal generates fresh paths
                     thumbnail: undefined,
-                    userDefined: { 
-                        ...currentModel.userDefined, 
-                        thumbnail: undefined 
+                    userDefined: {
+                        ...currentModel.userDefined,
+                        thumbnail: undefined
                     }
                 }
             };
-    
+
             // 3. Persist via the Unified Save Endpoint
             const resp = await fetch('/api/save-model', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(promotionPayload),
             });
-    
+
             if (!resp.ok) throw new Error('Promotion failed');
-            
+
             // Grab the authoritative state from the server
             const { refreshedModel } = await resp.json();
-    
+
             // 4. OS Grace Period (Ensures file locks are released)
             await new Promise(resolve => setTimeout(resolve, 150));
-    
+
             // 5. Targeted Micro-Heal
             // This ensures the gallery is synced and neighbors are hidden correctly
             const folderPath = newPath.split('/').slice(0, -1).join('/');
-            
+
             try {
-                const healResp = await fetch('/api/admin/library-heal', { 
+                const healResp = await fetch('/api/admin/library-heal', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ targetPath: folderPath }) 
+                    body: JSON.stringify({ targetPath: folderPath })
                 });
-    
+
                 if (!healResp.ok) {
                     console.warn("Heal returned non-OK status");
                 }
@@ -274,16 +283,16 @@ export const RelatedFilesSection = ({
                 console.warn("Targeted Heal network error", healErr);
                 // Non-blocking: The promotion was successful even if heal logs a warning
             }
-    
+
             // 6. Final UI Update
             // Use refreshedModel if available, fallback to our constructed object if not
             onModelUpdate(refreshedModel || { ...currentModel, ...promotionPayload.changes, filePath: newPath });
             setActive3DFile(newPath);
             setRefreshKey(prev => prev + 1);
-            
+
             const fileName = newPath.split('/').pop() || 'model';
             toast?.success?.(`Main model set to ${fileName}`);
-    
+
         } catch (err) {
             console.error("Critical failure during model promotion:", err);
             toast?.error?.('Failed to update project identity.');
@@ -354,18 +363,32 @@ export const RelatedFilesSection = ({
                         </div>
                     ))}
 
-                    <Button
-                        variant="outline" size="sm" className="w-full h-9 border-dashed mt-2 text-[10px] font-black uppercase tracking-tighter"
-                        onClick={() => setEditedModel(prev => {
-                            const base = prev || currentModel;
-                            const arr = [...(base.related_files || [])];
-                            arr.push("");
-                            setTimeout(() => setFocusRelatedIndex(arr.length - 1), 0);
-                            return { ...base, related_files: arr };
-                        })}
-                    >
-                        <Plus className="mr-2 h-3.5 w-3.5" /> Link_New_Entry
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                        <Button
+                            variant="outline" size="sm" className="h-9 border-dashed text-[10px] font-black uppercase tracking-tighter"
+                            onClick={() => setEditedModel(prev => {
+                                const base = prev || currentModel;
+                                const arr = [...(base.related_files || [])];
+                                arr.push("");
+                                setTimeout(() => setFocusRelatedIndex(arr.length - 1), 0);
+                                return { ...base, related_files: arr };
+                            })}
+                        >
+                            <Plus className="mr-2 h-3.5 w-3.5" /> Link_Entry
+                        </Button>
+                        <Button
+                            variant="outline" size="sm" className="h-9 border-dashed text-[10px] font-black uppercase tracking-tighter"
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <Plus className="mr-2 h-3.5 w-3.5" /> Upload_File
+                        </Button>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            className="hidden"
+                            onChange={handleTargetedUpload}
+                        />
+                    </div>
                 </div>
             </div>
         );
@@ -377,35 +400,35 @@ export const RelatedFilesSection = ({
     return (
         <div className="space-y-4">
             <Tabs defaultValue="models" className="w-full">
-    <TabsList className="flex w-full bg-muted/10 border border-border/40 p-1 h-auto gap-1 mb-6 rounded-xl overflow-hidden backdrop-blur-sm shadow-inner">
-        {['models', 'docs', 'gcode'].map((key) => (
-            <TabsTrigger
-                key={key}
-                value={key}
-                className="
+                <TabsList className="flex w-full bg-muted/10 border border-border/40 p-1 h-auto gap-1 mb-6 rounded-xl overflow-hidden backdrop-blur-sm shadow-inner">
+                    {['models', 'docs', 'gcode'].map((key) => (
+                        <TabsTrigger
+                            key={key}
+                            value={key}
+                            className="
                     flex-1 relative h-9 px-4 rounded-lg
                     bg-transparent text-[10px] font-black uppercase tracking-widest 
                     data-[state=active]:bg-background data-[state=active]:text-primary 
                     data-[state=active]:shadow-md data-[state=active]:ring-1 data-[state=active]:ring-primary/20
                     hover:bg-primary/5 transition-all duration-300
                 "
-            >
-                <div className="flex items-center justify-center gap-2">
-                    {key === 'models' && <Box className="h-3.5 w-3.5" />}
-                    {key === 'docs' && <Paperclip className="h-3.5 w-3.5" />}
-                    {key === 'gcode' && <FileCode className="h-3.5 w-3.5" />}
-                    <span className="hidden sm:inline">{key.replace('gcode', 'G-Code')}</span>
-                    <span className="opacity-40 tabular-nums">({categories[key as keyof typeof categories].length})</span>
-                </div>
-            </TabsTrigger>
-        ))}
-    </TabsList>
+                        >
+                            <div className="flex items-center justify-center gap-2">
+                                {key === 'models' && <Box className="h-3.5 w-3.5" />}
+                                {key === 'docs' && <Paperclip className="h-3.5 w-3.5" />}
+                                {key === 'gcode' && <FileCode className="h-3.5 w-3.5" />}
+                                <span className="hidden sm:inline">{key.replace('gcode', 'G-Code')}</span>
+                                <span className="opacity-40 tabular-nums">({categories[key as keyof typeof categories].length})</span>
+                            </div>
+                        </TabsTrigger>
+                    ))}
+                </TabsList>
 
                 {/* MODELS GRID - Visual Gallery */}
                 <TabsContent value="models" className="mt-0 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {categories.models.map((path, idx) => (
-                            <ModelFileCard 
+                            <ModelFileCard
                                 key={`${path}-${idx}`}
                                 path={path}
                                 deriveMunchieCandidate={deriveMunchieCandidate}

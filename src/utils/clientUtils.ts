@@ -1,4 +1,4 @@
-import { Model, DuplicateGroup } from "../types/model";
+import { DuplicateGroup, Model } from "../types/model";
 
 /**
  * Finds duplicate files based on hash
@@ -28,7 +28,7 @@ export function findDuplicates(models: Model[]): DuplicateGroup[] {
         if (model.fileSize?.includes('KB')) return sum + (size * 1024);
         return sum + size;
       }, 0);
-      
+
       const totalSize = formatFileSize(totalSizeBytes);
 
       duplicateGroups.push({
@@ -88,10 +88,20 @@ function parseFileSize(sizeStr: string | undefined | null): number {
  */
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+/**
+ * Gets a friendly display path for a model
+ */
+export function getDisplayPath(model: Partial<Model>): string {
+  if (model.modelUrl) {
+    return model.modelUrl.replace(/^\/models\//, '');
+  }
+  return model.filePath || model.name || 'Unknown';
 }

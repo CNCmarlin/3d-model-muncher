@@ -1,10 +1,10 @@
-import React, { useCallback, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog';
-import { Button } from './ui/button';
-import { ScrollArea } from './ui/scroll-area';
-import { Upload, FileText, X, CheckCircle2, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
 import { Model } from '@/types/model';
+import { CheckCircle2, Loader2, Upload, X } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { ScrollArea } from './ui/scroll-area';
 
 interface ProjectFolderDialogProps {
     isOpen: boolean;
@@ -70,7 +70,7 @@ export const ProjectFolderDialog = ({ isOpen, onClose, model, onUpdated }: Proje
                         const input = document.createElement('input');
                         input.type = 'file';
                         input.multiple = true;
-                        input.onchange = (e) => setFiles(prev => [...prev, ...Array.from((e.target as any).files)]);
+                        input.onchange = (e) => setFiles(prev => [...prev, ...Array.from((e.target as HTMLInputElement).files || [])]);
                         input.click();
                     }}
                 >

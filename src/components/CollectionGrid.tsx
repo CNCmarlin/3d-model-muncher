@@ -1,31 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { MouseEvent } from 'react';
-import { Model } from '../types/model';
-import type { Collection } from '../types/collection';
-import { ModelCard } from './ModelCard';
-import { ScrollArea } from './ui/scroll-area';
-import { Button } from './ui/button';
 import {
-  ArrowLeft, ChevronRight, FileCheck, Folder,
-  CloudDownload, FolderPlus,
-  Upload, Box, Maximize2, FileText, Sidebar, ExternalLink,
-  X, FileCode, ChevronLeft, Settings
+  ArrowLeft,
+  Box,
+  ChevronLeft,
+  ChevronRight,
+  CloudDownload,
+  ExternalLink,
+  FileCheck,
+  FileCode,
+  FileText,
+  Folder,
+  FolderPlus,
+  Maximize2,
+  Settings,
+  Sidebar,
+  Upload,
+  X
 } from 'lucide-react';
-import { Badge } from "./ui/badge";
-import { Checkbox } from "./ui/checkbox";
-import { ImageWithFallback } from "./ImageWithFallback";
-import { resolveModelThumbnail } from '../utils/thumbnailUtils';
-import type { AppConfig } from '../types/config';
-import CollectionEditDrawer from './CollectionEditDrawer';
-import { SelectionModeControls } from './SelectionModeControls';
-import { CollectionCard } from './CollectionCard';
-import { CollectionListRow } from './CollectionListRow';
-import { useLayoutSettings } from "./LayoutSettingsContext";
-import { LayoutControls } from "./LayoutControls";
-import { downloadMultipleModels } from "../utils/downloadUtils";
-import { CollectionEditorDialog } from './CollectionEditorDialog';
-import { ProjectView } from './ProjectView';
+import type { MouseEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import type { Collection } from '../types/collection';
+import type { AppConfig } from '../types/config';
+import { Model } from '../types/model';
+import { downloadMultipleModels } from "../utils/downloadUtils";
+import { resolveModelThumbnail } from '../utils/thumbnailUtils';
+import { CollectionCard } from './CollectionCard';
+import CollectionEditDrawer from './CollectionEditDrawer';
+import { CollectionEditorDialog } from './CollectionEditorDialog';
+import { CollectionListRow } from './CollectionListRow';
+import { ImageWithFallback } from "./ImageWithFallback";
+import { LayoutControls } from "./LayoutControls";
+import { useLayoutSettings } from "./LayoutSettingsContext";
+import { ModelCard } from './ModelCard';
+import { ProjectView } from './ProjectView';
+import { SelectionModeControls } from './SelectionModeControls';
+import { Badge } from "./ui/badge";
+import { Button } from './ui/button';
+import { Checkbox } from "./ui/checkbox";
+import { ScrollArea } from './ui/scroll-area';
 
 
 interface CollectionGridProps {
@@ -84,7 +96,8 @@ export default function CollectionGrid({
       return models;
     }
     const set = new Set(modelIds);
-    return models.filter(m => set.has(m.id));
+    const filtered = models.filter(m => set.has(m.id));
+    return filtered;
   }, [modelIds, models, isFiltering]);
 
   const modelIndexMap = useMemo(() => {
@@ -201,22 +214,22 @@ export default function CollectionGrid({
   const normalizedFiles = useMemo(() => {
     // 1. Read from 'documents'
     const rawFiles = activeCollection?.documents || [];
-    
+
     return rawFiles.map((file: any) => {
       if (typeof file === 'string') {
         const name = file.split('/').pop() || file;
         const isPdf = name.toLowerCase().endsWith('.pdf');
-        
+
         // 2. FIX: Use the relative path directly. 
         // Do NOT prepend localhost:3001. 
         // The browser will resolve this against the current page's origin.
-        const url = file; 
-        
+        const url = file;
+
         return {
           name: name,
           url: url,
-          type: isPdf ? 'pdf' : 'text', 
-          size: '' 
+          type: isPdf ? 'pdf' : 'text',
+          size: ''
         };
       }
       return file;
@@ -342,7 +355,7 @@ export default function CollectionGrid({
             onDeselectAll={onDeselectAll}
           />
 
-{!isSelectionMode && (
+          {!isSelectionMode && (
             <>
               {/* NEW: Global Upload Button */}
               <Button variant="default" size="sm" className="gap-2" onClick={onUploadClick}>
@@ -360,7 +373,7 @@ export default function CollectionGrid({
                 <FolderPlus className="h-4 w-4" />
                 New Collection
               </Button>
-              
+
               {activeCollection && (
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => onImportClick?.(activeCollection.id)}>
                   <CloudDownload className="h-4 w-4" />
