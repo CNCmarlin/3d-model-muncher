@@ -252,16 +252,46 @@ export function GeneralSettings({
                             </div>
                         </div>
 
-                        <div className="flex items-center space-x-3 pt-2">
-                            <Switch
-                                checked={localConfig.settings?.autoSave ?? false}
-                                onCheckedChange={(checked) => handleConfigFieldChange('settings.autoSave', checked)}
-                                id="auto-save"
-                            />
-                            <div className="flex flex-col">
-                                <Label htmlFor="auto-save">Auto-save configuration</Label>
-                                <span className="text-xs text-muted-foreground">Automatically save changes as you make them</span>
+                        {/* AutoSave */}
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label htmlFor="auto-save">Auto Save</Label>
+                                <p className="text-sm text-muted-foreground">Automatically save changes</p>
                             </div>
+                            <Switch
+                                id="auto-save"
+                                checked={localConfig.settings?.autoSave ?? true}
+                                onCheckedChange={(checked) => handleConfigFieldChange('settings.autoSave', checked)}
+                            />
+                        </div>
+
+                        {/* Database Backend Toggle */}
+                        <div className="flex items-center justify-between border-l-4 border-yellow-500 pl-4 bg-yellow-50 dark:bg-yellow-950/20 p-4 rounded-r-md">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <Label htmlFor="database-backend">Database Backend</Label>
+                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${localConfig.settings?.useDatabaseBackend
+                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                            : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                        }`}>
+                                        {localConfig.settings?.useDatabaseBackend ? 'Database Mode' : 'Legacy Mode'}
+                                    </span>
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                    Use new Prisma database backend (Phase 3+)
+                                </p>
+                                <p className="text-xs text-yellow-700 dark:text-yellow-400 font-medium">
+                                    ⚠️ Experimental - Requires server restart to take effect
+                                </p>
+                            </div>
+                            <Switch
+                                id="database-backend"
+                                checked={localConfig.settings?.useDatabaseBackend ?? false}
+                                onCheckedChange={(checked) => {
+                                    handleConfigFieldChange('settings.useDatabaseBackend', checked);
+                                    toast.info('Database mode updated. Restart server to apply changes.');
+                                }}
+                            />
                         </div>
                     </div>
                 </CardContent>

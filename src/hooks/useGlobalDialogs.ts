@@ -12,6 +12,9 @@ interface UseGlobalDialogsProps {
     selectedModelIds: string[];
     setSelectedModelIds: (ids: string[]) => void;
     deleteModels: (ids: string[], includeFiles: boolean) => Promise<boolean>; // Abstracted delete action
+    // Config for Move Confirmation
+    appConfig: any; // Using any to avoid circular deps if needed, or import AppConfig
+    updateConfig: (config: any) => void;
 }
 
 export function useGlobalDialogs({
@@ -21,7 +24,9 @@ export function useGlobalDialogs({
     refreshCollections,
     selectedModelIds,
     setSelectedModelIds,
-    deleteModels
+    deleteModels,
+    appConfig,
+    updateConfig
 }: UseGlobalDialogsProps) {
 
     // --- Upload Dialog ---
@@ -61,25 +66,60 @@ export function useGlobalDialogs({
         setImportTargetCollectionId(collectionId);
 
         let inferredFolder: string | undefined = undefined;
+
         if (collectionId) {
             const col = collections.find(c => c.id === collectionId);
-            if (col && col.modelIds && col.modelIds.length > 0) {
-                const firstModelId = col.modelIds[0];
-                const representativeModel = models.find(m => m.id === firstModelId);
 
-                if (representativeModel && representativeModel.filePath) {
-                    const lastSlash = Math.max(
-                        representativeModel.filePath.lastIndexOf('/'),
-                        representativeModel.filePath.lastIndexOf('\\')
-                    );
-                    if (lastSlash > 0) {
-                        inferredFolder = representativeModel.filePath.substring(0, lastSlash);
-                    } else {
-                        inferredFolder = 'imported';
+            // Helper to extract base folder from a model
+            const getFolderFromModel = (m: Model) => {
+                if (!m.filePath) return null;
+                const lastSlash = Math.max(m.filePath.lastIndexOf('/'), m.filePath.lastIndexOf('\\'));
+                if (lastSlash <= 0) return ''; // Root
+
+                let folder = m.filePath.substring(0, lastSlash);
+
+                // If Project Root, step up one level to get the 'Apparent' parent folder
+                if (m.isProjectRoot) {
+                    const parentSlash = Math.max(folder.lastIndexOf('/'), folder.lastIndexOf('\\'));
+                    folder = parentSlash > 0 ? folder.substring(0, parentSlash) : '';
+                }
+                return folder;
+            };
+
+            if (col) {
+                // 1. Try Direct Models
+                if (col.modelIds && col.modelIds.length > 0) {
+                    const firstModelId = col.modelIds[0];
+                    const model = models.find(m => m.id === firstModelId);
+                    if (model) {
+                        const directFolder = getFolderFromModel(model);
+                        if (directFolder !== null) inferredFolder = directFolder;
+                    }
+                }
+                // 2. Try Child Collections (go one level deeper, then step back up)
+                else if (col.childCollectionIds && col.childCollectionIds.length > 0) {
+                    const firstChildId = col.childCollectionIds[0];
+                    const childCol = collections.find(c => c.id === firstChildId);
+                    if (childCol && childCol.modelIds && childCol.modelIds.length > 0) {
+                        const grandChildId = childCol.modelIds[0];
+                        const grandChildModel = models.find(m => m.id === grandChildId);
+                        if (grandChildModel) {
+                            const childFolder = getFolderFromModel(grandChildModel);
+                            if (childFolder) {
+                                // We found the folder for the CHILD collection (e.g. ".../ADXL/Mounts")
+                                // Since we are in the PARENT collection, we want one level up (e.g. ".../ADXL")
+                                const parentSlash = Math.max(childFolder.lastIndexOf('/'), childFolder.lastIndexOf('\\'));
+                                inferredFolder = parentSlash > 0 ? childFolder.substring(0, parentSlash) : '';
+                            }
+                        }
                     }
                 }
             }
         }
+
+        // Final fallback
+        if (inferredFolder === undefined) inferredFolder = 'imported';
+
         setImportTargetFolder(inferredFolder);
         setIsImportOpen(true);
     };
@@ -96,6 +136,38 @@ export function useGlobalDialogs({
     // --- Delete Dialog ---
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [includeThreeMfFiles, setIncludeThreeMfFiles] = useState(false);
+
+    // --- Move Confirmation Dialog ---
+    const [isMoveConfirmOpen, setIsMoveConfirmOpen] = useState(false);
+    const [moveConfirmPromise, setMoveConfirmPromise] = useState<{ resolve: (value: boolean) => void } | null>(null);
+
+    const openMoveConfirmation = (): Promise<boolean> => {
+        // 1. Check preference first
+        if (appConfig?.settings?.alwaysMoveFiles === true) {
+            return Promise.resolve(true);
+        }
+
+        return new Promise((resolve) => {
+            setMoveConfirmPromise({ resolve });
+            setIsMoveConfirmOpen(true);
+        });
+    };
+
+    const handleMoveConfirm = (moveFiles: boolean, dontAskAgain: boolean) => {
+        setIsMoveConfirmOpen(false);
+        if (moveConfirmPromise) {
+            moveConfirmPromise.resolve(moveFiles);
+            setMoveConfirmPromise(null);
+        }
+
+        if (dontAskAgain && moveFiles) {
+            const newConfig = { ...appConfig };
+            if (!newConfig.settings) newConfig.settings = {};
+            newConfig.settings.alwaysMoveFiles = true;
+            updateConfig(newConfig);
+            toast.success("Preference saved: Files will always be moved in the future.");
+        }
+    };
 
     const openDelete = (ids?: string[]) => {
         if (ids && ids.length > 0) {
@@ -125,6 +197,7 @@ export function useGlobalDialogs({
         openImport,
         openDonation,
         openDelete,
+        openMoveConfirmation,
 
         // Props for GlobalDialogs
         dialogProps: {
@@ -153,6 +226,10 @@ export function useGlobalDialogs({
             selectedModelCount: selectedModelIds.length,
             includeThreeMfFiles,
             setIncludeThreeMfFiles,
+
+            isMoveConfirmOpen,
+            setIsMoveConfirmOpen,
+            handleMoveConfirm
         }
     };
 }

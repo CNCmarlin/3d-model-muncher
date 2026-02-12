@@ -19,6 +19,7 @@ interface ConfirmDialogProps {
     cancelLabel?: string;
     variant?: "default" | "destructive";
     onConfirm: () => void | Promise<void>;
+    children?: ReactNode;
 }
 
 export function ConfirmDialog({
@@ -29,25 +30,31 @@ export function ConfirmDialog({
     confirmLabel = "Continue",
     cancelLabel = "Cancel",
     variant = "default",
-    onConfirm
+    onConfirm,
+    children
 }: ConfirmDialogProps) {
     return (
         <AlertDialog open={open} onOpenChange={onOpenChange}>
-            <AlertDialogContent>
+            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                 <AlertDialogHeader>
                     <AlertDialogTitle>{title}</AlertDialogTitle>
                     <AlertDialogDescription>
                         {description}
                     </AlertDialogDescription>
                 </AlertDialogHeader>
+
+                {children && (
+                    <div className="py-2">
+                        {children}
+                    </div>
+                )}
+
                 <AlertDialogFooter>
                     <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
                     <AlertDialogAction
-                        onClick={() => {
+                        onClick={(e) => {
+                            e.stopPropagation(); // Prevent bubble on confirm too
                             if (onConfirm) {
-                                // Support promise-based close if needed, but usually we just fire and forget or handle externally
-                                // If we want to prevent closing on promise, we'd need to preventDefault here.
-                                // For now, simpler is better.
                                 onConfirm();
                             }
                         }}

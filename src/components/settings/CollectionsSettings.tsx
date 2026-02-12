@@ -2,9 +2,10 @@
 import { Category } from '@/types/category';
 import { Collection } from '@/types/collection';
 import { Model } from '@/types/model';
-import { Edit2, FolderOpen, FolderPlus, Library, Plus, Trash2 } from 'lucide-react';
+import { Edit2, FolderOpen, Library, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { adaptDbCollectionsToLegacy } from '../../utils/dbAdapter';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Separator } from '../ui/separator';
@@ -42,7 +43,11 @@ export function CollectionsSettings({
             if (!resp.ok) throw new Error('Failed to fetch collections list.');
             const data = await resp.json();
             // Support both array response or { success: true, collections: [] }
-            const list = Array.isArray(data) ? data : (data.collections || []);
+            const listArray = Array.isArray(data) ? data : (data.collections || []);
+
+            // Only apply adapter if database mode (response is raw array, not wrapped object)
+            const list = Array.isArray(data) ? adaptDbCollectionsToLegacy(listArray) : listArray;
+
             setCollectionsList(list);
         } catch (err) {
             console.error("Failed fetching collections:", err);
@@ -198,13 +203,9 @@ export function CollectionsSettings({
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-wrap gap-2 mb-4">
-                        <Button onClick={() => handleCreateCollection('folder')} variant="outline" className="gap-2">
-                            <FolderPlus className="h-4 w-4" />
-                            New Collection
-                        </Button>
-                        <Button onClick={() => handleCreateCollection('manual')} className="gap-2">
+                        <Button onClick={() => handleCreateCollection('folder')} className="gap-2">
                             <Plus className="h-4 w-4" />
-                            Manual Import
+                            Add Collection
                         </Button>
                         <Button variant="outline" onClick={() => setShowImportDialog(true)}>
                             <FolderOpen className="mr-2 h-4 w-4" />
@@ -245,7 +246,7 @@ export function CollectionsSettings({
                                     <div className="flex flex-col min-w-0">
                                         <span className="font-medium truncate">{collection.name}</span>
                                         <span className="text-xs text-muted-foreground truncate">
-                                            Models: {collection.modelIds?.length || 0} | Category: {collection.category || 'None'}
+                                            Models: {(collection as any).totalModels ?? collection.modelIds?.length ?? 0} | Category: {(collection as any).category || 'None'}
                                         </span>
                                     </div>
                                     <Button variant="ghost" size="sm" className="ml-4 flex-shrink-0">

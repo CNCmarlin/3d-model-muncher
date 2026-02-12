@@ -68,11 +68,19 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
       } else if (entry.name.endsWith('munchie.json') && entry.name !== 'project.json') {
         const modelData = readJson(fullPath);
         if (modelData && modelData.id) {
+
           // If this is a project folder, we only care about the root model
           if (isProjectFolder && modelData.isProjectRoot === true) {
             projectRootId = modelData.id;
           } else if (!isProjectFolder) {
             directModelIds.push(modelData.id);
+
+            // AUTO-TAGGING: If in a non-root folder, tag this model with the folder name
+            // Major categories and root are excluded from tagging
+            const isMajorCategory = ['imported', 'uploads', 'models'].includes(folderName.toLowerCase());
+            if (options.autoTag && currentDir !== scanRoot && !isMajorCategory) {
+              updateModelTags(fullPath, [folderName]);
+            }
           }
         }
       }
@@ -270,11 +278,15 @@ function refreshProjectInCollection(projectDir, modelsDir, collectionsPath) {
 
   // Remove any IDs that belong to this folder, then add the new King
   collection.modelIds = collection.modelIds.filter(id => !projectFiles.includes(id));
-  if (newMainId) collection.modelIds.push(newMainId);
+  if (newMainId) {
+    collection.modelIds.push(newMainId);
+    // User requested NO auto-update of cover image here.
+    // We only ensure the model ID is in the list.
+  }
 
-  // 5. Save back to disk
+  // 6. Save back to disk
   fs.writeFileSync(collectionsPath, JSON.stringify(collections, null, 2), 'utf8');
-  console.log(`🎯 Collection ${collection.name} surgically updated with new Main Model: ${newMainId}`);
+  console.log(`🎯 Collection ${collection.name} surgically updated with new Main Model: ${newMainId} (Cover image unchanged)`);
 }
 
 module.exports = {

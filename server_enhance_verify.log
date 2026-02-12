@@ -1,0 +1,17 @@
+📊 [RouteSelector] Loading DATABASE collection scanner (collectionScanner_db.js)
+
+═══════════════════════════════════════════════════
+📊  3D Model Muncher Backend Mode: DATABASE
+═══════════════════════════════════════════════════
+
+📊 [RouteSelector] Loading DATABASE model routes (models_db.js)
+GenAI env presence: {
+  GEMINI_PROVIDER: false,
+  GOOGLE_API_KEY: false,
+  GOOGLE_APPLICATION_CREDENTIALS: false,
+  OPENAI_API_KEY: false
+}
+📊 [RouteSelector] Loading DATABASE collection routes (collections_db.js)
+📊 [RouteSelector] Loading DATABASE tag routes (tags_db.js)
+3D Model Muncher backend API running on port 3001
+Frontend served from build directory

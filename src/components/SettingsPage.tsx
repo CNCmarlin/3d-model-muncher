@@ -1,4 +1,4 @@
-import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FileCog, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
+import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
 import React, { Suspense } from 'react';
 import { ImageWithFallback } from "./ImageWithFallback";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -7,20 +7,23 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Separator } from "./ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 // Sub-components
+import { MigrationStatus } from './admin/MigrationStatus';
 import { BackupSettings } from './settings/BackupSettings';
 import { CategorySettings } from './settings/CategorySettings';
 import { CollectionsSettings } from './settings/CollectionsSettings';
-import { ConfigSettings } from './settings/ConfigSettings';
 import { GeneralSettings } from './settings/GeneralSettings';
 import { IntegrationsSettings } from './settings/IntegrationsSettings';
 import { IntegritySettings } from './settings/IntegritySettings';
 import { TagsTab } from './settings/TagsTab';
+
 // Hooks
+import { useNavigation } from '@/context/NavigationContext';
 import { useBackups } from '@/hooks/settings/useBackups';
 import { useCategoryManager } from '@/hooks/settings/useCategoryManager';
 import { useIntegrityCheck } from '@/hooks/settings/useIntegrityCheck';
 import { useSettingsConfig } from '@/hooks/settings/useSettingsConfig';
 import { useTagManager } from '@/hooks/settings/useTagManager';
+
 // Types
 import { Category } from '@/types/category';
 import { AppConfig } from '@/types/config';
@@ -58,6 +61,7 @@ export function SettingsPage({
   settingsAction,
   onActionHandled
 }: SettingsPageProps) {
+  const { setCurrentView } = useNavigation();
   const [selectedTab, setSelectedTab] = React.useState(initialTab || 'general');
 
   React.useEffect(() => {
@@ -125,6 +129,9 @@ export function SettingsPage({
     setStatusMessage
   });
 
+  // 6. Config Hook
+  const configSettings = useSettingsConfig(localConfig, setLocalConfig);
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
@@ -189,14 +196,14 @@ export function SettingsPage({
             <TabsTrigger value="integrations" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Plug className="mr-2 h-4 w-4" /> Integrations
             </TabsTrigger>
-            <TabsTrigger value="config" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
-              <FileCog className="mr-2 h-4 w-4" /> Configuration
-            </TabsTrigger>
             <TabsTrigger value="support" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Heart className="mr-2 h-4 w-4" /> Support
             </TabsTrigger>
             <TabsTrigger value="experimental" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <FlaskConical className="mr-2 h-4 w-4" /> Experimental
+            </TabsTrigger>
+            <TabsTrigger value="migration" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              <ShieldCheck className="mr-2 h-4 w-4" /> Database
             </TabsTrigger>
           </TabsList>
         </aside>
@@ -211,9 +218,9 @@ export function SettingsPage({
             <TabsTrigger value="backup">Backup</TabsTrigger>
             <TabsTrigger value="integrity">Integrity</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
-            <TabsTrigger value="config">Config</TabsTrigger>
             <TabsTrigger value="support">Support</TabsTrigger>
             <TabsTrigger value="experimental">Experimental</TabsTrigger>
+            <TabsTrigger value="migration">Database</TabsTrigger>
           </TabsList>
         </div>
 
@@ -251,8 +258,19 @@ export function SettingsPage({
 
           <TabsContent value="backup" className="space-y-6 mt-0">
             <BackupSettings
-              {...backups}
+              isCreatingBackup={backups.isCreatingBackup}
+              isRestoring={backups.isRestoring}
+              backupHistory={backups.backupHistory}
+              restoreStrategy={backups.restoreStrategy}
+              setRestoreStrategy={backups.setRestoreStrategy}
+              collectionsRestoreStrategy={backups.collectionsRestoreStrategy}
+              setCollectionsRestoreStrategy={backups.setCollectionsRestoreStrategy}
+              backupFileInputRef={backups.backupFileInputRef}
+              handleCreateBackup={backups.handleCreateBackup}
+              handleRestoreFromFile={backups.handleRestoreFromFile}
+              handleBackupFileRestore={backups.handleBackupFileRestore}
               models={models}
+              configSettings={configSettings}
             />
           </TabsContent>
 
@@ -270,10 +288,6 @@ export function SettingsPage({
               onConfigChange={setLocalConfig}
               onSave={handleSaveConfig}
             />
-          </TabsContent>
-
-          <TabsContent value="config" className="space-y-6 mt-0">
-            <ConfigSettings {...settingsConfig} />
           </TabsContent>
 
           <TabsContent value="support" className="space-y-6 mt-0">
@@ -387,6 +401,10 @@ export function SettingsPage({
             <Suspense fallback={<div>Loading experimental features...</div>}>
               <ExperimentalTab categories={categoryManager.localCategories} />
             </Suspense>
+          </TabsContent>
+
+          <TabsContent value="migration" className="space-y-6 mt-0">
+            <MigrationStatus />
           </TabsContent>
         </div>
       </Tabs>

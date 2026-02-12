@@ -6,14 +6,7 @@ export function useSiblings(model: Model | null, collections: Collection[], mode
     const [allModelsForSiblings, setAllModelsForSiblings] = useState<Model[]>([]);
 
     useEffect(() => {
-        if (!model || allModelsForSiblings.length > 0) return;
-
-        // If 'models' prop is passed and populated, use it instead of fetching?
-        // Original code fetched /api/models even if 'models' was passed?
-        // Let's check original. It fetched if allModelsForSiblings was empty.
-        // But ModelHubView receives 'models' as a prop.
-        // If models prop has everything, we might not need to fetch. 
-        // But 'models' prop might be filtered view?
+        if (!model) return;
 
         fetch('/api/models')
             .then(res => res.json())
@@ -24,8 +17,19 @@ export function useSiblings(model: Model | null, collections: Collection[], mode
     }, [model?.id]);
 
     const siblings = useMemo(() => {
-        if (!model || !collections.length) return [];
+        if (!model || !collections.length) {
+            console.log('[useSiblings] Early return:', { hasModel: !!model, collectionsCount: collections.length });
+            return [];
+        }
+
+        // DEBUG: Show collections structure
+        console.log('[useSiblings] Collections array:', collections.length);
+        console.log('[useSiblings] First collection sample:', collections[0]);
+        console.log('[useSiblings] Looking for model.id:', model.id);
+
         const parentCollections = collections.filter(c => c.modelIds?.includes(model.id));
+        console.log('[useSiblings] Model:', model.id, 'Parent collections:', parentCollections.length);
+
         if (parentCollections.length === 0) return [];
 
         const siblingIds = new Set<string>();
@@ -33,9 +37,22 @@ export function useSiblings(model: Model | null, collections: Collection[], mode
             c.modelIds.forEach(id => { if (id !== model.id) siblingIds.add(id); });
         });
 
+        console.log('[useSiblings] Sibling IDs found:', siblingIds.size);
+
         // Use the fetched list if available, otherwise fall back to prop list
         const source = allModelsForSiblings.length > 0 ? allModelsForSiblings : models;
-        return source.filter(m => siblingIds.has(m.id));
+        console.log('[useSiblings] Using source:', allModelsForSiblings.length > 0 ? 'fetched' : 'prop', 'count:', source.length);
+
+        const result = source.filter(m => siblingIds.has(m.id));
+        console.log('[useSiblings] Final siblings count:', result.length);
+        if (result.length > 0) {
+            console.log('[useSiblings] First sibling sample:', {
+                id: result[0].id,
+                name: result[0].name,
+                thumbnail: result[0].thumbnail
+            });
+        }
+        return result;
     }, [model, collections, models, allModelsForSiblings]);
 
     return { siblings };

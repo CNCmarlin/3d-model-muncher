@@ -1,19 +1,20 @@
 // src/components/FilterSidebar.tsx
-import { useState, useRef, useEffect } from "react";
-import { Search, Filter, Layers, X, Settings, FileText, Eye, CircleCheckBig, FileBox, Tag, ChevronRight, ChevronDown, LayoutGrid } from "lucide-react";
 import * as LucideIcons from 'lucide-react';
-import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { ChevronDown, ChevronRight, CircleCheckBig, Eye, FileBox, FileText, Filter, Layers, LayoutGrid, Search, Settings, Tag, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { LICENSES } from '../constants/licenses';
+import { Category } from "../types/category";
+import { Collection } from "../types/collection";
+import { Model } from "../types/model";
+import { useGlobalTagsContext } from "./TagsContext";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Switch } from "./ui/switch";
-import { Category } from "../types/category";
-import { Model } from "../types/model";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
-import { Collection } from "../types/collection";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Switch } from "./ui/switch";
 
 interface FilterSidebarProps {
   onFilterChange: (filters: {
@@ -47,6 +48,17 @@ interface FilterSidebarProps {
     showMissingImages: boolean;
     sortBy?: string;
   };
+  currentFilters?: {
+    search: string;
+    category: string;
+    printStatus: string;
+    license: string;
+    fileType: string;
+    tags: string[];
+    showHidden: boolean;
+    showMissingImages: boolean;
+    sortBy?: string;
+  };
 }
 
 const normalizeIconName = (input?: string) => {
@@ -61,7 +73,7 @@ const normalizeIconName = (input?: string) => {
 interface CollectionNode {
   id: string;
   label: string;
-  fullPath: string; 
+  fullPath: string;
   children: CollectionNode[];
 }
 
@@ -75,11 +87,11 @@ const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
 
   collections.forEach(col => {
     if (!col || !col.id) return;
-    nodeMap.set(col.id, { 
-      id: col.id, 
-      label: col.name || 'Unnamed', 
-      fullPath: col.name || 'Unnamed', 
-      children: [] 
+    nodeMap.set(col.id, {
+      id: col.id,
+      label: col.name || 'Unnamed',
+      fullPath: col.name || 'Unnamed',
+      children: []
     });
   });
 
@@ -111,26 +123,26 @@ const buildCollectionTree = (collections: Collection[]): CollectionNode[] => {
 };
 
 // Recursive Collection Item
-const CollectionTreeItem = ({ node, level, onSelect }: { 
-  node: CollectionNode, 
-  level: number, 
-  onSelect: (id: string) => void 
+const CollectionTreeItem = ({ node, level, onSelect }: {
+  node: CollectionNode,
+  level: number,
+  onSelect: (id: string) => void
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const hasChildren = node.children.length > 0;
 
   return (
     <div className="w-full select-none">
-      <div 
+      <div
         className={`flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer ${level > 0 ? 'ml-3 border-l border-border/50' : ''}`}
         onClick={(e) => {
-            e.stopPropagation();
-            onSelect(node.id); 
+          e.stopPropagation();
+          onSelect(node.id);
         }}
       >
         {/* Toggle Expansion Only */}
         {hasChildren ? (
-          <span 
+          <span
             className="p-0.5 hover:bg-muted rounded cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
@@ -139,20 +151,20 @@ const CollectionTreeItem = ({ node, level, onSelect }: {
           >
             {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
           </span>
-        ) : <span className="w-4" />} 
-        
+        ) : <span className="w-4" />}
+
         <Layers className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm truncate flex-1">{node.label}</span>
       </div>
-      
+
       {isOpen && hasChildren && (
         <div className="mt-1">
           {node.children.map((child) => (
-            <CollectionTreeItem 
-              key={child.id} 
-              node={child} 
-              level={level + 1} 
-              onSelect={onSelect} 
+            <CollectionTreeItem
+              key={child.id}
+              node={child}
+              level={level + 1}
+              onSelect={onSelect}
             />
           ))}
         </div>
@@ -168,14 +180,14 @@ export function FilterSidebar({
   onClose,
   onSettingsClick,
   categories,
-  models,
   collections = [],
   onOpenCollection,
   onBackToRoot,
-  initialFilters
+  initialFilters,
+  currentFilters // New prop
 }: FilterSidebarProps) {
   const TAG_DISPLAY_LIMIT = 25;
-  
+
   const normalizeCategoryToLabel = (raw?: string | null) => {
     if (!raw) return 'all';
     if (raw === 'all') return 'all';
@@ -189,19 +201,7 @@ export function FilterSidebar({
   const [searchTerm, setSearchTerm] = useState(initialFilters?.search ?? "");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    const onGlobalKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        if (isOpen && searchInputRef.current) {
-          searchInputRef.current.focus();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', onGlobalKey);
-    return () => window.removeEventListener('keydown', onGlobalKey);
-  }, [isOpen]);
+  // ... useEffect keydown ...
 
   const [selectedCategory, setSelectedCategory] = useState(normalizeCategoryToLabel(initialFilters?.category ?? "all"));
   const [selectedPrintStatus, setSelectedPrintStatus] = useState(initialFilters?.printStatus ?? "all");
@@ -213,19 +213,24 @@ export function FilterSidebar({
   const [selectedSort, setSelectedSort] = useState<string>(initialFilters?.sortBy ?? 'none');
   const [showAllTags, setShowAllTags] = useState(false);
 
-  const getAllTags = (): string[] => {
-    const tagSet = new Set<string>();
-    if (!models) return [];
-    models.forEach(model => {
-      if (!model || !Array.isArray(model.tags)) return;
-      model.tags.forEach(tag => {
-        if (tag && typeof tag === 'string') tagSet.add(tag);
-      });
-    });
-    return Array.from(tagSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  };
+  // Sync state with currentFilters prop when it changes
+  useEffect(() => {
+    if (currentFilters) {
+      setSearchTerm(currentFilters.search);
+      setSelectedCategory(normalizeCategoryToLabel(currentFilters.category));
+      setSelectedPrintStatus(currentFilters.printStatus);
+      setSelectedLicense(currentFilters.license);
+      setSelectedFileType(currentFilters.fileType);
+      setSelectedTags(currentFilters.tags);
+      setShowHidden(currentFilters.showHidden);
+      setShowMissingImages(currentFilters.showMissingImages);
+      setSelectedSort(currentFilters.sortBy || 'none');
+    }
+  }, [currentFilters]);
 
-  const availableTags = getAllTags();
+  const { tags: globalTags } = useGlobalTagsContext();
+
+  const availableTags = globalTags && globalTags.length > 0 ? globalTags : [];
   const displayedTags = showAllTags ? availableTags : availableTags.slice(0, TAG_DISPLAY_LIMIT);
   const remainingTagCount = Math.max(availableTags.length - TAG_DISPLAY_LIMIT, 0);
   const availableLicenses = LICENSES;
@@ -308,7 +313,7 @@ export function FilterSidebar({
     setShowMissingImages(false);
     setSelectedSort('none');
     setShowAllTags(false);
-    
+
     updateFilters({
       search: "",
       category: "all",
@@ -323,7 +328,7 @@ export function FilterSidebar({
   };
 
   const handleGoHome = () => {
-    clearFilters(); 
+    clearFilters();
     if (onBackToRoot) onBackToRoot(); // Navigate to root
   };
 
@@ -407,12 +412,12 @@ export function FilterSidebar({
 
             {/* "All Models" (Home Button) */}
             <div className="space-y-2">
-              <div 
+              <div
                 className="flex items-center gap-2 py-2 px-2 rounded-md hover:bg-accent cursor-pointer transition-colors text-foreground"
-                onClick={handleGoHome} 
+                onClick={handleGoHome}
               >
-                  <LayoutGrid className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">All Models</span>
+                <LayoutGrid className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">All Models</span>
               </div>
             </div>
 
@@ -431,10 +436,10 @@ export function FilterSidebar({
                       <div className="text-xs text-muted-foreground p-2">No collections found</div>
                     ) : (
                       collectionTree.map(node => (
-                        <CollectionTreeItem 
-                          key={node.id} 
-                          node={node} 
-                          level={0} 
+                        <CollectionTreeItem
+                          key={node.id}
+                          node={node}
+                          level={0}
                           onSelect={(id) => {
                             clearFilters(); // Clear search/tags when entering a collection
                             const original = collections?.find(c => c.id === id);
@@ -455,21 +460,20 @@ export function FilterSidebar({
                 <span className="text-sm font-medium flex-1 text-left">Categories</span>
                 <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
               </CollapsibleTrigger>
-              
+
               <CollapsibleContent className="space-y-1 pt-1">
                 <Button
                   variant={selectedCategory === "all" ? "default" : "ghost"}
                   onClick={() => handleCategoryChange("all")}
-                  className={`w-full justify-start h-10 px-3 ${
-                    selectedCategory === "all" 
-                      ? "text-primary-foreground hover:text-primary-foreground" 
-                      : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                  }`}
+                  className={`w-full justify-start h-10 px-3 ${selectedCategory === "all"
+                    ? "text-primary-foreground hover:text-primary-foreground"
+                    : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                    }`}
                 >
                   <Filter className="h-4 w-4 mr-3" />
                   <span>All Categories</span>
                 </Button>
-  
+
                 {categories.map((category) => {
                   const iconKey = normalizeIconName(category.icon);
                   const Icon = (LucideIcons as any)[iconKey] as React.ComponentType<any> || (LucideIcons as any)['Folder'];
@@ -478,11 +482,10 @@ export function FilterSidebar({
                       key={category.id}
                       variant={selectedCategory === category.label ? "default" : "ghost"}
                       onClick={() => handleCategoryChange(category.label)}
-                      className={`w-full justify-start h-10 px-3 ${
-                        selectedCategory === category.label 
-                          ? "text-primary-foreground hover:text-primary-foreground" 
-                          : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                      }`}
+                      className={`w-full justify-start h-10 px-3 ${selectedCategory === category.label
+                        ? "text-primary-foreground hover:text-primary-foreground"
+                        : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                        }`}
                     >
                       <Icon className="h-4 w-4 mr-3" />
                       <span>{category.label}</span>
@@ -653,8 +656,8 @@ export function FilterSidebar({
       )}
       {isOpen && (
         <div className="p-4 border-t border-sidebar-border bg-sidebar shrink-0">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={clearFilters}
             className="w-full bg-background border-border text-foreground hover:bg-accent hover:text-accent-foreground hover:border-primary transition-colors"
           >

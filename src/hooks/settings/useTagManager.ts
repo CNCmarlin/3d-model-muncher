@@ -42,15 +42,17 @@ export function useTagManager({ models, onModelsUpdate, setSaveStatus, setStatus
                 try {
                     let filePath;
                     if (model.modelUrl) {
-                        const threeMfPath = model.modelUrl.replace(/^\/models\//, '');
-                        filePath = threeMfPath.replace(/\.3mf$/i, '-munchie.json');
+                        // FIX: Pass relative path and let server resolve extensions
+                        filePath = model.modelUrl.replace(/^\/?models\//, '');
                     } else if (model.filePath) {
-                        filePath = model.filePath.replace(/\.3mf$/i, '-munchie.json');
+                        filePath = model.filePath;
                     } else {
                         console.error('No file path available for model:', model.name);
                         saveErrors++;
                         continue;
                     }
+
+                    console.log(`[TagManager] Renaming tag "${oldTag}" to "${newTag}" for model ${model.id}. File: ${filePath}`);
 
                     const response = await fetch('/api/save-model', {
                         method: 'POST',
@@ -103,24 +105,28 @@ export function useTagManager({ models, onModelsUpdate, setSaveStatus, setStatus
 
         const updatedModels = models.map(model => ({
             ...model,
-            tags: (model.tags || []).filter(tag => tag !== tagToDelete)
+            tags: (Array.isArray(model.tags) ? model.tags : []).filter(tag => tag !== tagToDelete)
         }));
 
         let saveErrors = 0;
         for (const model of updatedModels) {
             const originalModel = models.find(m => m.id === model.id);
-            if (originalModel && (originalModel.tags || []).includes(tagToDelete)) {
+            if (originalModel && Array.isArray(originalModel.tags) && originalModel.tags.includes(tagToDelete)) {
                 try {
                     let filePath;
                     if (model.modelUrl) {
-                        const threeMfPath = model.modelUrl.replace(/^\/models\//, '');
-                        filePath = threeMfPath.replace(/\.3mf$/i, '-munchie.json');
+                        // FIX: Pass the relative path (e.g. "car.stl") and let the server resolve the munchie file
+                        // This ensures parity for STL/3MF handling on the backend
+                        filePath = model.modelUrl.replace(/^\/?models\//, '');
                     } else if (model.filePath) {
-                        filePath = model.filePath.replace(/\.3mf$/i, '-munchie.json');
+                        filePath = model.filePath;
                     } else {
+                        console.error('No file path available for model:', model.name);
                         saveErrors++;
                         continue;
                     }
+
+                    console.log(`[TagManager] Deleting tag "${tagToDelete}" from model ${model.id} (${model.name}). File: ${filePath}`);
 
                     const response = await fetch('/api/save-model', {
                         method: 'POST',

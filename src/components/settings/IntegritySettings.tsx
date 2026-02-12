@@ -1,10 +1,12 @@
+import { useConfig } from '@/context/ConfigContext';
 import { useIntegrityCheck } from '@/hooks/settings/useIntegrityCheck';
 import { Model } from '@/types/model';
 import { getDisplayPath } from '@/utils/clientUtils';
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import { Activity, AlertTriangle, BarChart3, Box, Check, Clock, FileCheck, Files, FolderPlus, HeartPulse, Plus, RefreshCw, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { ImageWithFallback } from '../ImageWithFallback'; // Assumed relative path
+import { ImageWithFallback } from '../ImageWithFallback';
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
@@ -12,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "../ui/label";
 import { Progress } from "../ui/progress";
 import { ScrollArea } from "../ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Separator } from "../ui/separator";
 
 type IntegritySettingsProps = ReturnType<typeof useIntegrityCheck> & {
@@ -57,6 +60,8 @@ export function IntegritySettings({
     isGeneratingJson,
     generateResult,
     // setGenerateResult, // unused
+    thumbnailStrategy,
+    setThumbnailStrategy,
     handleRunHashCheck,
     handleGenerateModelJson,
     handleRunHealPreview,
@@ -71,6 +76,8 @@ export function IntegritySettings({
     onModelClick
 }: IntegritySettingsProps) {
     const [openDuplicateGroupHash, setOpenDuplicateGroupHash] = useState<string | null>(null);
+    const { appConfig } = useConfig();
+    const useDatabaseBackend = appConfig?.settings?.useDatabaseBackend ?? false;
 
     return (
         <Card>
@@ -110,6 +117,19 @@ export function IntegritySettings({
                                 </div>
                             </div>
                         </div>
+
+                        {/* Database Mode Warning */}
+                        {useDatabaseBackend && (
+                            <Alert variant="destructive">
+                                <AlertTriangle className="h-4 w-4" />
+                                <AlertTitle>Heal Function Disabled</AlertTitle>
+                                <AlertDescription>
+                                    The legacy heal function is disabled in database mode to prevent data corruption.
+                                    All data integrity is managed through the database backend.
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
                         <div className="flex flex-wrap gap-2">
                             <Button
                                 onClick={() => handleRunHashCheck()}
@@ -131,8 +151,8 @@ export function IntegritySettings({
                             </Button>
 
                             <Button
-                                onClick={handleRunHealPreview}
-                                disabled={isHealing || isPreviewingHeal || isHashChecking || isReverting}
+                                onClick={() => handleRunHealPreview()}
+                                disabled={useDatabaseBackend || isHealing || isPreviewingHeal || isHashChecking || isReverting}
                                 className="gap-2"
                                 variant="outline"
                             >
@@ -431,6 +451,30 @@ export function IntegritySettings({
                                 The following changes are proposed based on strict naming rules and physical folder structure.
                             </DialogDescription>
                         </DialogHeader>
+
+                        <div className="flex items-center justify-between p-3 mt-4 bg-muted/40 rounded-lg border">
+                            <div className="space-y-1">
+                                <h4 className="text-sm font-medium">Thumbnail Strategy</h4>
+                                <p className="text-xs text-muted-foreground">
+                                    Preferred thumbnail when both Embedded and Generated exist.
+                                </p>
+                            </div>
+                            <Select
+                                value={thumbnailStrategy}
+                                onValueChange={(val: 'prefer-embedded' | 'prefer-generated') => {
+                                    setThumbnailStrategy(val);
+                                    handleRunHealPreview(val);
+                                }}
+                            >
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Select strategy" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="prefer-embedded">Prefer Embedded</SelectItem>
+                                    <SelectItem value="prefer-generated">Prefer Generated</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     <div className="flex-1 min-h-0 px-6 my-4">
@@ -443,6 +487,15 @@ export function IntegritySettings({
                                                 <Box className="h-3.5 w-3.5 text-primary/70" />
                                                 {item.model}
                                             </h4>
+
+                                            {item.originalFilePath && (
+                                                <div className="ml-5 text-xs text-muted-foreground mb-2 flex items-center gap-2">
+                                                    <span className="font-medium shrink-0">Current Path:</span>
+                                                    <code className="bg-muted px-1.5 py-0.5 rounded text-[10px] break-all font-mono">
+                                                        {item.originalFilePath}
+                                                    </code>
+                                                </div>
+                                            )}
 
                                             <div className="ml-5 space-y-1.5">
                                                 {item.collectionSync && (
@@ -465,6 +518,13 @@ export function IntegritySettings({
                                                         <span>Unlink pollution: <code className="bg-destructive/10 px-1 rounded">{del}</code></span>
                                                     </div>
                                                 ))}
+
+                                                {item.modifications?.map((mod: string, i: number) => (
+                                                    <div key={i} className="text-xs flex items-start gap-2 text-amber-600 font-medium">
+                                                        <RotateCcw className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                                        <span><code className="bg-amber-500/10 px-1 rounded">{mod}</code></span>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     ))}
@@ -483,7 +543,7 @@ export function IntegritySettings({
                     <div className="p-6 pt-0">
                         <DialogFooter className="flex flex-col sm:flex-row items-center gap-3">
                             <div className="flex-1 text-xs text-muted-foreground italic text-center sm:text-left">
-                                {healPreviewReport?.totalChangesProposed || 0} modifications proposed across {healPreviewReport?.processed || 0} items.
+                                {(healPreviewReport?.details?.reduce((acc: number, item: any) => acc + (item.additions?.length || 0) + (item.deletions?.length || 0), 0) || 0)} modifications proposed across {healPreviewReport?.processed || 0} items.
                             </div>
                             <div className="flex gap-2 w-full sm:w-auto">
                                 <Button variant="ghost" onClick={() => setIsHealDialogOpen(false)} className="flex-1 sm:flex-none">

@@ -13,6 +13,7 @@ import {
     X
 } from 'lucide-react';
 import React from 'react';
+import { useModelMutations } from '../hooks/useModelMutations';
 import { Model } from "../types/model";
 import { Badge } from './ui/badge';
 
@@ -30,7 +31,6 @@ const ModelFileCard = ({
     path,
     deriveMunchieCandidate,
     isActive,
-    refreshKey,
     onJump,
     onPromote,
     onDownload
@@ -38,7 +38,6 @@ const ModelFileCard = ({
     path: string,
     deriveMunchieCandidate: any,
     isActive: boolean,
-    refreshKey: number,
     onJump: () => void,
     onPromote: () => void,
     onDownload: (e: React.MouseEvent) => void
@@ -80,7 +79,7 @@ const ModelFileCard = ({
             } catch (e) { }
         };
         fetchData();
-    }, [path, deriveMunchieCandidate, refreshKey]);
+    }, [path, deriveMunchieCandidate]);
 
     return (
         <div
@@ -146,6 +145,7 @@ interface RelatedFilesSectionProps {
     setActive3DFile: (path: string | null) => void;
     handleViewDocument: (url: string) => void;
     handleTargetedUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
+    onAnalyze?: (path: string) => Promise<void>;
 }
 
 export const RelatedFilesSection = ({
@@ -164,11 +164,13 @@ export const RelatedFilesSection = ({
     active3DFile,
     setActive3DFile,
     handleViewDocument,
-    handleTargetedUpload
+    handleTargetedUpload,
+    onAnalyze
 }: RelatedFilesSectionProps) => {
 
-    const [refreshKey, setRefreshKey] = React.useState(0);
+
     const fileInputRef = React.useRef<HTMLInputElement>(null);
+    const { updateModel } = useModelMutations();
 
     const categorizeFiles = (files: string[]) => {
         const categories = {
@@ -250,17 +252,14 @@ export const RelatedFilesSection = ({
                 }
             };
 
-            // 3. Persist via the Unified Save Endpoint
-            const resp = await fetch('/api/save-model', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(promotionPayload),
+            // 3. Persist via the Unified Mutation Hook (Triggers Auto-Refresh)
+            // Use mutateAsync to ensure we can await it
+            const refreshedModel = await updateModel.mutateAsync({
+                id: currentModel.id, // We are updating the CURRENT model (promoting a file within it)
+                data: promotionPayload.changes as any // Cast because promotion payload structure is specific
             });
 
-            if (!resp.ok) throw new Error('Promotion failed');
-
-            // Grab the authoritative state from the server
-            const { refreshedModel } = await resp.json();
+            // Note: updateModel returns the refreshed model directly per our hook definition
 
             // 4. OS Grace Period (Ensures file locks are released)
             await new Promise(resolve => setTimeout(resolve, 150));
@@ -285,10 +284,12 @@ export const RelatedFilesSection = ({
             }
 
             // 6. Final UI Update
-            // Use refreshedModel if available, fallback to our constructed object if not
-            onModelUpdate(refreshedModel || { ...currentModel, ...promotionPayload.changes, filePath: newPath });
+            // onModelUpdate removed to prevent double-mutation (Race Condition with parent auto-save).
+            // The Query Invalidation in useModelMutations will trigger a re-render of ModelHubView with fresh data.
+            // And useModelGallery effect (now watching filePath) will update the 3D view.
             setActive3DFile(newPath);
-            setRefreshKey(prev => prev + 1);
+
+            toast.success("Model promoted successfully");
 
             const fileName = newPath.split('/').pop() || 'model';
             toast?.success?.(`Main model set to ${fileName}`);
@@ -433,7 +434,6 @@ export const RelatedFilesSection = ({
                                 path={path}
                                 deriveMunchieCandidate={deriveMunchieCandidate}
                                 isActive={active3DFile === path}
-                                refreshKey={refreshKey}
                                 onJump={() => handleJumpToModel(path)}
                                 onPromote={() => handleSetMainModel(path)}
                                 onDownload={(e) => {
@@ -457,11 +457,22 @@ export const RelatedFilesSection = ({
                                         <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-primary/20 group-hover:bg-primary/50 transition-colors" />
 
                                         <div className="flex items-center justify-between pl-2">
-                                            <span className="text-[11px] truncate text-foreground/70 group-hover:text-foreground font-mono tracking-tight">
-                                                {truncatePath(path, 60)}
+                                            <span className="text-[11px] truncate text-foreground/70 group-hover:text-foreground font-mono tracking-tight" title={path}>
+                                                {tabKey === 'gcode'
+                                                    ? (path.split('/').pop() || path)
+                                                    : truncatePath(path, 60)}
                                             </span>
 
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {tabKey === 'gcode' && onAnalyze && (
+                                                    <Button
+                                                        size="icon" variant="ghost" className="h-7 w-7 text-primary/60 hover:text-primary hover:bg-primary/10"
+                                                        title="Analyze G-code"
+                                                        onClick={() => onAnalyze(path)}
+                                                    >
+                                                        <FileCode className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                                 {isViewable && tabKey === 'docs' && (
                                                     <Button
                                                         size="icon" variant="ghost" className="h-7 w-7 text-primary/60 hover:text-primary hover:bg-primary/10"
@@ -470,7 +481,7 @@ export const RelatedFilesSection = ({
                                                         <Eye className="h-4 w-4" />
                                                     </Button>
                                                 )}
-                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={(e) => triggerDownload(path, e.nativeEvent as any, 'file')}>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={(e) => triggerDownload(path, e.nativeEvent as any, path.split('/').pop() || 'file')}>
                                                     <Download className="h-4 w-4" />
                                                 </Button>
                                             </div>

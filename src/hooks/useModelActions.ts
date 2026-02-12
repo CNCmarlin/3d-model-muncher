@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { Model } from "../types/model";
+import { useModelMutations } from "./useModelMutations";
 
 interface UseModelActionsProps {
     models: Model[];
@@ -9,11 +10,17 @@ interface UseModelActionsProps {
     selectedModelIds: string[];
     setSelectedModelIds: (ids: string[]) => void;
     setIsSelectionMode: (isSelectionMode: boolean) => void;
-    setIsBulkEditOpen: (isOpen: boolean) => void;
-    refreshModels: () => Promise<void>; // This should be handleRefreshModels from useFilteredModels
+    onCloseBulkEdit?: () => void;
+    refreshModels: () => Promise<void>;
     setSelectedModel: (model: Model | null) => void;
 }
 
+/**
+ * Model Actions Hook - Now powered by React Query!
+ * 
+ * Provides model manipulation functions with optimistic updates
+ * for instant UI feedback.
+ */
 export function useModelActions({
     models,
     setModels,
@@ -22,84 +29,66 @@ export function useModelActions({
     selectedModelIds,
     setSelectedModelIds,
     setIsSelectionMode,
-    setIsBulkEditOpen,
+    onCloseBulkEdit,
     refreshModels,
     setSelectedModel
 }: UseModelActionsProps) {
+    // React Query mutations for optimistic updates
+    const { updateModel, bulkUpdateModels } = useModelMutations();
 
     const handleModelUpdate = async (updatedModel: Model) => {
-        const updatedModels = models.map(model =>
-            model.id === updatedModel.id ? updatedModel : model
-        );
-        setModels(updatedModels);
+        // Optimistically update local state immediately
         setSelectedModel(updatedModel);
 
-        const updatedFilteredModels = filteredModels.map(model =>
-            model.id === updatedModel.id ? updatedModel : model
+        // Use React Query mutation (handles optimistic cache update automatically)
+        updateModel.mutate(
+            {
+                id: updatedModel.id,
+                data: updatedModel,
+            },
+            {
+                onSuccess: () => {
+                    console.log("Model saved successfully!");
+                },
+                onError: (error: unknown) => {
+                    console.error('Failed to persist model change:', error);
+                    toast.error("Failed to save changes");
+                },
+            }
         );
-        setFilteredModels(updatedFilteredModels);
-        try {
-            const response = await fetch('/api/save-model', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ...updatedModel
-                }),
-            });
-
-            if (!response.ok) throw new Error('Failed to save to server');
-
-            console.log("Model saved successfully!");
-        } catch (error) {
-            console.error('Failed to persist model change:', error);
-            toast.error("Failed to save changes");
-        }
     };
 
-    const handleBulkModelsUpdate = (updatedModelsData: Partial<Model> & { bulkTagChanges?: { add: string[]; remove: string[] } }) => {
-        const updatedModels = models.map(model => {
-            if (selectedModelIds.includes(model.id)) {
-                let updatedModel = { ...model };
-                Object.keys(updatedModelsData).forEach(key => {
-                    if (key !== 'bulkTagChanges' && updatedModelsData[key as keyof Model] !== undefined) {
-                        (updatedModel as any)[key] = updatedModelsData[key as keyof Model];
-                    }
-                });
+    const handleBulkModelsUpdate = (updatedModelsData: Partial<Model> & { bulkTagChanges?: { add: string[]; remove: string[] } }, specificIds?: string[]) => {
+        // Build the update data
+        const updateData: Partial<Model> = { ...updatedModelsData };
+        delete (updateData as any).bulkTagChanges;
 
-                if (updatedModelsData.bulkTagChanges) {
-                    const { add, remove } = updatedModelsData.bulkTagChanges;
-                    let newTags = [...(updatedModel.tags || [])];
-                    if (remove && remove.length > 0) {
-                        newTags = newTags.filter(tag => !remove.includes(tag));
-                    }
-                    if (add && add.length > 0) {
-                        add.forEach(tag => {
-                            if (!newTags.includes(tag)) newTags.push(tag);
-                        });
-                    }
-                    updatedModel.tags = newTags;
-                }
-                return updatedModel;
+        // Handle tag changes
+        if (updatedModelsData.bulkTagChanges) {
+            const { add, remove } = updatedModelsData.bulkTagChanges;
+            // This will need special handling on the backend
+            (updateData as any).tagChanges = { add, remove };
+        }
+
+        // Use React Query bulk mutation
+        bulkUpdateModels.mutate(
+            {
+                modelIds: specificIds || selectedModelIds,
+                data: updateData,
+            },
+            {
+                onSuccess: () => {
+                    setSelectedModelIds([]);
+                    setIsSelectionMode(false);
+                    if (onCloseBulkEdit) onCloseBulkEdit();
+                    toast(`Updated ${selectedModelIds.length} models`);
+                },
+                onError: (error: unknown) => {
+                    console.error('Failed to bulk update:', error);
+                    toast.error("Failed to update models");
+                },
             }
-            return model;
-        });
-
-        setModels(updatedModels);
-
-        const updatedFilteredModels = filteredModels.map(model => {
-            if (selectedModelIds.includes(model.id)) {
-                const updatedModel = updatedModels.find(m => m.id === model.id);
-                return updatedModel || model;
-            }
-            return model;
-        });
-        setFilteredModels(updatedFilteredModels);
-
-        setSelectedModelIds([]);
-        setIsSelectionMode(false);
-        setIsBulkEditOpen(false);
-
-        toast(`Updated ${selectedModelIds.length} models`);
+        );
     };
 
     const handleBulkSavedModels = (updatedModels: Model[]) => {
@@ -111,7 +100,7 @@ export function useModelActions({
         setFilteredModels(mergedFiltered);
         setSelectedModelIds([]);
         setIsSelectionMode(false);
-        setIsBulkEditOpen(false);
+        if (onCloseBulkEdit) onCloseBulkEdit();
     };
 
     const performDelete = async (modelIds: string[], includeFiles: boolean): Promise<boolean> => {

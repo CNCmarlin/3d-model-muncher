@@ -1,0 +1,25 @@
+"filename", "language", "TypeScript", "TypeScript JSX", "comment", "blank", "total"
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\ProjectService.ts", "TypeScript", 241, 0, 37, 48, 326
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\clientUtils.ts", "TypeScript", 89, 0, 2, 17, 108
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\configManager.ts", "TypeScript", 336, 0, 17, 39, 392
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\dbAdapter.ts", "TypeScript", 126, 0, 15, 22, 163
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\downloadUtils.ts", "TypeScript", 144, 0, 13, 21, 178
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\fileManager.ts", "TypeScript", 205, 0, 17, 25, 247
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\filterUtils.ts", "TypeScript", 76, 0, 14, 18, 108
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\galleryUtils.ts", "TypeScript", 62, 0, 3, 14, 79
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\gcodeParser.ts", "TypeScript", 213, 0, 8, 31, 252
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\imageUtils.ts", "TypeScript", 65, 0, 13, 12, 90
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\labels.ts", "TypeScript", 29, 0, 2, 4, 35
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\modelFactory.ts", "TypeScript", 49, 0, 0, 2, 51
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\munchiePath.ts", "TypeScript", 34, 0, 0, 7, 41
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\rendererPool.ts", "TypeScript", 3, 0, 2, 1, 6
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\rendererPool.tsx", "TypeScript JSX", 0, 125, 5, 11, 141
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\sortUtils.ts", "TypeScript", 53, 0, 1, 5, 59
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\themeUtils.ts", "TypeScript", 113, 0, 12, 19, 144
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\thingiverseImporter.ts", "TypeScript", 101, 0, 15, 24, 140
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\threeJSManager.ts", "TypeScript", 83, 0, 11, 15, 109
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\threeMFToJson.ts", "TypeScript", 341, 0, 48, 66, 455
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\thumbnailGenerator.ts", "TypeScript", 55, 0, 23, 21, 99
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\thumbnailUtils.ts", "TypeScript", 39, 0, 6, 7, 52
+"c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\useSafeThreeMFLoader.ts", "TypeScript", 70, 0, 8, 14, 92
+"Total", "-", 2527, 125, 272, 443, 3367

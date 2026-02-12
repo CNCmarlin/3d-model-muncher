@@ -59,6 +59,8 @@ export interface AppConfig {
     modelDirectory: string;
     gcodeOverwriteBehavior?: 'prompt' | 'overwrite';
     gcodeStorageBehavior?: 'parse-only' | 'save-and-link';
+    useDatabaseBackend?: boolean; // Phase 3: Dual-Running Feature Flag
+    alwaysMoveFiles?: boolean; // If true, always move files on collection change without asking.
   };
   filters: {
     defaultCategory: string;

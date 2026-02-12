@@ -1,6 +1,5 @@
-import { Badge } from "./ui/badge";
+import { CheckSquare, Download, Edit, List, ShoppingCart, Square, Trash2, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { CheckSquare, Square, Edit, Trash2, X, List, Download } from "lucide-react";
 
 interface SelectionModeControlsProps {
   isSelectionMode: boolean;
@@ -36,7 +35,41 @@ export function SelectionModeControls({
   const containerClass = ["flex items-center gap-2", className].filter(Boolean).join(" ");
   const hasBulkSelection = selectedCount > 0;
 
+  // [Mode 1] Selection Mode Inactive (Persistent Cart Indicator)
   if (!isSelectionMode) {
+    if (selectedCount > 0) {
+      return (
+        <div className={containerClass}>
+          <div className="flex items-center bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/20 shadow-sm animate-in fade-in zoom-in duration-200">
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            <span className="text-xs font-bold mr-3">{selectedCount}</span>
+            <div className="h-4 w-px bg-primary/20 mr-3" />
+
+            {onBulkEdit && (
+              <Button
+                variant="default"
+                size="sm"
+                className="h-6 px-3 text-[10px] rounded-full shadow-sm hover:shadow-md transition-all mr-2"
+                onClick={onBulkEdit}
+              >
+                Bulk Edit
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onEnterSelectionMode}
+              className="h-6 px-2 text-[10px] hover:bg-primary/20 text-primary font-medium"
+              title="View Selection"
+            >
+              Expand
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className={containerClass}>
         <Button
@@ -54,24 +87,26 @@ export function SelectionModeControls({
     );
   }
 
+  // [Mode 2] Selection Mode Active (Full Toolbar)
   return (
     <div className={containerClass}>
-      <Badge variant="secondary" className="gap-1">
-        {selectedCount} selected
-      </Badge>
+      <div className="flex items-center bg-muted/50 px-3 py-1 rounded-md border text-sm font-medium gap-2">
+        <ShoppingCart className="h-4 w-4 text-primary" />
+        <span>{selectedCount}</span>
+      </div>
 
       {hasBulkSelection && (
         <>
           {onBulkEdit && (
             <Button
-              variant="ghost"
+              variant="default"
               size="sm"
               onClick={onBulkEdit}
-              className="gap-2"
+              className="gap-2 shadow-sm"
               title="Bulk edit selected models"
             >
               <Edit className="h-4 w-4" />
-              <span className="hidden sm:inline">Edit</span>
+              <span className="hidden sm:inline">Bulk Edit</span>
             </Button>
           )}
 
@@ -115,6 +150,8 @@ export function SelectionModeControls({
           )}
         </>
       )}
+
+      <div className="h-4 w-px bg-border mx-1" />
 
       <div className="flex items-center gap-1">
         <Button

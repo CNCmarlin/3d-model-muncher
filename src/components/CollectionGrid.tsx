@@ -92,9 +92,12 @@ export default function CollectionGrid({
   const { viewMode, getGridClasses } = useLayoutSettings();
 
   const items = useMemo(() => {
-    if (isFiltering) {
+
+    // Database-first: Use models prop if filtering OR modelIds unavailable
+    if (isFiltering || !modelIds || modelIds.length === 0) {
       return models;
     }
+    // Legacy: Filter by modelIds array  
     const set = new Set(modelIds);
     const filtered = models.filter(m => set.has(m.id));
     return filtered;
@@ -205,11 +208,7 @@ export default function CollectionGrid({
     }
   };
 
-  console.log("--- DEBUGGING FILES ---");
-  console.log("Active Collection:", activeCollection);
-  // check 'files', 'filePaths', 'attachments' - whatever it might be named
-  console.log("Raw Files Property:", (activeCollection as any)?.documents || []);
-  console.log("--------------------------");
+
 
   const normalizedFiles = useMemo(() => {
     // 1. Read from 'documents'

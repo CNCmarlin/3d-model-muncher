@@ -69,19 +69,20 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
                 // if (!config) { try fetch /api/load-config }
                 // So it prioritized localStorage.
 
-                if (!config) {
-                    try {
-                        const resp = await fetch('/api/load-config');
-                        if (resp.ok) {
-                            const data = await resp.json();
-                            if (data && data.success && data.config) {
-                                config = data.config;
-                                // Sync to local
-                                try { ConfigManager.saveConfig(data.config); } catch (e) { console.warn(e); }
-                            }
+                // B. Try Server (Authoritative)
+                // Always fetch from server to ensure we have the latest config (e.g. DB mode toggle)
+                try {
+                    const resp = await fetch('/api/load-config');
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data && data.success && data.config) {
+                            config = data.config;
+                            // Sync to local
+                            try { ConfigManager.saveConfig(data.config); } catch (e) { console.warn(e); }
+                            console.log('[ConfigContext] Synced config from server:', config);
                         }
-                    } catch (e) { console.warn('Server config fetch failed', e); }
-                }
+                    }
+                } catch (e) { console.warn('Server config fetch failed', e); }
 
                 // C. Fallback to Defaults
                 if (!config) {

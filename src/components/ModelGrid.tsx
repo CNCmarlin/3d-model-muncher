@@ -38,6 +38,7 @@ interface ModelGridProps {
   onDeselectAll?: () => void;
   onBulkEdit?: () => void | Promise<void>;
   onBulkDelete?: () => void | Promise<void>;
+  onOpenCollection?: (collection: Collection) => void;
   sortBy?: SortKey;
   // Removed config prop
 }
@@ -56,6 +57,7 @@ export function ModelGrid({
   onDeselectAll,
   onBulkEdit,
   onBulkDelete,
+  onOpenCollection,
   sortBy = 'none'
 }: ModelGridProps) {
 
@@ -226,12 +228,14 @@ export function ModelGrid({
                   const c = it.data;
                   return (
                     <CollectionCard
-                      key={`col-${c.id}`}
+                      key={c.id}
                       collection={c}
                       categories={config?.categories || []}
-                      onOpen={(id) => handleOpenCollection(id)}
+                      collections={[]} // Nested editing disabled in grid view
+                      onOpen={(id) => onOpenCollection ? onOpenCollection(c) : handleOpenCollection(id)}
                       onChanged={() => onCollectionChanged?.()}
-                      onDeleted={() => onCollectionChanged?.()} collections={[]} />
+                      onDeleted={() => onCollectionChanged?.()}
+                    />
                   );
                 }
                 const model = it.data;
@@ -299,10 +303,11 @@ export function ModelGrid({
                     onMouseDown={(e) => {
                       if (isSelectionMode && e.shiftKey) e.preventDefault();
                     }}
-                    className={`flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
+                    className={`flex items-center gap-4 p-3 rounded-xl border hover:bg-accent/50 hover:border-primary/50 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md ${isSelectionMode && selectedModelIds.includes(model.id)
                       ? 'border-primary bg-primary/5'
                       : ''
                       }`}
+                    style={{ backgroundColor: isSelectionMode && selectedModelIds.includes(model.id) ? undefined : 'var(--card)' }}
                   >
                     {isSelectionMode && (
                       <div className="flex-shrink-0 pl-1">
@@ -310,7 +315,7 @@ export function ModelGrid({
                           checked={selectedModelIds.includes(model.id)}
                           onCheckedChange={() => { /* handled by click */ }}
                           onClick={(e: React.MouseEvent<HTMLButtonElement>) => handleCheckboxClick(e, model.id, index)}
-                          data-testid={`checkbox-${model.id}`}
+                          data-testid={`checkbox - ${model.id}`}
                           className="w-5 h-5"
                         />
                       </div>
@@ -322,7 +327,8 @@ export function ModelGrid({
                         <ImageWithFallback
                           src={resolveModelThumbnail(model)}
                           alt={model.name}
-                          className={`w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors ${isSelectionMode && selectedModelIds.includes(model.id)
+                          fallback={<Box className="w-8 h-8 text-primary/80" />}
+                          className={`w - 20 h - 20 object - cover rounded - lg border group - hover: border - primary / 30 transition-colors flex items-center justify-center bg-muted/30 ${isSelectionMode && selectedModelIds.includes(model.id)
                             ? 'border-primary'
                             : ''
                             }`}
@@ -516,14 +522,14 @@ export function ModelGrid({
 
                           {/* Tags */}
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {(model.tags || []).slice(0, 4).map((tag) => (
+                            {(Array.isArray(model.tags) ? model.tags : []).slice(0, 4).map((tag) => (
                               <Badge key={tag} variant="secondary" className="text-xs">
                                 {tag}
                               </Badge>
                             ))}
-                            {(model.tags || []).length > 4 && (
+                            {(Array.isArray(model.tags) ? model.tags : []).length > 4 && (
                               <Badge variant="outline" className="text-xs">
-                                +{(model.tags || []).length - 4}
+                                +{(Array.isArray(model.tags) ? model.tags : []).length - 4}
                               </Badge>
                             )}
                           </div>
@@ -567,9 +573,9 @@ export function ModelGrid({
                 ))}
               </>
             )}
-          </div>
+          </div >
         )}
-      </div>
+      </div >
 
       <CollectionEditorDialog
         open={isEditorOpen}
@@ -626,6 +632,6 @@ export function ModelGrid({
         }}
       />
 
-    </ViewLayout>
+    </ViewLayout >
   );
 }

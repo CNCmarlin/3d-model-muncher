@@ -45,6 +45,10 @@ import { useModelEdit } from "../hooks/hub/useModelEdit";
 import { useModelGallery } from "../hooks/hub/useModelGallery";
 import { useRelatedFiles } from "../hooks/hub/useRelatedFiles";
 import { useSiblings } from "../hooks/hub/useSiblings";
+import { useDeleteModel } from "../hooks/mutations/useDeleteModel";
+import { useUpdateCollection } from "../hooks/mutations/useUpdateCollection";
+import { useUpdateModel } from "../hooks/mutations/useUpdateModel";
+import { useModel } from "../hooks/queries/useModel";
 
 interface ModelHubViewProps {
   model: Model | null;
@@ -61,23 +65,96 @@ interface ModelHubViewProps {
   onFilterChange: (filters: any) => void;
   onSettingsClick: () => void;
   onImportClick?: (collectionId: string) => void;
+  onSelectModel: (model: Model) => void;
 }
 
 export function ModelHubView({
-  model,
+  model: initialModel,
   models,
   onClose,
-  onModelUpdate,
+  onModelUpdate, // Deprecated, kept for compatibility but should rely on query invalidation
   onDelete,
   defaultModelView,
   defaultModelColor,
   categories,
   onOpenCollection,
   collections,
+  onSelectModel
 }: ModelHubViewProps) {
+  // -- QUERY HOOKS --
+  // Use the ID from the prop, but fetch fresh data
+  const { data: fetchedModel } = useModel(initialModel?.id || '', {
+    initialData: initialModel || undefined,
+    enabled: !!initialModel?.id
+  });
 
-  // -- HOOKS --
-  const editLogic = useModelEdit({ model, onModelUpdate });
+  // Use fetchedModel if available, fall back to initialModel (prop)
+  const model = fetchedModel || initialModel;
+
+  // -- MUTATION HOOKS --
+  const updateModel = useUpdateModel();
+  const deleteModel = useDeleteModel();
+  const updateCollection = useUpdateCollection();
+
+  // We need to wrap the mutation in a handler that matches the old signature for now
+  // or update the hooks to expect the new signature.
+  // useModelEdit expects onModelUpdate. We'll shim it.
+  const handleModelUpdateParams = (updated: Model) => {
+    // CRITICAL FIX: Only send changed fields, not the entire model
+    // Compute diff between original model and updated model
+    const changes: Partial<Model> = {};
+
+    if (!model) return;
+
+    console.log('[ModelHubView] === DIFF DEBUG ===');
+    console.log('[ModelHubView] Original model category:', model.category);
+    console.log('[ModelHubView] Updated model category:', updated.category);
+    console.log('[ModelHubView] Original printSettings:', model.printSettings);
+    console.log('[ModelHubView] Updated printSettings:', updated.printSettings);
+
+    // Compare each field and only include if different
+    Object.keys(updated).forEach((key) => {
+      const modelKey = key as keyof Model;
+      const oldValue = model[modelKey];
+      const newValue = updated[modelKey];
+
+      // Skip read-only fields that shouldn't be in PATCH
+      if (['id', 'createdAt', 'updatedAt', 'pathHash', 'coverImagePath', 'collectionId', 'files'].includes(key)) {
+        return;
+      }
+
+      // Deep compare for objects/arrays
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        console.log(`[ModelHubView] Field changed: ${key}`, { old: oldValue, new: newValue });
+        (changes as any)[modelKey] = newValue;
+      }
+    });
+
+    console.log('[ModelHubView] Final changes object:', changes);
+    console.log('[ModelHubView] === END DIFF DEBUG ===');
+
+    // Only send update if there are actual changes
+    if (Object.keys(changes).length > 0) {
+      updateModel.mutate({
+        id: updated.id,
+        data: changes  // ← Send only changed fields!
+      });
+    }
+
+    // Optimistically update parent layout if needed via prop
+    onModelUpdate(updated);
+  };
+
+  // useModelEdit handles its own mutations. We just need to know when it's done to verify validity or close.
+  // We do NOT want to trigger *another* mutation here.
+  const handleEditComplete = (updatedModel: Model) => {
+    // Just update local view state if necessary, or rely on React Query invalidation.
+    // Do NOT call updateModel.mutate here.
+    if (onModelUpdate) onModelUpdate(updatedModel); // notify parent if needed
+  };
+
+  const editLogic = useModelEdit({ model, onModelUpdate: handleEditComplete });
+
   const galleryLogic = useModelGallery({
     model,
     editedModel: editLogic.editedModel,
@@ -85,8 +162,8 @@ export function ModelHubView({
     inlineCombined: editLogic.inlineCombined,
     defaultModelView
   });
-  const gcodeLogic = useGcodeHandler({ currentModel: model, onModelUpdate });
-  const uploadLogic = useDocumentUpload(model, onModelUpdate);
+  const gcodeLogic = useGcodeHandler({ currentModel: model, onModelUpdate: handleModelUpdateParams });
+  const uploadLogic = useDocumentUpload(model, handleModelUpdateParams);
   const siblingsLogic = useSiblings(model, collections, models);
   const relatedLogic = useRelatedFiles(model, editLogic.isEditing);
 
@@ -157,44 +234,37 @@ export function ModelHubView({
   };
 
   // Visibility Toggle
-  const handleToggleHide = async () => {
-    if (!activeModelNullable || !model) return; // Need base model for ID
+  const handleToggleHide = () => {
+    if (!activeModelNullable || !model) return;
     const newHiddenStatus = !activeModelNullable.hidden;
 
-    try {
-      const response = await fetch('/api/save-model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filePath: activeModelNullable.filePath,
-          id: activeModelNullable.id,
-          changes: { hidden: newHiddenStatus }
-        })
-      });
-
-      if (response.ok) {
+    updateModel.mutate({
+      id: model.id,
+      data: { hidden: newHiddenStatus }
+    }, {
+      onSuccess: () => {
         // If editing, update local state
         if (editLogic.isEditing && editLogic.editedModel) {
           editLogic.setEditedModel({ ...editLogic.editedModel, hidden: newHiddenStatus });
         }
-        // Always update parent
-        onModelUpdate({ ...model, hidden: newHiddenStatus });
+        // Always update parent/cache via standard flow, handled by QueryClient
         toast.success(newHiddenStatus ? "Model hidden" : "Model visible");
-      } else {
-        toast.error("Failed to update visibility");
       }
-    } catch (error) {
-      toast.error("Network error updating visibility");
-    }
+    });
   };
 
   const handleDeleteClick = () => setIsDeleteConfirmOpen(true);
 
   const confirmDelete = () => {
-    if (onDelete && model) {
-      onDelete(model);
+    if (model) {
+      deleteModel.mutate(model.id, {
+        onSuccess: () => {
+          onClose(); // Close the modal
+          // onDelete callback might be used by parent to clear selection
+          if (onDelete) onDelete(model);
+        }
+      });
       setIsDeleteConfirmOpen(false);
-      onClose();
     }
   };
 
@@ -204,12 +274,13 @@ export function ModelHubView({
       const toRelative = (p: string) => p ? p.replace(/^(\/)?models\//, '') : '';
       const mainPath = toRelative(activeModelNullable.modelUrl || activeModelNullable.filePath || '');
       const relatedPaths = (activeModelNullable.related_files || []).map(p => toRelative(p));
+      const imagePaths = (galleryLogic.allImages || []).map(p => toRelative(p));
 
       if (!mainPath) {
         toast.error("Could not determine main file path.");
         return;
       }
-      downloadAllFiles(mainPath, relatedPaths, activeModelNullable.name);
+      downloadAllFiles(mainPath, relatedPaths, imagePaths, activeModelNullable.name);
     }
   };
 
@@ -350,7 +421,7 @@ export function ModelHubView({
                   }}
 
                   defaultModelColor={defaultModelColor || undefined}
-                  onTogglePrinted={(val) => onModelUpdate({ ...model, isPrinted: val })}
+                  onTogglePrinted={(val) => handleModelUpdateParams({ ...model, isPrinted: val })}
                 />
               </div>
 
@@ -373,7 +444,7 @@ export function ModelHubView({
                     setRestoreOriginalDescription={editLogic.setRestoreOriginalDescription}
                     setEditedModel={editLogic.setEditedModel}
                     editedModel={editLogic.editedModel}
-                    onModelUpdate={(updated) => onModelUpdate({ ...model, ...updated })}
+                    onModelUpdate={(updated) => handleModelUpdateParams({ ...model, ...updated })}
                   />
                 </TabsContent>
 
@@ -390,7 +461,7 @@ export function ModelHubView({
                     setRelatedVerifyStatus={setRelatedVerifyStatus}
                     invalidRelated={editLogic.invalidRelated}
                     serverRejectedRelated={[]} // Not using currently
-                    onModelUpdate={onModelUpdate}
+                    onModelUpdate={handleModelUpdateParams}
                     triggerDownload={triggerDownload}
                     deriveMunchieCandidate={relatedLogic.deriveMunchieCandidate}
                     availableRelatedMunchie={relatedLogic.availableRelatedMunchie}
@@ -398,13 +469,17 @@ export function ModelHubView({
                     toast={toast}
                     handleViewDocument={galleryLogic.handleViewDocument}
                     handleTargetedUpload={uploadLogic.handleTargetedUpload}
+                    onAnalyze={gcodeLogic.handleReanalyzeGcode}
                   />
                 </TabsContent>
 
                 <TabsContent value="siblings" className="pt-6">
                   <SiblingsSection
                     siblings={siblingsLogic.siblings}
-                    onModelUpdate={onModelUpdate}
+                    onNavigate={(id) => {
+                      const target = models.find(m => m.id === id);
+                      if (target) onSelectModel(target);
+                    }}
                     detailsViewportRef={detailsViewportRef}
                   />
                 </TabsContent>
@@ -412,7 +487,7 @@ export function ModelHubView({
                 <TabsContent value="notes" className="pt-6">
                   <NotesSection
                     currentModel={model}
-                    onSave={(newNotes) => onModelUpdate({ ...model, notes: newNotes })}
+                    onSave={(newNotes) => handleModelUpdateParams({ ...model, notes: newNotes })}
                   />
                 </TabsContent>
               </Tabs>
@@ -556,10 +631,20 @@ export function ModelHubView({
 
       {/* DIALOGS */}
       {isAddToCollectionOpen && model && (
-        <AddToCollectionDialog modelId={model.id} collections={collections} onClose={() => setIsAddToCollectionOpen(false)} />
+        <AddToCollectionDialog
+          modelId={model.id}
+          collections={collections}
+          onClose={() => setIsAddToCollectionOpen(false)}
+          updateCollection={updateCollection}
+        />
       )}
       {isRemoveFromCollectionOpen && model && (
-        <RemoveFromCollectionDialog modelId={model.id} collections={collections} onClose={() => setIsRemoveFromCollectionOpen(false)} />
+        <RemoveFromCollectionDialog
+          modelId={model.id}
+          collections={collections}
+          onClose={() => setIsRemoveFromCollectionOpen(false)}
+          updateCollection={updateCollection}
+        />
       )}
 
       {model && (
@@ -569,7 +654,7 @@ export function ModelHubView({
           initialFolder={model.filePath}
           targetModel={model}
           onIsMovingChange={setIsMoving}
-          onUploaded={(updatedModel) => onModelUpdate(updatedModel || model)}
+          onUploaded={(updatedModel) => handleModelUpdateParams(updatedModel || model)}
         />
       )}
 
@@ -603,7 +688,8 @@ export function ModelHubView({
   );
 }
 
-function AddToCollectionDialog({ modelId, collections, onClose }: { modelId: string, collections: Collection[], onClose: () => void }) {
+// Updated Dialogs using Mutation Hook
+function AddToCollectionDialog({ modelId, collections, onClose, updateCollection }: { modelId: string, collections: Collection[], onClose: () => void, updateCollection: any }) {
   const [target, setTarget] = useState<string | null>(null);
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -618,19 +704,17 @@ function AddToCollectionDialog({ modelId, collections, onClose }: { modelId: str
           </Select>
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button disabled={!target} onClick={async () => {
+            <Button disabled={!target || updateCollection.isPending} onClick={() => {
               const col = collections.find(c => c.id === target);
               if (!col) return;
               const nextIds = Array.from(new Set([...(col.modelIds || []), modelId]));
-              const resp = await fetch('/api/collections', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...col, modelIds: nextIds })
+
+              updateCollection.mutate({
+                id: col.id,
+                data: { modelIds: nextIds }
+              }, {
+                onSuccess: () => onClose()
               });
-              if (resp.ok) {
-                toast.success('Added to collection');
-                onClose();
-              }
             }}>Add</Button>
           </div>
         </div>
@@ -639,7 +723,7 @@ function AddToCollectionDialog({ modelId, collections, onClose }: { modelId: str
   );
 }
 
-function RemoveFromCollectionDialog({ modelId, collections, onClose }: { modelId: string, collections: Collection[], onClose: () => void }) {
+function RemoveFromCollectionDialog({ modelId, collections, onClose, updateCollection }: { modelId: string, collections: Collection[], onClose: () => void, updateCollection: any }) {
   const [target, setTarget] = useState<string | null>(null);
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -656,19 +740,17 @@ function RemoveFromCollectionDialog({ modelId, collections, onClose }: { modelId
           </Select>
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button variant="destructive" disabled={!target} onClick={async () => {
+            <Button variant="destructive" disabled={!target || updateCollection.isPending} onClick={() => {
               const col = collections.find(c => c.id === target);
               if (!col) return;
               const nextIds = (col.modelIds || []).filter(id => id !== modelId);
-              const resp = await fetch('/api/collections', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...col, modelIds: nextIds })
+
+              updateCollection.mutate({
+                id: col.id,
+                data: { modelIds: nextIds }
+              }, {
+                onSuccess: () => onClose()
               });
-              if (resp.ok) {
-                toast.success('Removed from collection');
-                onClose();
-              }
             }}>Remove</Button>
           </div>
         </div>

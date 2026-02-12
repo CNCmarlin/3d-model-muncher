@@ -13,13 +13,13 @@ export interface Collection {
   modelIds: string[]; // The "Master List" of all models in this project
   childCollectionIds?: string[];
   parentId?: string | null;
-  
+
   // Visuals
   coverModelId?: string;
   coverImage?: string;
   images?: string[]; // Gallery images
   documents?: string[];
-  
+
   // Metadata
   category?: string;
   tags?: string[];
@@ -29,4 +29,9 @@ export interface Collection {
   // [NEW] Project Features
   type?: 'standard' | 'project';
   buildPlates?: BuildPlate[];
+
+  // [DB Mode] Aggregation counts
+  _count?: {
+    models: number;
+  };
 }

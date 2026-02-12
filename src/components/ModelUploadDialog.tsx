@@ -166,18 +166,16 @@ export const ModelUploadDialog: React.FC<ModelUploadDialogProps> = ({ isOpen, on
           authoritativeModel = moveData.model;
         }
 
-        // 2. Upload files into that specific folder
-        for (const file of files) {
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('modelId', authoritativeModel.id);
-          formData.append('filePath', authoritativeModel.filePath);
+        // 2. Upload files into that specific folder (Batch)
+        const formData = new FormData();
+        files.forEach(file => formData.append('files', file));
+        formData.append('modelId', authoritativeModel.id);
+        formData.append('filePath', authoritativeModel.filePath);
 
-          const resp = await fetch('/api/models/upload-document', { method: 'POST', body: formData });
-          if (resp.ok) {
-            const result = await resp.json();
-            if (result.success) authoritativeModel = result.model;
-          }
+        const resp = await fetch('/api/models/upload-document', { method: 'POST', body: formData });
+        if (resp.ok) {
+          const result = await resp.json();
+          if (result.success) authoritativeModel = result.model;
         }
 
         toast.success("Project updated successfully");

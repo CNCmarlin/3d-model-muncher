@@ -71,19 +71,42 @@ export function useFilteredModels({
     }, [lastFilters]);
 
     // Recursively get all model IDs from a collection and its children
-    const getRecursiveModelIds = (col: Collection, allCols: Collection[]): Set<string> => {
-        const ids = new Set(col.modelIds || []);
-        const children = allCols.filter(c => c.parentId === col.id);
-        for (const child of children) {
-            const childIds = getRecursiveModelIds(child, allCols);
-            childIds.forEach(id => ids.add(id));
-        }
-        return ids;
+    // Database-first: Collect all descendant collection IDs, then filter models
+    const getRecursiveModelIds = (col: Collection, allCols: Collection[], allModels: Model[]): Set<string> => {
+        // Step 1: Recursively collect this collection ID and all descendant collection IDs
+        const collectDescendantIds = (c: Collection): Set<string> => {
+            const ids = new Set<string>([c.id]);
+            const children = allCols.filter(child => child.parentId === c.id);
+            for (const child of children) {
+                const childIds = collectDescendantIds(child);
+                childIds.forEach(id => ids.add(id));
+            }
+            return ids;
+        };
+
+        const allDescendantCollectionIds = collectDescendantIds(col);
+
+        // Step 2: Find all models whose collectionId matches ANY descendant
+        const modelIds = new Set<string>();
+        allModels.forEach(m => {
+            // Check if model's collection array contains any descendant collection ID
+            if (m.collections?.some(cid => allDescendantCollectionIds.has(cid))) {
+                modelIds.add(m.id);
+            }
+        });
+
+        return modelIds;
     };
 
     const collectionBaseModels = useMemo(() => {
         if (activeCollection) {
-            const idSet = getRecursiveModelIds(activeCollection, collections);
+            // LEGACY MODE: If collection has modelIds array, return all models
+            // CollectionGrid will filter by the modelIds array
+            if (activeCollection.modelIds && Array.isArray(activeCollection.modelIds)) {
+                return models.filter(m => activeCollection.modelIds.includes(m.id));
+            }
+            // DATABASE MODE: Filter by model.collections array
+            const idSet = getRecursiveModelIds(activeCollection, collections, models);
             return models.filter(m => idSet.has(m.id));
         }
         return models;
@@ -120,14 +143,26 @@ export function useFilteredModels({
 
         const filtered = applyFiltersToModels(base, effectiveFilters);
         const sorted = sortModels(filtered, currentSortBy);
+
+        // DEBUG
+        console.log('[useFilteredModels] Debug:', {
+            activeCollectionId: activeCollection?.id,
+            baseModelsLength: base.length,
+            filteredLength: filtered.length,
+            sortedLength: sorted.length,
+            isSelectionMode
+        });
+
         setFilteredModels(sorted);
 
         // Sync selections
+        // STICKY SELECTION (Phase 12):
+        // We validate selections against ALL currently loaded models, not just the filtered subset.
+        // This allows "Collection A" selections to persist when you navigate to "Collection B".
+        // We only remove a selection if the model ID no longer exists in the 'models' array (e.g. deleted).
         if (isSelectionMode) {
-            // This can be annoying if it deselects things while typing, so be careful.
-            // Keeping existing selection if valid.
             const validSelections = selectedModelIds.filter(id =>
-                sorted.some(model => model.id === id)
+                models.some(model => model.id === id)
             );
             // Only update if different to avoid loop
             if (validSelections.length !== selectedModelIds.length) {

@@ -62,10 +62,30 @@ export class ProjectService {
         }
       } catch (e) { /* Ignore malformed JSONs */ }
     }
+    // --- INHERITANCE LOGIC: Load Metadata from Boss File ---
+    if (existingBossFile) {
+      try {
+        const bossJsonPath = path.join(destDir, ProjectService.getMunchieFileName(existingBossFile));
+        if (fs.existsSync(bossJsonPath)) {
+          const bossData = JSON.parse(fs.readFileSync(bossJsonPath, 'utf8'));
 
-    // --- NEW: FOLDER ASSET DISCOVERY ---
+          // Inherit missing fields from the Project Root
+          if (!meta.description && bossData.description) meta.description = bossData.description;
+          if ((!meta.tags || meta.tags.length === 0) && bossData.tags) meta.tags = bossData.tags;
+          if (!meta.license && bossData.license) meta.license = bossData.license;
+          if (!meta.creatorName && bossData.designer) meta.creatorName = bossData.designer;
+          if (!meta.public_url && bossData.source) meta.public_url = bossData.source;
+
+          // Also ensure the ID is consistent if we are in "generic" mode (local uploads)
+          if (mode === 'generic' && !meta.id && bossData.id) {
+            meta.id = bossData.id.replace(/-part-\d+$/, '').replace(/-thumb$/, '');
+          }
+        }
+      } catch (e) { console.warn("Failed to inherit boss metadata", e); }
+    }
     // Scan the physical folder for images and documentation to include in metadata
     const allFilesOnDisk = fs.readdirSync(destDir);
+
 
     // 1. Identify Images (Excluding thumbnails and backups)
     const discoveredImages = allFilesOnDisk
@@ -73,13 +93,19 @@ export class ProjectService {
       .filter(f => !f.includes('-thumb.png') && !f.includes('.bak'))
       .map(f => `${relativeWebFolder}/${f}`.replace(/\/\//g, '/'));
 
+
+
     // 2. Identify Documents/Related Files (Excluding munchies and backups)
     const discoveredRelated = allFilesOnDisk
       .filter(f => !/\.(jpg|jpeg|png|webp|gif|stl|3mf|json)$/i.test(f))
       .filter(f => !f.includes('.bak') && !f.startsWith('.'))
       .map(f => `${destRelPath}/${f}`.replace(/\/\//g, '/'));
 
+
+
     // --- 6. GENERATE STANDARDIZED IDENTITIES ---
+
+
     for (let i = 0; i < importedFiles.length; i++) {
       const currentFile = importedFiles[i];
       const isMain = options.primaryModelFile
@@ -89,8 +115,6 @@ export class ProjectService {
           : (mode === 'thingiverse' ? i === 0 : (currentFile.includes(meta.id) || i === 0))
         );
 
-      const cleanName = sanitize(currentFile);
-      const sourcePath = path.join(destDir, cleanName);
       const modelGallery = [...localImagePaths];
 
       // Logic Switch: Handle ID and naming prefixes
@@ -98,53 +122,129 @@ export class ProjectService {
         ? (isMain ? `tv-${meta.id}` : `tv-${meta.id}-${i}`)
         : (isMain ? meta.id : `${meta.id}-part-${i}`);
 
-      const displayName = isMain ? meta.name : `${meta.name} (${currentFile})`;
+      const displayName = meta.name; // User requested static Project Name for all files
 
+      // FLATTENED METADATA STRATEGY: 
+      // All files get the full project description and metadata.
+      // This allows any file to be promoted to "Main" without losing context.
       const description = meta.description ||
         (mode === 'thingiverse' ? `Imported from Thingiverse: ${meta.public_url}` : 'Local Project');
-
-      const modelIdentity = createStandardModelIdentity({
-        id: modelId,
-        name: displayName,
-        hidden: isMain ? !isGlobalRoot : true,
-        isRelatedPart: !isMain,
-        isProjectRoot: isMain,
-        description: description,
-        filePath: `${destRelPath}/${currentFile}`,
-        modelUrl: `${relativeWebFolder}/${currentFile}`.replace(/\/\//g, '/'),
-        license: meta.license || 'Unknown',
-        source: meta.public_url || 'Local',
-        designer: meta.creatorName || 'Unknown',
-        tags: meta.tags || [],
-        parsedImages: Array.from(new Set([...modelGallery, ...discoveredImages])),
-        related_files: [
-          ...importedFiles.map(f => `${destRelPath}/${f}`),
-          ...discoveredRelated
-        ],
-        userDefined: {
-          thumbnail: 'parsed:0',
-          imageOrder: modelGallery.map((_, idx) => `parsed:${idx}`),
-          description: description,
-          images: []
-        }
-      });
 
       // USE HELPER HERE
       const jsonFileName = ProjectService.getMunchieFileName(currentFile);
       const jsonPath = path.join(destDir, jsonFileName);
+
+      let modelIdentity: any;
+
+      if (fs.existsSync(jsonPath)) {
+        // MERGE STRATEGY: Preserve existing metadata
+        try {
+          const existing = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+
+          // Update computed lists (images/docs) but keep user overrides
+          const allImages = new Set([...(existing.parsedImages || []), ...modelGallery, ...discoveredImages]);
+          const allDocs = new Set([...(existing.related_files || []), ...importedFiles.map(f => `${destRelPath}/${f}`), ...discoveredRelated]);
+
+          modelIdentity = {
+            ...existing,
+            id: modelId, // FORCE ID update to match calculate role (Main vs Part)
+            isProjectRoot: isMain, // FORCE role update
+            isRelatedPart: !isMain,
+            hidden: isMain ? !isGlobalRoot : true,
+            parsedImages: Array.from(allImages),
+            related_files: Array.from(allDocs)
+            // Do NOT reset userDefined, name, description, tags, etc.
+          };
+          if (!modelIdentity.userDefined) modelIdentity.userDefined = {};
+
+        } catch (e) {
+          // Fallback if JSON broken
+          modelIdentity = createStandardModelIdentity({
+            id: modelId,
+            name: displayName,
+            hidden: isMain ? !isGlobalRoot : true,
+            isRelatedPart: !isMain,
+            isProjectRoot: isMain,
+            description: description,
+            filePath: `${destRelPath}/${currentFile}`,
+            modelUrl: `${relativeWebFolder}/${currentFile}`.replace(/\/\//g, '/'),
+            // FLATTENED METADATA: All files get project license/source/designer/tags
+            license: meta.license || 'Unknown',
+            source: meta.public_url || 'Local',
+            designer: meta.creatorName || 'Unknown',
+            tags: meta.tags || [],
+            parsedImages: Array.from(new Set([...modelGallery, ...discoveredImages])),
+            related_files: [
+              ...importedFiles.map(f => `${destRelPath}/${f}`),
+              ...discoveredRelated
+            ],
+            userDefined: {
+              thumbnail: 'parsed:0',
+              imageOrder: modelGallery.map((_, idx) => `parsed:${idx}`),
+              description: description,
+              images: []
+            }
+          });
+        }
+      } else {
+        // CREATE NEW
+        modelIdentity = createStandardModelIdentity({
+          id: modelId,
+          name: displayName,
+          hidden: isMain ? !isGlobalRoot : true,
+          isRelatedPart: !isMain,
+          isProjectRoot: isMain,
+          description: description,
+          filePath: `${destRelPath}/${currentFile}`,
+          modelUrl: `${relativeWebFolder}/${currentFile}`.replace(/\/\//g, '/'),
+          license: meta.license || 'Unknown',
+          source: meta.public_url || 'Local',
+          designer: meta.creatorName || 'Unknown',
+          tags: meta.tags || [],
+          parsedImages: Array.from(new Set([...modelGallery, ...discoveredImages])),
+          related_files: [
+            ...importedFiles.map(f => `${destRelPath}/${f}`),
+            ...discoveredRelated
+          ],
+          userDefined: {
+            thumbnail: 'parsed:0',
+            imageOrder: modelGallery.map((_, idx) => `parsed:${idx}`),
+            description: description,
+            images: []
+          }
+        });
+      }
+
       fs.writeFileSync(jsonPath, JSON.stringify(modelIdentity, null, 2));
 
       // --- ROBUST AUTO-THUMBNAIL GENERATION ---
       try {
-        const thumbName = cleanName + '-thumb.png';
-        const thumbPath = path.join(destDir, thumbName);
-        const BASE_URL = process.env.HOST_URL || `http://127.0.0.1:${process.env.PORT || 9000}`;
+        const cleanName = sanitize(currentFile); // Sanitized name (underscores)
+        const rawName = currentFile;             // Raw name (spaces etc)
+
+        let thumbName = cleanName + '-thumb.png';
+        let thumbPath = path.join(destDir, thumbName);
+
+        // 1. Check if a thumbnail exists with the RAW filename (e.g. from a move)
+        const rawThumbName = rawName + '-thumb.png';
+        const rawThumbPath = path.join(destDir, rawThumbName);
+
+        if (fs.existsSync(rawThumbPath)) {
+          // Prefer the existing raw-named thumbnail
+          thumbName = rawThumbName;
+          thumbPath = rawThumbPath;
+        }
+
+        const BASE_URL = process.env.HOST_URL || `http://127.0.0.1:${process.env.PORT || 3001}`;
+        const sourcePath = path.join(destDir, currentFile); // FIX: Use actual filename for source
 
         // UPDATED: Check for exact match on disk before rendering
         if (fs.existsSync(thumbPath)) {
-          console.log(`⏭️ Skipping render; thumbnail already exists: ${thumbName}`);
+          // Skipping render; thumbnail already exists
         } else {
-          console.log(`📸 Generating 3D Render for: ${cleanName}`);
+          // Use sanitized name for NEW thumbnails
+          thumbName = cleanName + '-thumb.png';
+          thumbPath = path.join(destDir, thumbName);
           await generateThumbnail(sourcePath, thumbPath, BASE_URL, undefined, modelsRoot);
         }
 
@@ -155,9 +255,18 @@ export class ProjectService {
 
         if (!freshJson.parsedImages.includes(relativeThumbUrl)) {
           freshJson.parsedImages.unshift(relativeThumbUrl);
-          freshJson.userDefined.thumbnail = 'parsed:0';
-          freshJson.thumbnail = 'parsed:0';
-          freshJson.userDefined.imageOrder = freshJson.parsedImages.map((_: any, idx: any) => `parsed:${idx}`);
+
+          // Only reset userDefined thumbnail if it was NOT set or was invalid
+          if (!freshJson.userDefined.thumbnail || freshJson.userDefined.thumbnail === 'parsed:0') {
+            freshJson.userDefined.thumbnail = 'parsed:0';
+            freshJson.thumbnail = 'parsed:0';
+
+            // Regenerate imageOrder only if needed
+            const currentOrder = freshJson.userDefined.imageOrder || [];
+            if (currentOrder.length === 0 || (currentOrder.length === 1 && currentOrder[0] === 'parsed:0')) {
+              freshJson.userDefined.imageOrder = freshJson.parsedImages.map((_: any, idx: any) => `parsed:${idx}`);
+            }
+          }
 
           // Only write back if we actually modified the JSON
           fs.writeFileSync(jsonPath, JSON.stringify(freshJson, null, 2));

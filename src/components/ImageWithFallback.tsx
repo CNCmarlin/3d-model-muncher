@@ -1,15 +1,19 @@
-import { useState } from 'react'
+import { useState } from 'react';
 
 const ERROR_IMG_SRC = '/images/placeholder.svg'
 
-export function ImageWithFallback(props: React.ImgHTMLAttributes<HTMLImageElement>) {
+export interface ImageWithFallbackProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+  fallback?: React.ReactNode;
+}
+
+export function ImageWithFallback(props: ImageWithFallbackProps) {
   const [didError, setDidError] = useState(false)
 
   const handleError = () => {
     setDidError(true)
   }
 
-  const { src, alt, style, className, ...rest } = props
+  const { src, alt, style, className, fallback, ...rest } = props
 
   // Show placeholder if src is empty
   if (!src) {
@@ -19,7 +23,7 @@ export function ImageWithFallback(props: React.ImgHTMLAttributes<HTMLImageElemen
         style={style}
       >
         <div className="flex items-center justify-center w-full h-full">
-          <img src={ERROR_IMG_SRC} alt="No image available" {...rest} />
+          {fallback ? fallback : <img src={ERROR_IMG_SRC} alt="No image available" {...rest} />}
         </div>
       </div>
     )
@@ -31,7 +35,7 @@ export function ImageWithFallback(props: React.ImgHTMLAttributes<HTMLImageElemen
       style={style}
     >
       <div className="flex items-center justify-center w-full h-full">
-        <img src={ERROR_IMG_SRC} alt="Error loading image" {...rest} data-original-url={src} />
+        {fallback ? fallback : <img src={ERROR_IMG_SRC} alt="Error loading image" {...rest} data-original-url={src} />}
       </div>
     </div>
   ) : (

@@ -73,7 +73,7 @@ export function useModelGallery({
             setActive3DFile(normalizeModelPath(rawPath));
             // setActiveDocUrl(null); // ModelHubView didn't reset doc url? Should probably.
         }
-    }, [model?.id, defaultModelView]);
+    }, [model?.id, model?.filePath, model?.modelUrl, defaultModelView]);
 
     const handleViewDocument = (url: string) => {
         setActiveDocUrl(url);

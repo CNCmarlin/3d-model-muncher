@@ -1,0 +1,118 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------
+// 1. Collections (Folders)
+// ---------------------------------------------------------
+model Collection {
+  id        String   @id @default(cuid())
+  name      String
+  
+  // Hierarchy
+  parentId  String?  @map("parent_id")
+  parent    Collection? @relation("ParentChild", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Collection[] @relation("ParentChild")
+
+  // Lookup & Metadata
+  pathHash  String?  @unique @map("path_hash") // For fast ingestor lookup
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  coverImagePath String? @map("cover_image_path")
+
+  // Relations
+  models    Model[]
+
+  @@map("collections")
+}
+
+// ---------------------------------------------------------
+// 2. Models (The Items)
+// ---------------------------------------------------------
+model Model {
+  id              String   @id @default(cuid())
+  collectionId    String   @map("collection_id")
+  collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  
+  name            String
+  description     String?
+  license         String?
+  designer        String?  // Model creator/author
+  
+  // Stats / Metadata
+  printTime       Int?     @map("print_time_seconds")
+  filamentUsage   Float?   @map("filament_usage_grams")
+  
+  // Organization
+  isPrinted       Boolean  @default(false) @map("is_printed")
+  isFavorite      Boolean  @default(false) @map("is_favorite")
+  isDeleted       Boolean  @default(false) @map("is_deleted")
+  
+  // Navigation / Disk Linkage
+  pathHash        String?  @unique @map("path_hash")
+  coverImagePath  String?  @map("cover_image_path")
+  metadata        String?  @map("metadata_json") // Stores legacy userDefined JSON
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  files           ModelFile[]
+  tags            ModelTag[]
+
+  @@index([collectionId]) // Index for filtering by collection
+  @@map("models")
+}
+
+// ---------------------------------------------------------
+// 3. Model Files (Assets)
+// ---------------------------------------------------------
+model ModelFile {
+  id          String   @id @default(cuid())
+  modelId     String   @map("model_id")
+  model       Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  
+  filename    String   // "head.stl"
+  filePath    String   @map("file_path") // Relative path for streaming
+  size        BigInt?  @map("size_bytes") // Access as BigInt in JS/TS
+  
+  // Function
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  isSupported Boolean  @default(false) @map("is_supported")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("model_files")
+}
+
+// ---------------------------------------------------------
+// 4. Tags (Many-to-Many)
+// ---------------------------------------------------------
+model Tag {
+  id     Int        @id @default(autoincrement())
+  name   String     @unique
+  models ModelTag[]
+
+  @@map("tags")
+}
+
+model ModelTag {
+  modelId String @map("model_id")
+  tagId   Int @map("tag_id")
+
+  model   Model @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  tag     Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([modelId, tagId])
+  @@map("model_tags")
+}

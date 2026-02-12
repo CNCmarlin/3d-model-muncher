@@ -8,11 +8,21 @@ const multer = require('multer');
 try { require('dotenv').config(); } catch (e) { /* dotenv not installed or not needed in production */ }
 const { scanDirectory } = require('./dist-backend/utils/threeMFToJson');
 const { ConfigManager } = require('./dist-backend/utils/configManager');
-const { scanDirectory: scanCollections } = require('./server-utils/collectionScanner');
-const collectionScanner = require('./server-utils/collectionScanner');
+const routeSelector = require('./server-utils/routeSelector'); // Phase 3: Dual-Running System
+
+// Phase 3: Load appropriate collection scanner based on mode
+const collectionScanner = routeSelector.getCollectionScanner();
+const { scanDirectory: scanCollections } = collectionScanner;
+
 const { generateThumbnail } = require('./dist-backend/utils/thumbnailGenerator');
 const app = express();
 const PORT = process.env.PORT || 3001;
+// Ensure downstream modules (like ProjectService) see the correct port
+process.env.PORT = PORT;
+
+// Phase 3: Log current backend mode on startup
+routeSelector.logStartupMode();
+
 let activeThumbnailJob = null; // Stores the AbortController for cancellation
 
 const {
@@ -25,7 +35,9 @@ const {
 } = require('./server-utils/dataAccess');
 const { collectionQueue } = require('./server-utils/sharedQueue');
 
-const modelsRouter = require('./server/routes/models'); // New Models Router
+// Phase 3: Load appropriate models router based on mode
+const modelsRouter = routeSelector.getModelRoutes();
+
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const COLLECTION_IMAGES_DIR = path.join(DATA_DIR, 'images', 'collections');
 const COLLECTION_DOCS_DIR = path.join(DATA_DIR, 'documents', 'collections');
@@ -187,12 +199,20 @@ app.use('/models', (req, res, next) => {
 
 // --- Mount Routes ---
 app.use('/api', require('./server/routes/system'));
-app.use('/api/collections', require('./server/routes/collections'));
+
+// Phase 3: Load appropriate collection routes based on mode
+const collectionsRouter = routeSelector.getCollectionRoutes();
+app.use('/api', collectionsRouter); // Database routes have /collections prefix, legacy routes will be updated
+
 app.use('/api', require('./server/routes/imports'));
 app.use('/api/admin', require('./server/routes/admin'));
 app.use('/api', require('./server/routes/config')); // New Config Router
 app.use('/api', require('./server/routes/integrations')); // New Integrations Router
 app.use('/api', modelsRouter); // Models Router
+
+// Tags Router (extracts from munchie files in legacy, from DB in database mode)
+const tagsRouter = routeSelector.getTagRoutes();
+app.use('/api', tagsRouter);
 
 // [FIX] Explicitly serve the capture.html file for Puppeteer
 app.get('/capture.html', (req, res) => {

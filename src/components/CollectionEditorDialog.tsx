@@ -1,18 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Image as ImageIcon, Images, Loader2, Save, Star, Trash2, Upload, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from "sonner";
+import { Category } from "../types/category";
+import { Collection } from "../types/collection";
+import { Model } from "../types/model";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import { Button } from "./ui/button";
+import { Checkbox } from "./ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
+import { ScrollArea } from "./ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Textarea } from "./ui/textarea";
-import { Checkbox } from "./ui/checkbox";
-import { Loader2, Save, Trash2, Folder, FolderOpen, ChevronRight, ChevronDown, FolderPlus, Upload, X, Image as ImageIcon, Images, Star } from "lucide-react";
-import { toast } from "sonner";
-import { Collection } from "../types/collection";
-import { Category } from "../types/category";
-import { Model } from "../types/model";
-import { ScrollArea } from "./ui/scroll-area";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 
 interface CollectionEditorDialogProps {
   collection: Collection | null;
@@ -126,6 +126,7 @@ export function CollectionEditorDialog({
   const [isLoading, setIsLoading] = useState(false);
 
   // [NEW] Local state for enhanced features
+  const [mode, setMode] = useState<'manual' | 'folder'>(initialMode);
   const [createOnDisk, setCreateOnDisk] = useState(false);
   const [parentId, setParentId] = useState<string>("root");
 
@@ -179,6 +180,7 @@ export function CollectionEditorDialog({
       setParentId(collection.parentId || "root");
       setCreateOnDisk(false);
     } else {
+      setMode(initialMode);
       setParentId(defaultParentId || "root");
       setCreateOnDisk(initialMode === 'folder');
     }
@@ -271,20 +273,20 @@ export function CollectionEditorDialog({
           console.log("[Dialog] Server response:", data);
 
           if (res.ok && data.success && data.imagePath) {
-             newImagePaths.push(data.imagePath);
+            newImagePaths.push(data.imagePath);
           }
         } catch (e) { console.error("[Dialog] Error:", e); }
       }
 
       if (newImagePaths.length > 0) {
         toast.success(`Uploaded ${newImagePaths.length} images`);
-        
+
         // Update local state
         const updatedImages = [...(localCollection.images || []), ...newImagePaths];
         const updatedCol = { ...localCollection, images: updatedImages };
-        
+
         setLocalCollection(updatedCol);
-        await onSave(updatedCol); 
+        await onSave(updatedCol);
       }
 
       setIsLoading(false);
@@ -314,7 +316,7 @@ export function CollectionEditorDialog({
       parentId: parentId === "root" ? null : parentId,
       createOnDisk: !isEditing && createOnDisk,
       // Clear images if creating new (they are pending), otherwise keep existing
-      images: isEditing ? localCollection.images : [] 
+      images: isEditing ? localCollection.images : []
     };
 
     try {
@@ -328,7 +330,7 @@ export function CollectionEditorDialog({
           formData.append('image', file);
           try {
             await fetch(`/api/collections/${savedCollection.id}/images`, { method: 'POST', body: formData });
-          } catch(e) { console.error("Pending upload failed", e); }
+          } catch (e) { console.error("Pending upload failed", e); }
         }
       }
 
@@ -343,10 +345,10 @@ export function CollectionEditorDialog({
           if (data.success && data.imagePath) {
             // Patch the collection to set coverImage
             // We need to fetch current state first or just patch
-            const patchData = { 
-               ...savedCollection, 
-               coverImage: data.imagePath,
-               // Re-fetch images list if possible, or trust backend
+            const patchData = {
+              ...savedCollection,
+              coverImage: data.imagePath,
+              // Re-fetch images list if possible, or trust backend
             };
             await fetch(`/api/collections`, {
               method: 'POST',
@@ -370,12 +372,12 @@ export function CollectionEditorDialog({
   const handleDeleteImage = async (imgUrl: string) => {
     // Optimistic UI update
     const updatedImages = (localCollection.images || []).filter(img => img !== imgUrl);
-    
+
     // If cover was removed, clear it
     const updatedCover = localCollection.coverImage === imgUrl ? undefined : localCollection.coverImage;
-    
-    const updatedCollection = { 
-      ...localCollection, 
+
+    const updatedCollection = {
+      ...localCollection,
       images: updatedImages,
       coverImage: updatedCover
     };
@@ -388,16 +390,16 @@ export function CollectionEditorDialog({
         // 1. Attempt to delete physical file (optional, but good for cleanup)
         const filename = imgUrl.split('/').pop();
         if (filename) {
-           await fetch(`/api/collections/${localCollection.id}/images/${filename}`, { method: 'DELETE' });
+          await fetch(`/api/collections/${localCollection.id}/images/${filename}`, { method: 'DELETE' });
         }
-        
+
         // 2. Update collection record
         await onSave(updatedCollection);
         toast.success("Image removed");
       } catch (e) {
         console.error("Error deleting image:", e);
         // Even if file delete fails, we should save the collection state
-        await onSave(updatedCollection); 
+        await onSave(updatedCollection);
       }
     }
   };
@@ -424,31 +426,49 @@ export function CollectionEditorDialog({
         <div className="p-6 pb-2">
           <DialogHeader>
             <DialogTitle>
-              {isEditing 
-                ? `Edit: ${collection?.name}` 
-                : (initialMode === 'folder' ? 'New Collection Folder' : 'Manual Import')}
+              {isEditing
+                ? `Edit: ${collection?.name}`
+                : 'Add Collection'}
             </DialogTitle>
             <DialogDescription>
-              {isEditing ? 'Update details, manage visuals, or organize files.' : 'Create a new collection.'}
+              {isEditing ? 'Update details, manage visuals, or organize files.' : 'Create a new collection or import from existing folders.'}
             </DialogDescription>
           </DialogHeader>
+
+          {/* [NEW] Mode Toggle for Create */}
+          {!isEditing && (
+            <div className="flex gap-2 mt-4 p-1 bg-muted rounded-lg">
+              <button
+                className={`flex-1 text-sm font-medium py-1.5 px-3 rounded-md transition-all ${mode === 'folder' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => { setMode('folder'); setCreateOnDisk(true); }}
+              >
+                Create New
+              </button>
+              <button
+                className={`flex-1 text-sm font-medium py-1.5 px-3 rounded-md transition-all ${mode === 'manual' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                onClick={() => { setMode('manual'); setCreateOnDisk(false); }}
+              >
+                Import Existing
+              </button>
+            </div>
+          )}
         </div>
 
         {/* SCROLLABLE CONTENT */}
         <ScrollArea className="flex-1 min-h-0 w-full px-6">
           <div className="py-4 space-y-6">
-            
+
             {/* NAME & PARENT GRID */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
-                <Input 
-                  id="name" 
-                  value={localCollection.name} 
-                  onChange={handleInputChange} 
-                  required 
-                  disabled={isLoading} 
-                  placeholder="Collection Name" 
+                <Input
+                  id="name"
+                  value={localCollection.name}
+                  onChange={handleInputChange}
+                  required
+                  disabled={isLoading}
+                  placeholder="Collection Name"
                 />
               </div>
 
@@ -471,43 +491,43 @@ export function CollectionEditorDialog({
             </div>
 
             {/* CREATE ON DISK TOGGLE (New Folder Mode) */}
-            {!isEditing && initialMode === 'folder' && (
+            {!isEditing && mode === 'folder' && (
               <div className="flex items-start space-x-2 border p-3 rounded-md bg-muted/20">
-                <Checkbox 
-                  id="create-disk" 
-                  checked={createOnDisk} 
-                  onCheckedChange={(c) => setCreateOnDisk(!!c)} 
+                <Checkbox
+                  id="create-disk"
+                  checked={createOnDisk}
+                  onCheckedChange={(c) => setCreateOnDisk(!!c)}
                 />
                 <div className="grid gap-1.5 leading-none">
                   <Label htmlFor="create-disk" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
-                    <FolderPlus className="h-3.5 w-3.5 text-primary" /> 
+                    <FolderPlus className="h-3.5 w-3.5 text-primary" />
                     Create Physical Folder
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Creates folder at <code>/{parentId !== 'root' ? '.../' : ''}{localCollection.name || '...'}</code>
+                    Creates folder at <code>/{parentId !== 'root' ? '.../' : ''}{truncateMiddle(localCollection.name || '...', 20)}</code>
                   </p>
                 </div>
               </div>
             )}
 
             {/* MANUAL IMPORT SELECTION */}
-            {(!isEditing && initialMode === 'manual') && (
+            {(!isEditing && mode === 'manual') && (
               <Accordion type="single" collapsible className="w-full border rounded-md px-2">
                 <AccordionItem value="folder-import" className="border-0">
                   <AccordionTrigger className="hover:no-underline py-2">
                     <div className="flex items-center gap-2 text-sm font-medium">
-                      <Folder className="h-4 w-4 text-blue-500" /> 
+                      <Folder className="h-4 w-4 text-blue-500" />
                       Select from Existing Folder
                     </div>
                   </AccordionTrigger>
                   <AccordionContent>
                     <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
                       {Object.values(folderTree.children).map(node => (
-                        <FolderTreeItem 
-                          key={node.fullPath} 
-                          node={node} 
-                          level={0} 
-                          onSelect={handleFolderSelect} 
+                        <FolderTreeItem
+                          key={node.fullPath}
+                          node={node}
+                          level={0}
+                          onSelect={handleFolderSelect}
                         />
                       ))}
                     </div>
@@ -519,20 +539,20 @@ export function CollectionEditorDialog({
             {/* DESCRIPTION */}
             <div className="space-y-2">
               <Label>Description</Label>
-              <Textarea 
-                id="description" 
-                value={localCollection.description} 
-                onChange={handleInputChange} 
-                rows={4} 
-                className="max-h-[150px] min-h-[80px] resize-y" 
+              <Textarea
+                id="description"
+                value={localCollection.description}
+                onChange={handleInputChange}
+                rows={4}
+                className="max-h-[150px] min-h-[80px] resize-y"
                 placeholder="Describe this collection..."
-                disabled={isLoading} 
+                disabled={isLoading}
               />
             </div>
 
             {/* VISUALS SECTION */}
             <div className="space-y-4">
-              
+
               {/* COVER PHOTO */}
               <div className="border rounded-md p-3 space-y-3 bg-muted/10">
                 <div className="flex items-center gap-2">
@@ -551,7 +571,7 @@ export function CollectionEditorDialog({
                     ) : (
                       <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
                     )}
-                    
+
                     {(localCollection.coverImage || pendingCover) && (
                       <button
                         onClick={() => {
@@ -572,17 +592,17 @@ export function CollectionEditorDialog({
                       The main image displayed on cards.
                     </p>
                     <div className="flex gap-2">
-                      <Input 
-                        id="cover-upload" 
-                        type="file" 
-                        accept="image/*" 
-                        className="hidden" 
-                        onChange={handleCoverUpload} 
+                      <Input
+                        id="cover-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCoverUpload}
                       />
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => document.getElementById('cover-upload')?.click()} 
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => document.getElementById('cover-upload')?.click()}
                         disabled={isLoading}
                       >
                         <Upload className="w-3 h-3 mr-2" />
@@ -601,18 +621,18 @@ export function CollectionEditorDialog({
                     <Label className="font-semibold">Gallery Images</Label>
                   </div>
                   <div>
-                    <Input 
-                      id="gallery-upload" 
-                      type="file" 
-                      multiple 
-                      accept="image/*" 
-                      className="hidden" 
-                      onChange={handleMassUpload} 
+                    <Input
+                      id="gallery-upload"
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleMassUpload}
                     />
-                    <Button 
-                      size="sm" 
-                      variant="secondary" 
-                      onClick={() => document.getElementById('gallery-upload')?.click()} 
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => document.getElementById('gallery-upload')?.click()}
                       disabled={isLoading}
                     >
                       <Upload className="w-3 h-3 mr-2" />
@@ -625,7 +645,7 @@ export function CollectionEditorDialog({
                   {localCollection.images?.map((img, idx) => (
                     <div key={`exist-${idx}`} className="relative aspect-square rounded overflow-hidden border group bg-background">
                       <img src={img} className="w-full h-full object-cover" alt="Gallery" />
-                      
+
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                         <button
                           type="button"
@@ -649,7 +669,7 @@ export function CollectionEditorDialog({
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
-                      
+
                       {localCollection.coverImage === img && (
                         <div className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[8px] text-center py-0.5">
                           COVER
@@ -679,9 +699,9 @@ export function CollectionEditorDialog({
             {/* CATEGORY */}
             <div className="space-y-2">
               <Label>Category</Label>
-              <Select 
-                value={localCollection.category || '--none--'} 
-                onValueChange={handleCategoryChange} 
+              <Select
+                value={localCollection.category || '--none--'}
+                onValueChange={handleCategoryChange}
                 disabled={isLoading}
               >
                 <SelectTrigger>
@@ -695,7 +715,7 @@ export function CollectionEditorDialog({
                 </SelectContent>
               </Select>
             </div>
-            
+
           </div>
         </ScrollArea>
 

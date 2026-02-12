@@ -83,8 +83,8 @@ export function useGcodeHandler({ currentModel, onModelUpdate }: UseGcodeHandler
 
             if (result.success && result.gcodeData) {
                 // Build changes object for save-model API
+                // Prefer ID over filePath to prevent accidental overwrites if path is wrong
                 const changes: any = {
-                    filePath: currentModel.filePath,
                     id: currentModel.id,
                     gcodeData: result.gcodeData,
                     // Legacy fields
@@ -148,17 +148,24 @@ export function useGcodeHandler({ currentModel, onModelUpdate }: UseGcodeHandler
         }
     };
 
-    const handleReanalyzeGcode = async () => {
-        if (!currentModel?.gcodeData?.gcodeFilePath) {
-            toast.error('No G-code file path found');
+    const handleReanalyzeGcode = async (targetPath?: string) => {
+        const path = targetPath || currentModel?.gcodeData?.gcodeFilePath;
+
+        if (!path) {
+            toast.error('No G-code file path found to analyze');
             return;
         }
 
         setIsUploadingGcode(true);
+        // Toast loading state
+        const toastId = toast.loading("Analyzing G-code...");
+
         try {
             const formData = new FormData();
-            formData.append('modelFilePath', currentModel.filePath);
-            formData.append('gcodeFilePath', currentModel.gcodeData.gcodeFilePath);
+            formData.append('modelFilePath', currentModel!.filePath); // ! verified by earlier check? No, need check.
+            if (!currentModel?.filePath) throw new Error("Model path missing");
+
+            formData.append('gcodeFilePath', path);
             formData.append('storageMode', 'parse-only');
 
             const response = await fetch('/api/parse-gcode', {
@@ -170,27 +177,33 @@ export function useGcodeHandler({ currentModel, onModelUpdate }: UseGcodeHandler
             try {
                 result = await response.json();
             } catch (parseError) {
+                toast.dismiss(toastId);
                 toast.error('Server returned invalid response');
                 return;
             }
 
+            if (!response.ok) {
+                toast.dismiss(toastId);
+                toast.error(result.error || `Server error: ${response.status}`);
+                return;
+            }
+
             if (result.success && result.gcodeData) {
-                // Build changes object for save-model API
                 const changes: any = {
-                    filePath: currentModel.filePath,
-                    id: currentModel.id,
+                    id: currentModel!.id,
                     gcodeData: result.gcodeData,
-                    printTime: result.gcodeData.printTime || currentModel.printTime,
-                    filamentUsed: result.gcodeData.totalFilamentWeight || currentModel.filamentUsed
+                    printTime: result.gcodeData.printTime || currentModel!.printTime,
+                    filamentUsed: result.gcodeData.totalFilamentWeight || currentModel!.filamentUsed
                 };
 
                 if (result.gcodeData.printSettings) {
                     changes.printSettings = {
-                        ...(currentModel.printSettings || {}),
+                        ...(currentModel!.printSettings || {}),
                         ...result.gcodeData.printSettings
                     };
                 }
 
+                // Call save-model
                 const saveResp = await fetch('/api/save-model', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -198,20 +211,23 @@ export function useGcodeHandler({ currentModel, onModelUpdate }: UseGcodeHandler
                 });
 
                 if (saveResp.ok) {
-                    toast.success('G-code re-analyzed successfully');
-                    // Update the model in UI with the merged changes
-                    const updatedModel = { ...currentModel, ...changes };
+                    toast.dismiss(toastId);
+                    toast.success('G-code analyzed and saved!');
+                    const updatedModel = { ...currentModel!, ...changes };
                     onModelUpdate(updatedModel);
                 } else {
                     const saveError = await saveResp.json().catch(() => ({ error: 'Unknown error' }));
-                    toast.error(`Failed to save re-analyzed G-code data: ${saveError.error || saveResp.statusText}`);
+                    toast.dismiss(toastId);
+                    toast.error(`Failed to save G-code data: ${saveError.error || saveResp.statusText}`);
                 }
             } else {
-                toast.error(result.error || 'Failed to re-analyze G-code');
+                toast.dismiss(toastId);
+                toast.error(result.error || 'Failed to analyze G-code');
             }
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            toast.error(`Re-analysis failed: ${errorMsg}`);
+            toast.dismiss(toastId);
+            toast.error(`Analysis failed: ${errorMsg}`);
         } finally {
             setIsUploadingGcode(false);
         }

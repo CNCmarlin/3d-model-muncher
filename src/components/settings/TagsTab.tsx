@@ -90,13 +90,13 @@ export function TagsTab({
     const tagsList = React.useMemo(() => {
         const counts = new Map<string, number>();
         models.forEach(m => {
-            if (m.tags) {
+            if (m.tags && Array.isArray(m.tags)) {
                 m.tags.forEach(t => counts.set(t, (counts.get(t) || 0) + 1));
             }
         });
 
         return Array.from(counts.entries())
-            .map(([name, count]) => ({ name, count, models: models.filter(m => m.tags?.includes(name)) } as TagInfo))
+            .map(([name, count]) => ({ name, count, models: models.filter(m => Array.isArray(m.tags) && m.tags.includes(name)) } as TagInfo))
             .sort((a, b) => b.count - a.count);
     }, [models]);
 

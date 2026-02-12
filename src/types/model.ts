@@ -8,6 +8,7 @@ export interface Model {
   excludedCollections: string[];
   // Deprecated fields - kept for backward compatibility
   thumbnail?: string;
+  coverImagePath?: string;
   images?: string[];
   // New simplified structure
   parsedImages?: string[]; // All images extracted from 3MF file (thumbnail + additional images)

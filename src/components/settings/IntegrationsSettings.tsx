@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { CheckCircle2, XCircle, Save, ExternalLink, Cpu, Cloud, Loader2, Printer } from 'lucide-react';
+import { CheckCircle2, Cloud, Cpu, ExternalLink, Loader2, Save, XCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { AppConfig, PrinterConfig } from '../../types/config';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Textarea } from '../ui/textarea';
 
 interface IntegrationsSettingsProps {
   config: AppConfig;
@@ -164,23 +164,23 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
 
   const handlePrinterUpdate = (field: string, value: any) => {
     const currentPrinters = [...(config.integrations?.printers || [])];
-    
+
     // Ensure array exists up to this index
     for (let i = 0; i <= activePrinterIndex; i++) {
-        if (!currentPrinters[i]) currentPrinters[i] = { type: 'moonraker', url: '', color: '#3b82f6' };
+      if (!currentPrinters[i]) currentPrinters[i] = { type: 'moonraker', url: '', color: '#3b82f6' };
     }
 
     currentPrinters[activePrinterIndex] = {
-        ...currentPrinters[activePrinterIndex],
-        [field]: value
+      ...currentPrinters[activePrinterIndex],
+      [field]: value
     };
-    
+
     const newConfig = {
-        ...config,
-        integrations: {
-            ...config.integrations,
-            printers: currentPrinters
-        }
+      ...config,
+      integrations: {
+        ...config.integrations,
+        printers: currentPrinters
+      }
     };
     onConfigChange(newConfig);
   };
@@ -369,7 +369,7 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
         </CardContent>
       </Card>
 
-      {/* 4. Multi-Printer Integration (FIXED) */}
+      {/* 4. Multi-Printer Integration (FIXED) - TODO: Migrate to DB version
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="space-y-1">
@@ -424,7 +424,7 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
               />
             </div>
 
-            {/* [INSERT] Printer Name Field */}
+            {/* [INSERT] Printer Name Field * /}
             <div className="space-y-2">
               <Label>Printer Name</Label>
               <Input
@@ -494,6 +494,7 @@ export const IntegrationsSettings: React.FC<IntegrationsSettingsProps> = ({ conf
           </div>
         </CardContent>
       </Card>
+      */}
 
       <div className="flex justify-end pt-4">
         <Button onClick={handleSaveAll} className="gap-2 w-full sm:w-auto">

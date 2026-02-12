@@ -3,9 +3,6 @@
 > **Goal**: Migrate from Filesystem/JSON to **SQLite + Prisma**.
 > **Strategy**: "Dual-Running" (Shadow Ingestion) ensuring zero data loss.
 > **Philosophy**: The Database is the Source of Truth. Folders are just storage.
-> **Tech Stack**:
-> *   **Backend**: Node.js + Express + Prisma + Zod
-> *   **Frontend**: React + TanStack Query + React Hook Form + Zod + dnd-kit
 
 ---
 
@@ -13,89 +10,86 @@
 *Consolidated from `schema_brainstorm.md`*
 
 ### 1. `Collection` (Folders)
+Recursive structure for infinite nesting.
 - `id`: Int (PK)
 - `parent_id`: Int (FK -> Collection)
 - `name`: String
 - `path_hash`: String (Unique, for fast ingestor lookup)
 
 ### 2. `Model` (The Item)
+The abstract entity shown in the grid.
 - `id`: Int (PK)
 - `collection_id`: Int (FK -> Collection)
 - `name`: String
+- `description`, `license`, `print_time`, `filament_usage`
+- `is_printed`, `is_favorite`
 - `path_hash`: String (Unique linkage to disk folder)
-- `cover_image_path`: String (**Relative** to `LIBRARY_ROOT`)
-- `is_deleted`: Boolean (Soft delete to handle reconciliation)
+- `cover_image_path`: String
 
 ### 3. `ModelFile` (The Assets)
+Solves the "Thingiverse Project" One-to-Many problem.
 - `id`: Int (PK)
 - `model_id`: Int (FK -> Model)
 - `filename`: String (`head.stl`)
-- `file_path`: String (**Relative** path)
-- `is_primary`: Boolean (Enforced via Middleware/Zod)
-- `mime_type`: String (e.g., `model/stl`, `image/png`, `text/gcode`)
-- `size_bytes`: BigInt (For duplicate detection)
+- `file_path`: String (Relative path for streaming)
+- `is_primary`: Boolean (The main file for preview)
+- `is_supported`: Boolean
+
+### 4. `Tag` / `ModelTag`
+Many-to-Many relationship for fast filtering.
 
 ---
 
 ## 📝 Phase 1: Foundation & Infrastructure
 *Goal: The App starts with a DB, but doesn't use it yet.*
 
-1.  **Dependencies**: `prisma`, `@prisma/client`, `sqlite3`, `zod`, `@tanstack/react-query`.
+1.  **Dependencies**: Install `prisma`, `@prisma/client`, `sqlite3`.
+    *   *Why Prisma?* Type safety and migration management.
 2.  **Init Schema**: Create `prisma/schema.prisma` matching the target state.
-3.  **Zod Bridge**: Create shared Zod schemas for validation (Backend) and Forms (Frontend).
-4.  **Singleton**: Create `server-utils/db.js`.
+3.  **Generate Client**: Run `npx prisma generate`.
+4.  **Singleton**: Create `server-utils/db.js` to expose the Prisma Client.
 
 ## 🔄 Phase 2: The "Shadow Ingestor"
 *Goal: Populate the DB without breaking the current App.*
 
 1.  **Create `scripts/migrate-munchies.ts`**:
-    *   **Dry Run Mode**: Flag `--dry-run` to output JSON summary ("Will create 450 Models...").
     *   **Logic**: Recursive scan of `models/`.
-    *   **Reconciliation & Renames**:
-        *   If a path disappears but a new one appears with same file size/name -> **Refactor** (Move), don't Delete + Add.
-        *   Use `size_bytes` + `filename` hash to detect "Same Model, New Folder".
-    *   **Relative Paths**: Strip `absolute` paths. Store relative to library root.
-    *   **Edge Case: Project Folders** (Restored Detail):
+    *   **Collections**: Mirror the folder structure into `Collection` table.
+    *   **Models**: Insert `*-munchie.json` data into `Model` table.
+    *   **Edge Case: Project Folders**:
         *   If `project.json` exists OR `isProjectRoot=true`:
         *   Create **One Model** for the folder.
         *   Insert all files in that folder as `ModelFile` records.
-    *   **Edge Case: Mixed Bags** (Restored Detail):
+    *   **Edge Case: Mixed Bags**:
         *   Check for sub-collections. If found, log warning but default to "Leaf Node" logic (files are assets).
-        *   Goal: Be non-destructive. If in doubt, create a generic Collection.
-2.  **Verify**: Run script in Dry Run, then Live.
-
-## 🚦 Phase 2.5: Verification UI
-*Goal: A "Health Check" Dashboard before the switch.*
-
-1.  **Admin Page**: `/admin/migration-status`
-2.  **Logic**:
-    *   Scan DB rows vs. Disk files.
-    *   Red Row: File exists on disk, missing in DB.
-    *   Yellow Row: Metadata mismatch (DB says "printed", JSON says "not printed").
-3.  **Approval**: "Flip Model" button only active when Health > 99%.
+2.  **Verify**: Run script. Compare DB counts vs File counts.
 
 ## 🔀 Phase 3: The "Flip" (API Switchover)
 *Goal: The Frontend reads from the DB.*
 
 1.  **Refactor `GET /api/models`**:
-    *   **NEW**: `prisma.model.findMany(...)`.
-    *   **Adaptor**: Map Prisma result to Zod-validated JSON.
-2.  **Refactor Frontend Hooks**:
-    *   Replace `useModelData` with `useQuery`.
-    *   Implement **Optimistic Updates**.
-3.  **Legacy Guard**: Keep `*-munchie.json` files as read-only backups for 2 weeks.
+    *   **OLD**: Scan disk, filter hidden.
+    *   **NEW**: `prisma.model.findMany({ include: { files: true, tags: true } })`.
+    *   **Adaptor**: Map the Prisma result to the expected Frontend JSON shape (preserve `userDefined` structure for now to avoid breaking UI).
+2.  **Refactor `POST /api/save-model`**:
+    *   Update DB record.
+    *   *Critical*: Start ignoring `*-munchie.json` writes.
+3.  **Refactor `collectionScanner.js`**:
+    *   Replace the recursive scanner with a **Path-Based Watcher**.
+    *   *New Logic*: `chokidar` watches for file add/remove -> updates DB.
 
 ## 🧹 Phase 4: Cleanup (Burning the Bridge)
-1.  **Delete Sidecars**: Delete `*-munchie.json`.
-2.  **Watcher Upgrade**: Switch `chokidar` to update DB directly.
-3.  **Optimize**: Index `tags`, `category`, and `path_hash`.
+*Goal: Remove the legacy system.*
+
+1.  **Delete Sidecars**: Script to delete all `*-munchie.json` files.
+2.  **Delete `project.json`**: No longer needed.
+3.  **Optimize**: Add DB indexes on `tags` and `category`.
 
 ## ✨ Phase 5: UI Polish (New Capabilities)
-*Goal: Expose new power enabled by the DB.*
+*Goal: Expose new power.*
 
 1.  **"Promote Selection"**: Add UI action to select loose files -> "Create Model from Selection".
 2.  **Instant Search**: Update search bar to query DB (server-side filtering) instead of client-side filtering.
-3.  **Virtual Collections**: Allow creating collections based on Tag queries (e.g. "All printed sci-fi models") regardless of folder structure.
 
 ---
 
@@ -103,7 +97,7 @@
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **Path Renames** | **Reconciliation Logic**: Check file hash/size before assuming deletion. |
-| **Absolute Paths** | **Relative Storage**: Store paths relative to `LIBRARY_ROOT`. |
-| **Primary Ambiguity** | **Zod/Prisma Middleware**: Enforce single `is_primary` per model on write. |
-| **Data Loss** | **Dry Run + Health Check**: Zero destructive actions until verified. |
+| **Data Loss** | **Step 0**: Zip `models/` folder. DB is populated *non-destructively* in Phase 2. |
+| **"Mixed Bag" Folders** | The Ingestor defaults to "Safe Mode" (Treat as Collection). User manually promotes later. |
+| **Performance** | SQLite is extremely fast. We will index foreign keys. |
+| **Downtime** | None. The "Flip" happens in one deployment. |

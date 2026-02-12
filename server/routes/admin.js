@@ -76,9 +76,9 @@ function createInitialModelMetadata(overrides) {
 
 // --- Logic ---
 
-async function runHealLogic(isDryRun = false, specificPath = null) {
+async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStrategy = 'prefer-embedded') {
     console.log("!!! HEAL LOGIC TRIGGERED !!!");
-    console.log("Is Dry Run:", isDryRun);
+    console.log("Is Dry Run:", isDryRun, "Strategy:", thumbnailStrategy);
 
     const modelsDir = getAbsoluteModelsPath();
 
@@ -158,6 +158,7 @@ async function runHealLogic(isDryRun = false, specificPath = null) {
                     model: `${data.name || entry.name} (${debugPath})`,
                     additions: [],
                     deletions: [],
+                    modifications: [], // For reordering or non-destructive changes
                     collectionSync: null,
                     visibilityFix: null
                 };
@@ -189,61 +190,127 @@ async function runHealLogic(isDryRun = false, specificPath = null) {
                 const originalImgCount = data.parsedImages.length;
                 const originalRelatedCount = data.related_files.length;
 
+                // Capture original state for preview
+                const originalFilePath = data.filePath || null;
+                proposal.originalFilePath = originalFilePath;
+
                 // --- 3. IDENTITY & PROPOSAL ---
+                // Determine the "Model Name" based on the file path or the metadata filename
+                // This is the anchor for all matching logic.
                 let modelFileName = data.filePath
-                    ? path.basename(data.filePath, path.extname(data.filePath))
-                    : entry.name.replace(/(-stl)?-munchie\.json$/i, '');
+                    ? path.basename(data.filePath) // e.g. "MyFile.stl"
+                    : entry.name.replace(/(-stl)?-munchie\.json$/i, '') + (entry.name.includes('-stl-') ? '.stl' : '.3mf'); // heuristic fallback
+
+                // If fallback guess was wrong (e.g. guessed .3mf but file is .stl), we might fail to match.
+                // Better approach: Use the "Clean Name" (no extension) for matching start of files.
+                const modelBaseName = path.basename(modelFileName, path.extname(modelFileName)); // "MyFile"
+
+                // --- PRE-CALCULATE SIBLING MODELS FOR COLLISION DETECTION ---
+                // We need to know if "cam_bed_bottom" exists before "cam_bed" claims "cam_bed_bottom.stl"
+                const folderBaseNames = folderMunchies.map(m => {
+                    const fname = path.basename(m.path);
+                    const name = m.data.filePath
+                        ? path.basename(m.data.filePath, path.extname(m.data.filePath))
+                        : fname.replace(/(-stl)?-munchie\.json$/i, '');
+                    return name;
+                }).filter(n => n);
 
                 const siblings = fs.readdirSync(dir);
 
-                // --- 4. PATH HEALING ---
+                // --- 4. PATH HEALING (STRICT) ---
+                const isExplicitStl = entry.name.toLowerCase().includes('-stl-munchie.json');
+
                 if (!data.filePath || data.filePath === "") {
+                    // STRICT RULE: Only recover if the file explicitly starts with the model name
+                    // This prevents "Lagarto" from claiming "Articulated_Slug" just because it's there.
                     const foundModel = siblings.find(f => {
                         const low = f.toLowerCase();
-                        return low.endsWith('.stl') || low.endsWith('.3mf');
+                        const isModel = low.endsWith('.stl') || low.endsWith('.3mf');
+
+                        // Fix for cam_bed-stl claiming cam_bed.3mf:
+                        if (isExplicitStl && !low.endsWith('.stl')) return false;
+
+                        // Match: "MyFile.stl" or "MyFile_v2.stl" but NOT "MyFile_Readme.txt" (checked via extension)
+                        // AND MUST START WITH NAME
+                        return isModel && f.toLowerCase().startsWith(modelBaseName.toLowerCase());
                     });
 
                     if (foundModel) {
                         const newRelPath = path.join(path.relative(modelsDir, dir), foundModel).replace(/\\/g, '/');
-                        proposal.additions.push(`Recovered filePath: ${foundModel}`);
+                        const prevStatus = data.filePath === "" ? "Empty String" : "Missing/Null";
+                        proposal.additions.push(`Recovered filePath: ${foundModel} (Matched '${modelBaseName}' - Was: ${prevStatus})`);
                         data.filePath = newRelPath;
                         data.modelUrl = `/models/${newRelPath}`;
-                        modelFileName = path.basename(foundModel, path.extname(foundModel));
+                        modelFileName = foundModel; // Update our anchor
                         hasChanged = true;
                     }
                 }
 
-                // --- 5. ASSET CLAIMING ---
-                siblings.forEach(file => {
-                    if (file.endsWith('.json') || file === 'project.json') return;
-                    const relAssetPath = path.join(path.relative(modelsDir, dir), file).replace(/\\/g, '/');
-                    const lowerFile = file.toLowerCase();
-                    const isMatch = modelFileName && lowerFile.startsWith(modelFileName.toLowerCase());
-                    const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(file);
-                    const isGeneratedThumb = lowerFile.endsWith('-thumb.png');
-                    const isSystemFile = lowerFile.includes('.bak') || lowerFile.includes('.tmp') || file.startsWith('.');
+                // Update BaseName in case it changed during recovery
+                const currentBaseName = data.filePath
+                    ? path.basename(data.filePath, path.extname(data.filePath))
+                    : modelBaseName;
 
-                    let shouldClaim = false;
-                    if (!isSystemFile) {
-                        if (isProject) {
-                            const isGcode = lowerFile.endsWith('.gcode');
-                            shouldClaim = !((isGeneratedThumb || isGcode) && !isMatch);
-                        } else {
-                            if (isMatch) shouldClaim = true;
-                        }
+                // --- 5. ASSET CLAIMING (SMART) ---
+                siblings.forEach(file => {
+                    const lowerFile = file.toLowerCase();
+                    if (lowerFile.endsWith('.json') || lowerFile === 'project.json' || lowerFile.endsWith('.bak')) return;
+
+                    const relAssetPath = path.join(path.relative(modelsDir, dir), file).replace(/\\/g, '/');
+                    const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(file);
+
+                    // STRICT MATCHING (Default): Start with Model Name
+                    const isNameMatch = lowerFile.startsWith(currentBaseName.toLowerCase());
+
+                    // RELAXED MATCHING (Project Mode): Claim everything in the folder
+                    // If this is a Project, and we are the Project Root, we claim all orphans.
+                    // If we are just a part in a project, we only claim name-matched stuff to avoid stealing from Root.
+                    const isProjectAndRoot = isProject && data.isProjectRoot;
+
+                    // COLLISION CHECK: Is there a "Better" (Longer) match in this folder?
+                    // e.g. We are "cam_bed", file is "cam_bed_bottom.stl".
+                    // If "cam_bed_bottom" exists as a model, IT should claim this, not us.
+                    const betterMatch = folderBaseNames.find(other =>
+                        other.length > currentBaseName.length &&
+                        lowerFile.startsWith(other.toLowerCase())
+                    );
+
+                    let shouldClaim = (isNameMatch && !betterMatch);
+
+                    // PROJECT MODE OVERRIDE:
+                    // If we are the Project Root, and the file is NOT claimed by a specific part (betterMatch),
+                    // then we claim it as a generic project asset/doc.
+                    if (isProjectAndRoot && !betterMatch) {
+                        shouldClaim = true;
+                    }
+
+                    const isGenericThumb = lowerFile === 'thumbnail.png' || lowerFile === 'cover.png' || lowerFile === 'plate_1.png';
+
+                    // Special Case: Metadata files for OTHER models
+                    if (lowerFile.endsWith('munchie.json')) return;
+
+                    // If it's a generic name (thumbnail.png), and we are the ONLY model or it's a project root, maybe claim it?
+                    if (isGenericThumb && data.isProjectRoot) {
+                        shouldClaim = true;
+                    }
+
+                    // Fix for cam_bed-stl claiming cam_bed.3mf-thumb.png:
+                    if (isExplicitStl && lowerFile.includes('.3mf')) {
+                        shouldClaim = false;
                     }
 
                     if (shouldClaim && relAssetPath !== data.filePath) {
                         if (isImage) {
                             const url = `/models/${relAssetPath}`;
                             if (!data.parsedImages.includes(url)) {
-                                proposal.additions.push(`${file} (Gallery Link)`);
+                                proposal.additions.push(`${file} (Gallery Link - ${isProjectAndRoot ? 'Project Asset' : "Matched '" + currentBaseName + "'"})`);
                                 data.parsedImages.push(url);
                                 hasChanged = true;
                             }
                         } else {
+                            // Non-image assets (G-code, READMEs)
                             if (!data.related_files.includes(relAssetPath)) {
-                                proposal.additions.push(`${file} (Related Part/Doc)`);
+                                proposal.additions.push(`${file} (Related Part/Doc - ${isProjectAndRoot ? 'Project Asset' : "Matched '" + currentBaseName + "'"})`);
                                 data.related_files.push(relAssetPath);
                                 hasChanged = true;
                             }
@@ -251,17 +318,75 @@ async function runHealLogic(isDryRun = false, specificPath = null) {
                     }
                 });
 
-                // --- 6. SCRUBBING ---
-                const expectedFolderUrl = `/models/${path.relative(modelsDir, dir).replace(/\\/g, '/')}/`;
+                // --- 5a. BASE64 EXTRACTION ---
+                // Convert legacy Base64 thumbnails to files to reduce JSON size and fix "Stale" errors.
+                data.parsedImages = data.parsedImages.map(imgUrl => {
+                    if (imgUrl.startsWith('data:image')) {
+                        try {
+                            // 1. Determine Extension (png/jpg)
+                            const match = imgUrl.match(/^data:image\/([a-zA-Z]+);base64,/);
+                            const ext = match ? match[1] : 'png';
+                            const base64Data = imgUrl.replace(/^data:image\/[a-z]+;base64,/, "");
+
+                            // 2. Determine Filename (Defaults to -embedded-thumb.png)
+                            // User requested cleanup of STL-specific logic.
+                            let suffix = '-embedded-thumb';
+
+                            const newFileName = `${currentBaseName}${suffix}.${ext}`;
+                            const newFilePath = path.join(dir, newFileName);
+                            const newRelPath = path.join(path.relative(modelsDir, dir), newFileName).replace(/\\/g, '/');
+                            const newUrl = `/models/${newRelPath}`;
+
+                            // 3. Mock existence for Scrubbing (so it doesn't get deleted immediately)
+                            if (!siblings.includes(newFileName)) {
+                                siblings.push(newFileName);
+                            }
+
+                            // 4. Write File (if not dry run)
+                            if (!isDryRun) {
+                                fs.writeFileSync(newFilePath, base64Data, 'base64');
+                                console.log(`      -> Extracted Base64 to ${newFileName}`);
+                            }
+
+                            proposal.additions.push(`${newFileName} (Extracted Base64 & Linked via Strategy)`);
+                            hasChanged = true;
+                            return newUrl; // Replace the massive string with the new URL
+                        } catch (e) {
+                            console.error("Error extracting base64:", e);
+                            return imgUrl; // Keep original if failed
+                        }
+                    }
+                    return imgUrl;
+                });
+
+                // --- 6. SCRUBBING (SMART) ---
+                const relDir = path.relative(modelsDir, dir).replace(/\\/g, '/');
+                const expectedFolderUrl = relDir === '' ? '/models/' : `/models/${relDir}/`;
                 data.parsedImages = data.parsedImages.filter(imgUrl => {
                     const fileName = path.basename(imgUrl);
                     const isPhysicallyHere = siblings.includes(fileName);
                     const isCorrectFolder = imgUrl.startsWith(expectedFolderUrl);
-                    const isMatch = modelFileName && fileName.toLowerCase().startsWith(modelFileName.toLowerCase());
-                    const isLegit = isProject ? isPhysicallyHere : isMatch;
 
-                    if (!isPhysicallyHere || !isCorrectFolder || !isLegit) {
-                        proposal.deletions.push(`${fileName} (Stale/Wrong Path)`);
+                    // Verification: Does it minimize pollution?
+                    const isNameMatch = fileName.toLowerCase().startsWith(currentBaseName.toLowerCase());
+                    const isGenericThumb = fileName.toLowerCase() === 'thumbnail.png' || fileName.toLowerCase() === 'cover.png';
+
+                    // PROJECT RELAXATION:
+                    // If we are in a Project, we assume the user put these images here for a reason.
+                    // We only scrub if they are physically missing or explicitly wrong path.
+                    // We DO NOT scrub for name mismatch in projects.
+                    const isLegit = isNameMatch || (data.isProjectRoot && isGenericThumb) || isProject;
+
+                    if (!isPhysicallyHere) {
+                        proposal.deletions.push(`${imgUrl} (Stale - Not found in folder)`);
+                        return false;
+                    }
+                    if (!isCorrectFolder) {
+                        proposal.deletions.push(`${imgUrl} (Wrong Path - Expected '${expectedFolderUrl}')`);
+                        return false;
+                    }
+                    if (!isLegit) {
+                        proposal.deletions.push(`${imgUrl} (Name Mismatch - Expected start '${currentBaseName}')`);
                         return false;
                     }
                     return true;
@@ -269,16 +394,36 @@ async function runHealLogic(isDryRun = false, specificPath = null) {
 
                 if (data.parsedImages.length !== originalImgCount) hasChanged = true;
 
+
+
                 data.related_files = data.related_files.filter(p => {
                     const fileName = path.basename(p);
                     const isPhysicallyHere = siblings.includes(fileName);
                     const expectedRelPath = path.join(path.relative(modelsDir, dir), fileName).replace(/\\/g, '/');
-                    const isMatch = modelFileName && fileName.toLowerCase().startsWith(modelFileName.toLowerCase());
-                    const isLegit = isProject ? isPhysicallyHere : isMatch;
-                    const isMetadata = fileName.toLowerCase().endsWith('munchie.json') || fileName === 'project.json' || fileName.toLowerCase().includes('.bak');
 
-                    if (!isPhysicallyHere || p !== expectedRelPath || !isLegit || isMetadata) {
-                        proposal.deletions.push(`${fileName} (Stale or Metadata Path)`);
+                    const isNameMatch = fileName.toLowerCase().startsWith(currentBaseName.toLowerCase());
+                    const isMetadata = fileName.toLowerCase().endsWith('munchie.json') || fileName === 'project.json' || fileName.endsWith('.bak');
+
+                    if (fileName.toLowerCase().endsWith('munchie.json') || fileName === 'project.json') {
+                        proposal.deletions.push(`${p} (Cleanup - Metadata pollution)`);
+                        return false;
+                    }
+
+                    if (fileName.toLowerCase().endsWith('.bak')) {
+                        proposal.deletions.push(`${p} (Cleanup - Backup file)`);
+                        return false;
+                    }
+                    if (!isPhysicallyHere) {
+                        proposal.deletions.push(`${p} (Stale - File not found)`);
+                        return false;
+                    }
+                    if (p !== expectedRelPath) {
+                        proposal.deletions.push(`${p} (Wrong Path - Expected '${expectedRelPath}')`);
+                        return false;
+                    }
+                    // PROJECT RELAXATION:
+                    if (!isNameMatch && !isMetadata && !isProject) {
+                        proposal.deletions.push(`${p} (Name Mismatch - Expected start '${currentBaseName}')`);
                         return false;
                     }
                     return true;
@@ -286,62 +431,65 @@ async function runHealLogic(isDryRun = false, specificPath = null) {
 
                 if (data.related_files.length !== originalRelatedCount) hasChanged = true;
 
-                // --- 7. THUMBNAIL REPAIR ---
+                // --- 7. THUMBNAIL REPAIR (EXPLICIT LOGGING) ---
                 const actualFile = data.filePath ? path.basename(data.filePath) : "";
                 if (actualFile) {
                     const expectedThumbName = `${actualFile}-thumb.png`;
                     const thumbWebUrl = `${expectedFolderUrl}${expectedThumbName}`;
 
                     if (siblings.includes(expectedThumbName)) {
-                        if (data.isProjectRoot || data.filePath.toLowerCase().includes(actualFile.toLowerCase())) {
-                            if (!data.parsedImages.includes(thumbWebUrl)) {
+                        // 1. Ensure it's in the gallery
+                        if (!data.parsedImages.includes(thumbWebUrl)) {
+                            // Double check strict match logic OR Project Check
+                            if (expectedThumbName.toLowerCase().startsWith(currentBaseName.toLowerCase()) || isProject) {
                                 proposal.additions.push(`${expectedThumbName} (Added to Gallery)`);
                                 data.parsedImages.push(thumbWebUrl);
                                 hasChanged = true;
                             }
+                        }
 
-                            // 2. Instead of forcing the array to move, find the ACTUAL index of the thumb
-                            const thumbIndex = data.parsedImages.indexOf(thumbWebUrl);
+
+                        // 2. Set as Primary Thumbnail (STRATEGY AWARE REORDERING)
+                        if (data.parsedImages.length > 1 && thumbnailStrategy !== 'none') {
+
+                            const embedded = data.parsedImages.find(img => img.includes('-embedded-thumb'));
+                            const generated = data.parsedImages.find(img => {
+                                const f = path.basename(img);
+                                return f.endsWith('-thumb.png') &&
+                                    f.toLowerCase().startsWith(currentBaseName.toLowerCase()) &&
+                                    !f.includes('embedded');
+                            });
+
+                            if (embedded && generated) {
+                                let preferred = null;
+                                if (thumbnailStrategy === 'prefer-embedded') preferred = embedded;
+                                else if (thumbnailStrategy === 'prefer-generated') preferred = generated;
+
+                                // Force preferred to index 0
+                                if (preferred && data.parsedImages[0] !== preferred) {
+                                    const others = data.parsedImages.filter(img => img !== preferred);
+                                    data.parsedImages = [preferred, ...others];
+                                    proposal.modifications.push(`Strategized Thumbnail: Swapped to ${path.basename(preferred)} (Strategy: ${thumbnailStrategy})`);
+                                    hasChanged = true;
+                                }
+                            }
+                        }
+
+                        let targetForPointer = thumbWebUrl; // Default to Generated
+                        if (thumbnailStrategy === 'prefer-embedded') {
+                            const embedded = data.parsedImages.find(img => img.includes('-embedded-thumb'));
+                            if (embedded) targetForPointer = embedded;
+                        }
+
+                        const thumbIndex = data.parsedImages.indexOf(targetForPointer);
+                        if (thumbIndex !== -1) {
                             const targetPointer = `parsed:${thumbIndex}`;
-
-                            // 3. Update the pointer to match where the thumb actually sits
                             if (data.userDefined?.thumbnail !== targetPointer) {
-                                proposal.additions.push(`Syncing thumbnail pointer to ${targetPointer}`);
+                                proposal.additions.push(`Syncing thumbnail pointer to ${targetPointer} (${path.basename(targetForPointer)})`);
                                 if (!data.userDefined) data.userDefined = { thumbnail: '', imageOrder: [], images: [] };
                                 data.userDefined.thumbnail = targetPointer;
                                 hasChanged = true;
                             }
-                        }
-
-                        const hasParsedImages = data.parsedImages && data.parsedImages.length > 0;
-                        const firstImageIsThumb = hasParsedImages && data.parsedImages[0].includes('-thumb.png');
-
-                        if (hasParsedImages && firstImageIsThumb) {
-                            if (data.userDefined?.thumbnail !== 'parsed:0') {
-                                proposal.additions.push(`Pointing thumbnail to parsed:0`);
-                                if (!data.userDefined) data.userDefined = { thumbnail: 'parsed:0', imageOrder: [], images: [] };
-                                data.userDefined.thumbnail = 'parsed:0';
-                                data.userDefined.imageOrder = data.parsedImages.map((_, idx) => `parsed:${idx}`);
-                                hasChanged = true;
-                            }
-                        } else if (data.isRelatedPart && !firstImageIsThumb) {
-                            if (data.userDefined?.thumbnail === 'parsed:0') {
-                                data.userDefined.thumbnail = undefined;
-                                hasChanged = true;
-                                proposal.deletions.push("Removing parsed:0 pointer from Related Part (No matching thumb)");
-                            }
-                        } else if (data.userDefined?.thumbnail) {
-                            proposal.deletions.push("Clearing invalid thumbnail pointers");
-                            if (data.userDefined) data.userDefined.thumbnail = undefined;
-                            hasChanged = true;
-                        }
-
-                        // --- 🧹 CLEANUP ROOT POLLUTION ---
-                        // If the root-level 'thumbnail' field exists, delete it immediately
-                        if (Object.prototype.hasOwnProperty.call(data, 'thumbnail')) {
-                            delete data.thumbnail;
-                            hasChanged = true;
-                            proposal.deletions.push("Purged duplicate root-level thumbnail field");
                         }
                     }
                 }
@@ -361,7 +509,7 @@ async function runHealLogic(isDryRun = false, specificPath = null) {
                     results.healed++;
                 }
 
-                if (proposal.additions.length > 0 || proposal.deletions.length > 0 || hasChanged) {
+                if (proposal.additions.length > 0 || proposal.deletions.length > 0 || proposal.modifications.length > 0 || hasChanged) {
                     results.details.push(proposal);
                 }
                 results.processed++;
@@ -427,9 +575,10 @@ async function runRevertLogic() {
 
 // POST /api/admin/library-heal-preview
 router.post('/library-heal-preview', async (req, res) => {
-    console.log("➡️ API Request received: /api/admin/library-heal-preview");
+    const { thumbnailStrategy } = req.body;
+    console.log("➡️ API Request received: /api/admin/library-heal-preview", { thumbnailStrategy });
     try {
-        const results = await runHealLogic(true);
+        const results = await runHealLogic(true, null, thumbnailStrategy);
         console.log("⬅️ HEAL PREVIEW COMPLETE. Found:", results.details.length, "changes.");
         res.json({ success: true, previewResults: results });
     } catch (err) {
@@ -440,10 +589,10 @@ router.post('/library-heal-preview', async (req, res) => {
 
 // POST /api/admin/library-heal
 router.post('/library-heal', async (req, res) => {
-    const { targetPath } = req.body;
-    console.log(`➡️ API Request received: Library Heal ${targetPath ? `for ${targetPath}` : '(Full)'}`);
+    const { targetPath, thumbnailStrategy } = req.body;
+    console.log(`➡️ API Request received: Library Heal ${targetPath ? `for ${targetPath}` : '(Full)'}`, { thumbnailStrategy });
     try {
-        const results = await runHealLogic(false, targetPath);
+        const results = await runHealLogic(false, targetPath, thumbnailStrategy);
         res.json({ success: true, results, message: "Heal applied successfully." });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

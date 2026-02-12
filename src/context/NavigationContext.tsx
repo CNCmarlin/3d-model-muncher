@@ -79,6 +79,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             case 'collections': return 'Collections';
             case 'collection-view': return activeCollection ? activeCollection.name : 'Collection';
             case 'model-hero': return 'Model Details';
+            case 'bulk-edit': return 'Bulk Editor';
             default: return 'Organize & Print';
         }
     };

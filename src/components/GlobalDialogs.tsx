@@ -1,7 +1,7 @@
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dispatch, SetStateAction } from 'react';
+import { Dispatch, SetStateAction, useState } from 'react';
 import { DonationDialog } from './DonationDialog';
 import { ModelUploadDialog } from './ModelUploadDialog';
 import { ThingiverseImportDialog } from './ThingiverseImportDialog';
@@ -41,6 +41,11 @@ interface GlobalDialogsProps {
 
     isDonationDialogOpen: boolean;
     setIsDonationDialogOpen: (v: boolean) => void;
+
+    // Move Confirmation
+    isMoveConfirmOpen?: boolean;
+    setIsMoveConfirmOpen?: (v: boolean) => void;
+    handleMoveConfirm?: (moveFiles: boolean, dontAskAgain: boolean) => void;
 }
 
 export function GlobalDialogs({
@@ -70,7 +75,13 @@ export function GlobalDialogs({
     onImportComplete,
     isDonationDialogOpen,
     setIsDonationDialogOpen,
+    isMoveConfirmOpen,
+    setIsMoveConfirmOpen,
+    handleMoveConfirm
 }: GlobalDialogsProps) {
+    // Local state for the checkbox in the confirmation dialog
+    const [dontAskMove, setDontAskMove] = useState(false);
+
     return (
         <>
             {/* Thingiverse Import */}
@@ -194,6 +205,45 @@ export function GlobalDialogs({
                 initialFolder={uploadTargetFolder}
                 initialCollectionId={uploadTargetCollectionName}
             />
+
+            {/* Move Confirmation Dialog */}
+            {isMoveConfirmOpen && setIsMoveConfirmOpen && handleMoveConfirm && (
+                <AlertDialog open={isMoveConfirmOpen} onOpenChange={setIsMoveConfirmOpen}>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Move Files on Disk?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                You are changing the collection of these models. Do you want to physically move the files on the disk to match the new collection structure?
+                                <br /><br />
+                                <strong>Note:</strong> Used images and other related files inside the model's folder will also be moved.
+                            </AlertDialogDescription>
+                            <div className="space-y-3 my-4 mb-4">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="dont-ask-move"
+                                        checked={dontAskMove}
+                                        onCheckedChange={(v) => setDontAskMove(Boolean(v))}
+                                    />
+                                    <label
+                                        htmlFor="dont-ask-move"
+                                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    >
+                                        Do not ask again (Always move files)
+                                    </label>
+                                </div>
+                            </div>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel onClick={() => handleMoveConfirm(false, dontAskMove)}>
+                                No, Metadata Only
+                            </AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleMoveConfirm(true, dontAskMove)}>
+                                Yes, Move Files
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+            )}
         </>
     );
 }

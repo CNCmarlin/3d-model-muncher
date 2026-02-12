@@ -2,7 +2,6 @@ import { createStandardModelIdentity } from "@/utils/modelFactory";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { CorruptedFile, DuplicateGroup, HashCheckResult, Model } from "../../types/model";
-import { removeDuplicates } from "../../utils/clientUtils";
 
 interface UseIntegrityCheckProps {
     models: Model[];
@@ -244,7 +243,7 @@ export function useIntegrityCheck({
                 const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
                 setStatusMessage(`Generating JSON for all ${fileTypeText} files...`);
 
-                const resp = await fetch('/api/scan-models', {
+                const resp = await fetch('/api/models/scan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ fileType: effectiveFileType })
@@ -285,12 +284,18 @@ export function useIntegrityCheck({
         }
     };
 
-    const handleRunHealPreview = async () => {
+    // Thumbnail Strategy
+    const [thumbnailStrategy, setThumbnailStrategy] = useState<'prefer-embedded' | 'prefer-generated'>('prefer-embedded');
+
+    const handleRunHealPreview = async (strategyOverride?: 'prefer-embedded' | 'prefer-generated') => {
+        const effectiveStrategy = strategyOverride || thumbnailStrategy;
         setIsPreviewingHeal(true);
         setHealPreviewReport(null);
         try {
             const response = await fetch('/api/admin/library-heal-preview', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ thumbnailStrategy: effectiveStrategy })
             });
             const data = await response.json();
             if (data.success) {
@@ -313,7 +318,10 @@ export function useIntegrityCheck({
             const response = await fetch('/api/admin/library-heal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dryRun: false })
+                body: JSON.stringify({
+                    dryRun: false,
+                    thumbnailStrategy
+                })
             });
             const data = await response.json();
             if (data.success) {
@@ -331,6 +339,7 @@ export function useIntegrityCheck({
         }
     };
 
+    // ... (rest of functions) ...
     const handleRevert = async () => {
         if (!window.confirm("Are you sure? This will restore all models to their state before the last Heal operation.")) return;
 
@@ -483,6 +492,8 @@ export function useIntegrityCheck({
         isGeneratingJson,
         generateResult,
         setGenerateResult,
+        thumbnailStrategy,
+        setThumbnailStrategy,
 
         // Actions
         handleRunHashCheck,

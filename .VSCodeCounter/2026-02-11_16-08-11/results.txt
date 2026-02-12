@@ -1,0 +1,255 @@
+Date : 2026-02-11 16:08:11
+Directory : c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src
+Total : 201 files,  29467 codes, 1559 comments, 3388 blanks, all 34414 lines
+
+Languages
++----------------+------------+------------+------------+------------+------------+
+| language       | files      | code       | comment    | blank      | total      |
++----------------+------------+------------+------------+------------+------------+
+| TypeScript JSX |        120 |     22,122 |        993 |      2,217 |     25,332 |
+| TypeScript     |         78 |      7,130 |        566 |      1,150 |      8,846 |
+| CSS            |          1 |        187 |          0 |         18 |        205 |
+| JSON           |          1 |         25 |          0 |          0 |         25 |
+| Markdown       |          1 |          3 |          0 |          3 |          6 |
++----------------+------------+------------+------------+------------+------------+
+
+Directories
++-----------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                                                  | files      | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                                                     |        201 |     29,467 |      1,559 |      3,388 |     34,414 |
+| . (Files)                                                                                                             |          3 |        679 |         45 |         86 |        810 |
+| api                                                                                                                   |          5 |        140 |          2 |         25 |        167 |
+| api (Files)                                                                                                           |          1 |         14 |          0 |          2 |         16 |
+| api\services                                                                                                          |          4 |        126 |          2 |         23 |        151 |
+| components                                                                                                            |        115 |     20,967 |        893 |      2,056 |     23,916 |
+| components (Files)                                                                                                    |         47 |     11,947 |        636 |      1,183 |     13,766 |
+| components\admin                                                                                                      |          1 |        150 |          0 |         17 |        167 |
+| components\bulk-edit                                                                                                  |          3 |        186 |          4 |         17 |        207 |
+| components\settings                                                                                                   |          9 |      3,417 |        205 |        276 |      3,898 |
+| components\shared                                                                                                     |          2 |        104 |          3 |         10 |        117 |
+| components\ui                                                                                                         |         48 |      4,695 |         28 |        520 |      5,243 |
+| components\views                                                                                                      |          5 |        468 |         17 |         33 |        518 |
+| config                                                                                                                |          1 |         25 |          0 |          0 |         25 |
+| constants                                                                                                             |          2 |         46 |          4 |          7 |         57 |
+| context                                                                                                               |          3 |        297 |         43 |         57 |        397 |
+| hooks                                                                                                                 |         37 |      3,972 |        259 |        631 |      4,862 |
+| hooks (Files)                                                                                                         |         13 |      1,133 |         96 |        191 |      1,420 |
+| hooks\bulk                                                                                                            |          2 |        413 |         37 |         49 |        499 |
+| hooks\hub                                                                                                             |          6 |      1,001 |         65 |        162 |      1,228 |
+| hooks\mutations                                                                                                       |          5 |        109 |          2 |         18 |        129 |
+| hooks\queries                                                                                                         |          6 |        150 |         13 |         30 |        193 |
+| hooks\settings                                                                                                        |          5 |      1,166 |         46 |        181 |      1,393 |
+| styles                                                                                                                |          1 |        187 |          0 |         18 |        205 |
+| tests                                                                                                                 |          2 |         97 |          7 |         20 |        124 |
+| types                                                                                                                 |          9 |        405 |         34 |         45 |        484 |
+| utils                                                                                                                 |         23 |      2,652 |        272 |        443 |      3,367 |
++-----------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-----------------------------------------------------------------------------------------------------------------------+----------------+------------+------------+------------+------------+
+| filename                                                                                                              | language       | code       | comment    | blank      | total      |
++-----------------------------------------------------------------------------------------------------------------------+----------------+------------+------------+------------+------------+
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\App.tsx                                         | TypeScript JSX |        664 |         44 |         81 |        789 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\Attributions.md                                 | Markdown       |          3 |          0 |          3 |          6 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\api\queryClient.ts                              | TypeScript     |         14 |          0 |          2 |         16 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\api\services\collectionService.ts               | TypeScript     |         27 |          1 |          6 |         34 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\api\services\fileService.ts                     | TypeScript     |         26 |          0 |          4 |         30 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\api\services\modelService.ts                    | TypeScript     |         57 |          1 |          9 |         67 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\api\services\tagService.ts                      | TypeScript     |         16 |          0 |          4 |         20 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\AutoImportDialog.tsx                 | TypeScript JSX |        202 |          6 |         17 |        225 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\BulkEditDrawer.tsx                   | TypeScript JSX |        397 |          5 |         35 |        437 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\CollectionCard.tsx                   | TypeScript JSX |        183 |          3 |         14 |        200 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\CollectionEditDrawer.tsx             | TypeScript JSX |        840 |         42 |         82 |        964 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\CollectionEditorDialog.tsx           | TypeScript JSX |        606 |         50 |         68 |        724 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\CollectionGrid.tsx                   | TypeScript JSX |        739 |         50 |         70 |        859 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\CollectionListRow.tsx                | TypeScript JSX |        151 |          0 |         15 |        166 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\DemoPage.tsx                         | TypeScript JSX |        543 |         12 |         30 |        585 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\DescriptionSection.tsx               | TypeScript JSX |        167 |          6 |         10 |        183 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\DescriptionSection_DB.tsx            | TypeScript JSX |        168 |          6 |         10 |        184 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\DonationDialog.tsx                   | TypeScript JSX |        149 |         27 |         16 |        192 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ErrorBoundary.tsx                    | TypeScript JSX |        134 |          3 |         13 |        150 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\FilterSidebar.tsx                    | TypeScript JSX |        601 |         18 |         51 |        670 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\GcodeSection.tsx                     | TypeScript JSX |        169 |          6 |         10 |        185 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\GlobalDialogs.tsx                    | TypeScript JSX |        177 |          9 |         14 |        200 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\Grid3DViewer.tsx                     | TypeScript JSX |        151 |         11 |         32 |        194 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ImageWithFallback.tsx                | TypeScript JSX |         33 |          1 |          7 |         41 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\LayoutControls.tsx                   | TypeScript JSX |         53 |          2 |          4 |         59 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\LayoutSettingsContext.tsx            | TypeScript JSX |         60 |          3 |         11 |         74 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\MetadataSection.tsx                  | TypeScript JSX |        276 |          2 |         15 |        293 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelCard.tsx                        | TypeScript JSX |        150 |         12 |         19 |        181 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelGrid.tsx                        | TypeScript JSX |        570 |         24 |         41 |        635 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelHubView.tsx                     | TypeScript JSX |        646 |         42 |         72 |        760 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelHubView_DB.tsx                  | TypeScript JSX |        619 |         37 |         66 |        722 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelMesh.tsx                        | TypeScript JSX |         87 |         20 |         10 |        117 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelPreviewSection.tsx              | TypeScript JSX |        264 |          9 |         17 |        290 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelUploadDialog.tsx                | TypeScript JSX |        432 |         22 |         57 |        511 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ModelViewer3D.tsx                    | TypeScript JSX |        273 |         35 |         28 |        336 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\NotesSection.tsx                     | TypeScript JSX |        156 |          6 |         16 |        178 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\NotesSection_DB.tsx                  | TypeScript JSX |        158 |          6 |         16 |        180 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\PrintSettingsSection.tsx             | TypeScript JSX |        168 |         14 |         19 |        201 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\PrinterStatusHub.tsx                 | TypeScript JSX |         96 |         11 |         17 |        124 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ProjectFolderDialog.tsx              | TypeScript JSX |         97 |          1 |          9 |        107 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ProjectView.tsx                      | TypeScript JSX |        318 |         16 |         25 |        359 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\RelatedFilesSection.tsx              | TypeScript JSX |        421 |         30 |         51 |        502 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\SelectionModeControls.tsx            | TypeScript JSX |        143 |          0 |         11 |        154 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\SettingsPage.tsx                     | TypeScript JSX |        360 |         16 |         34 |        410 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\SharedModelScene.tsx                 | TypeScript JSX |         57 |          9 |          9 |         75 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\SiblingsSection.tsx                  | TypeScript JSX |         57 |          3 |          7 |         67 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\SourceSection.tsx                    | TypeScript JSX |         63 |          0 |          2 |         65 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\SpoolmanWidget.tsx                   | TypeScript JSX |        196 |         25 |         31 |        252 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\TagsContext.tsx                      | TypeScript JSX |         37 |          2 |          9 |         48 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\TagsInput.tsx                        | TypeScript JSX |        260 |         16 |         31 |        307 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\TagsSection.tsx                      | TypeScript JSX |         79 |          0 |          4 |         83 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ThemeProvider.tsx                    | TypeScript JSX |        138 |          6 |         24 |        168 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ThemeToggle.tsx                      | TypeScript JSX |         70 |          3 |          7 |         80 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ThingiverseImportDialog.tsx          | TypeScript JSX |        233 |          9 |         27 |        269 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\admin\MigrationStatus.tsx            | TypeScript JSX |        150 |          0 |         17 |        167 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\bulk-edit\BulkEditSection.tsx        | TypeScript JSX |         48 |          0 |          4 |         52 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\bulk-edit\BulkRelatedFilesEditor.tsx | TypeScript JSX |         90 |          2 |          8 |        100 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\bulk-edit\BulkTagEditor.tsx          | TypeScript JSX |         48 |          2 |          5 |         55 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\BackupSettings.tsx          | TypeScript JSX |        251 |          8 |         13 |        272 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\CategorySettings.tsx        | TypeScript JSX |        267 |          7 |         12 |        286 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\CollectionsSettings.tsx     | TypeScript JSX |        219 |         26 |         42 |        287 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\ConfigSettings.tsx          | TypeScript JSX |         62 |          0 |          8 |         70 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\ExperimentalTab.tsx         | TypeScript JSX |        739 |         97 |         64 |        900 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\GeneralSettings.tsx         | TypeScript JSX |        642 |         23 |         38 |        703 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\IntegrationsSettings.tsx    | TypeScript JSX |        443 |         18 |         46 |        507 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\IntegritySettings.tsx       | TypeScript JSX |        516 |         18 |         34 |        568 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\settings\TagsTab.tsx                 | TypeScript JSX |        278 |          8 |         19 |        305 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\shared\ConfirmDialog.tsx             | TypeScript JSX |         65 |          0 |          5 |         70 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\shared\ViewLayout.tsx                | TypeScript JSX |         39 |          3 |          5 |         47 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\accordion.tsx                     | TypeScript JSX |         59 |          0 |          8 |         67 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\alert-dialog.tsx                  | TypeScript JSX |        156 |          0 |         15 |        171 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\alert.tsx                         | TypeScript JSX |         60 |          0 |          7 |         67 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\aspect-ratio.tsx                  | TypeScript JSX |          8 |          0 |          4 |         12 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\avatar.tsx                        | TypeScript JSX |         47 |          0 |          7 |         54 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\badge.tsx                         | TypeScript JSX |         41 |          0 |          6 |         47 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\breadcrumb.tsx                    | TypeScript JSX |         99 |          0 |         11 |        110 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\button.tsx                        | TypeScript JSX |         52 |          0 |          6 |         58 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\calendar.tsx                      | TypeScript JSX |         71 |          0 |          5 |         76 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\card.tsx                          | TypeScript JSX |         83 |          0 |         10 |         93 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\carousel.tsx                      | TypeScript JSX |        214 |          0 |         28 |        242 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\chart.tsx                         | TypeScript JSX |        315 |          2 |         37 |        354 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\checkbox.tsx                      | TypeScript JSX |         28 |          0 |          5 |         33 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\collapsible.tsx                   | TypeScript JSX |         28 |          0 |          6 |         34 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\command.tsx                       | TypeScript JSX |        165 |          0 |         13 |        178 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\context-menu.tsx                  | TypeScript JSX |        234 |          0 |         19 |        253 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\dialog.tsx                        | TypeScript JSX |        126 |          0 |         14 |        140 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\drawer.tsx                        | TypeScript JSX |        119 |          0 |         14 |        133 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\dropdown-menu.tsx                 | TypeScript JSX |        253 |          1 |         19 |        273 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\form.tsx                          | TypeScript JSX |        144 |          0 |         25 |        169 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\hover-card.tsx                    | TypeScript JSX |         38 |          0 |          7 |         45 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\input-otp.tsx                     | TypeScript JSX |         69 |          0 |          9 |         78 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\input.tsx                         | TypeScript JSX |         20 |          0 |          5 |         25 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\label.tsx                         | TypeScript JSX |         20 |          0 |          5 |         25 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\menubar.tsx                       | TypeScript JSX |        257 |          0 |         20 |        277 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\navigation-menu.tsx               | TypeScript JSX |        157 |          0 |         12 |        169 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\pagination.tsx                    | TypeScript JSX |        117 |          0 |         11 |        128 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\popover.tsx                       | TypeScript JSX |         41 |          0 |          8 |         49 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\progress.tsx                      | TypeScript JSX |         24 |          0 |          4 |         28 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\radio-group.tsx                   | TypeScript JSX |         40 |          0 |          6 |         46 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\resizable.tsx                     | TypeScript JSX |         50 |          0 |          7 |         57 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\scroll-area.tsx                   | TypeScript JSX |         62 |          2 |          6 |         70 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\select.tsx                        | TypeScript JSX |        176 |          0 |         14 |        190 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\separator.tsx                     | TypeScript JSX |         24 |          0 |          5 |         29 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\sheet.tsx                         | TypeScript JSX |        135 |          7 |         14 |        156 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\sidebar.tsx                       | TypeScript JSX |        660 |         12 |         55 |        727 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\skeleton.tsx                      | TypeScript JSX |         11 |          0 |          3 |         14 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\slider.tsx                        | TypeScript JSX |         77 |          1 |          7 |         85 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\sonner.tsx                        | TypeScript JSX |         21 |          0 |          5 |         26 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\switch.tsx                        | TypeScript JSX |         27 |          0 |          5 |         32 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\table.tsx                         | TypeScript JSX |        105 |          0 |         12 |        117 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\tabs.tsx                          | TypeScript JSX |         59 |          0 |          8 |         67 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\textarea.tsx                      | TypeScript JSX |         15 |          0 |          4 |         19 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\toggle-group.tsx                  | TypeScript JSX |         66 |          0 |          8 |         74 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\toggle.tsx                        | TypeScript JSX |         42 |          0 |          6 |         48 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\tooltip.tsx                       | TypeScript JSX |         58 |          3 |          8 |         69 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\use-mobile.ts                     | TypeScript     |         17 |          0 |          5 |         22 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\ui\utils.ts                          | TypeScript     |          5 |          0 |          2 |          7 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\views\CollectionView.tsx             | TypeScript JSX |         72 |          0 |          4 |         76 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\views\CollectionView_DB.tsx          | TypeScript JSX |        146 |         11 |         10 |        167 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\views\CollectionsView.tsx            | TypeScript JSX |         81 |          1 |          6 |         88 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\views\ModelsView.tsx                 | TypeScript JSX |         55 |          0 |          4 |         59 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\components\views\ModelsView_DB.tsx              | TypeScript JSX |        114 |          5 |          9 |        128 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\config\default-config.json                      | JSON           |         25 |          0 |          0 |         25 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\constants\labels.ts                             | TypeScript     |         29 |          2 |          4 |         35 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\constants\licenses.ts                           | TypeScript     |         17 |          2 |          3 |         22 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\context\ConfigContext.tsx                       | TypeScript JSX |        152 |         32 |         27 |        211 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\context\NavigationContext.tsx                   | TypeScript JSX |         89 |         10 |         21 |        120 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\context\SpoolmanContext.tsx                     | TypeScript JSX |         56 |          1 |          9 |         66 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\bulk\useBulkEditForm.ts                   | TypeScript     |        234 |         11 |         23 |        268 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\bulk\useBulkOperations.ts                 | TypeScript     |        179 |         26 |         26 |        231 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\hub\useDocumentUpload.ts                  | TypeScript     |         27 |          0 |          6 |         33 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\hub\useGcodeHandler.ts                    | TypeScript     |        216 |         15 |         35 |        266 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\hub\useModelEdit.ts                       | TypeScript     |        488 |         26 |         73 |        587 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\hub\useModelGallery.ts                    | TypeScript     |        164 |         12 |         28 |        204 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\hub\useRelatedFiles.ts                    | TypeScript     |         61 |         10 |          7 |         78 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\hub\useSiblings.ts                        | TypeScript     |         45 |          2 |         13 |         60 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\mutations\useBulkEditModels.ts            | TypeScript     |         16 |          0 |          3 |         19 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\mutations\useCreateCollection.ts          | TypeScript     |         16 |          0 |          3 |         19 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\mutations\useDeleteModel.ts               | TypeScript     |         33 |          0 |          5 |         38 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\mutations\useUpdateCollection.ts          | TypeScript     |         31 |          1 |          5 |         37 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\mutations\useUpdateModel.ts               | TypeScript     |         13 |          1 |          2 |         16 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\queries\useCollections.ts                 | TypeScript     |         23 |          2 |          5 |         30 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\queries\useFiles.ts                       | TypeScript     |          9 |          0 |          2 |         11 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\queries\useModel.ts                       | TypeScript     |         26 |          1 |          5 |         32 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\queries\useModels.ts                      | TypeScript     |         21 |          4 |          6 |         31 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\queries\useModelsPaginated.ts             | TypeScript     |         62 |          6 |         10 |         78 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\queries\useTags.ts                        | TypeScript     |          9 |          0 |          2 |         11 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\settings\useBackups.ts                    | TypeScript     |        137 |         10 |         28 |        175 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\settings\useCategoryManager.ts            | TypeScript     |        315 |         11 |         51 |        377 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\settings\useIntegrityCheck.ts             | TypeScript     |        437 |         13 |         61 |        511 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\settings\useSettingsConfig.ts             | TypeScript     |        123 |          9 |         19 |        151 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\settings\useTagManager.ts                 | TypeScript     |        154 |          3 |         22 |        179 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useCollectionMutations.ts                 | TypeScript     |        117 |          7 |         21 |        145 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useCollectionsQuery.ts                    | TypeScript     |         33 |          2 |          7 |         42 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useDialog.ts                              | TypeScript     |         18 |          0 |          4 |         22 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useFilteredModels.ts                      | TypeScript     |        208 |         31 |         34 |        273 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useGlobalDialogs.ts                       | TypeScript     |        152 |         13 |         29 |        194 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useModelActions.ts                        | TypeScript     |        150 |          7 |         22 |        179 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useModelData.ts                           | TypeScript     |         45 |          1 |          8 |         54 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useModelMutations.ts                      | TypeScript     |         16 |          7 |          4 |         27 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useModelMutations_DB.ts                   | TypeScript     |        125 |         12 |         23 |        160 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useModelMutations_Legacy.ts               | TypeScript     |        108 |          9 |         12 |        129 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useModelsQuery.ts                         | TypeScript     |         51 |          6 |         10 |         67 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useSelectionMode.ts                       | TypeScript     |         81 |          0 |         12 |         93 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\hooks\useTagsQuery.ts                           | TypeScript     |         29 |          1 |          5 |         35 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\main.tsx                                        | TypeScript JSX |         12 |          1 |          2 |         15 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\styles\globals.css                              | CSS            |        187 |          0 |         18 |        205 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\tests\download.test.tsx                         | TypeScript JSX |         79 |          7 |         17 |        103 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\tests\utils.test.ts                             | TypeScript     |         18 |          0 |          3 |         21 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\category.ts                               | TypeScript     |          5 |          0 |          0 |          5 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\collection.ts                             | TypeScript     |         28 |          4 |          5 |         37 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\collection_db.ts                          | TypeScript     |         56 |          1 |          8 |         65 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\config.ts                                 | TypeScript     |         66 |          2 |          4 |         72 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\index_db.ts                               | TypeScript     |          7 |          0 |          3 |         10 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\model.ts                                  | TypeScript     |         90 |         17 |          6 |        113 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\model_db.ts                               | TypeScript     |        133 |          8 |         17 |        158 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\three-elements.d.ts                       | TypeScript     |         19 |          2 |          1 |         22 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\types\view.ts                                   | TypeScript     |          1 |          0 |          1 |          2 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\ProjectService.ts                         | TypeScript     |        241 |         37 |         48 |        326 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\clientUtils.ts                            | TypeScript     |         89 |          2 |         17 |        108 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\configManager.ts                          | TypeScript     |        336 |         17 |         39 |        392 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\dbAdapter.ts                              | TypeScript     |        126 |         15 |         22 |        163 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\downloadUtils.ts                          | TypeScript     |        144 |         13 |         21 |        178 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\fileManager.ts                            | TypeScript     |        205 |         17 |         25 |        247 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\filterUtils.ts                            | TypeScript     |         76 |         14 |         18 |        108 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\galleryUtils.ts                           | TypeScript     |         62 |          3 |         14 |         79 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\gcodeParser.ts                            | TypeScript     |        213 |          8 |         31 |        252 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\imageUtils.ts                             | TypeScript     |         65 |         13 |         12 |         90 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\labels.ts                                 | TypeScript     |         29 |          2 |          4 |         35 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\modelFactory.ts                           | TypeScript     |         49 |          0 |          2 |         51 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\munchiePath.ts                            | TypeScript     |         34 |          0 |          7 |         41 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\rendererPool.ts                           | TypeScript     |          3 |          2 |          1 |          6 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\rendererPool.tsx                          | TypeScript JSX |        125 |          5 |         11 |        141 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\sortUtils.ts                              | TypeScript     |         53 |          1 |          5 |         59 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\themeUtils.ts                             | TypeScript     |        113 |         12 |         19 |        144 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\thingiverseImporter.ts                    | TypeScript     |        101 |         15 |         24 |        140 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\threeJSManager.ts                         | TypeScript     |         83 |         11 |         15 |        109 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\threeMFToJson.ts                          | TypeScript     |        341 |         48 |         66 |        455 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\thumbnailGenerator.ts                     | TypeScript     |         55 |         23 |         21 |         99 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\thumbnailUtils.ts                         | TypeScript     |         39 |          6 |          7 |         52 |
+| c:\Users\Michael\VSCodeProjects\3d-model-muncher\3d-model-muncher\src\utils\useSafeThreeMFLoader.ts                   | TypeScript     |         70 |          8 |         14 |         92 |
+| Total                                                                                                                 |                |     29,467 |      1,559 |      3,388 |     34,414 |
++-----------------------------------------------------------------------------------------------------------------------+----------------+------------+------------+------------+------------+

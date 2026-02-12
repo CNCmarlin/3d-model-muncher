@@ -122,62 +122,13 @@ async function processGcodeRequest({ file, body }, modelsDir) {
         gcodeData.gcodeFilePath = targetGcodePath;
     }
 
-    // --- Metadata Update ---
-    if (storageMode === 'save-and-link' && (modelFilePath || modelFileUrl)) {
-        try {
-            const pathRef = modelFileUrl || modelFilePath;
-            let relativeModelPath = pathRef.replace(/^\/models\//, '').replace(/^models\//, '');
-            const absModelPath = path.resolve(modelsDir, relativeModelPath);
+    // --- Metadata Update (SKIPPED) ---
+    // We do NOT update the JSON here because the frontend (useGcodeHandler) will 
+    // immediately call /api/save-model with the new data.
+    // Doing it here creates a race condition where the file is being written to 
+    // twice simultaneously, leading to potential corruption or empty reads during scans.
 
-            let jsonPath = null;
-            if (absModelPath.toLowerCase().endsWith('.stl')) {
-                jsonPath = absModelPath.replace(/\.stl$/i, '-stl-munchie.json');
-            } else if (absModelPath.toLowerCase().endsWith('.3mf')) {
-                jsonPath = absModelPath.replace(/\.3mf$/i, '-munchie.json');
-            }
-
-            if (jsonPath && fs.existsSync(jsonPath)) {
-                const raw = fs.readFileSync(jsonPath, 'utf8');
-                const modelData = JSON.parse(raw);
-                let changed = false;
-
-                // A. Update Print Settings
-                if (gcodeData.printSettings) {
-                    modelData.printSettings = {
-                        ...(modelData.printSettings || {}),
-                        ...gcodeData.printSettings
-                    };
-                    if (!modelData.printSettings.layerHeight) modelData.printSettings.layerHeight = 'Unknown';
-                    if (!modelData.printSettings.infill) modelData.printSettings.infill = 'Unknown';
-                    if (!modelData.printSettings.nozzle) modelData.printSettings.nozzle = 'Unknown';
-                    changed = true;
-                }
-
-                // B. Update Top-Level Stats
-                if (gcodeData.printTime) {
-                    modelData.printTime = gcodeData.printTime;
-                    changed = true;
-                }
-                if (gcodeData.totalFilamentWeight) {
-                    modelData.filamentUsed = gcodeData.totalFilamentWeight;
-                    changed = true;
-                }
-
-                // C. Save Detailed G-code Data
-                modelData.gcodeData = gcodeData;
-                changed = true;
-
-                if (changed) {
-                    // await fs.promises.writeFile(jsonPath, JSON.stringify(modelData, null, 2), 'utf8');
-                    // SAFE WRITE: Use retry logic for network shares
-                    await safeWriteJson(jsonPath, modelData);
-                }
-            }
-        } catch (err) {
-            console.error("[G-code Service] Failed to auto-update model JSON:", err);
-            // Don't fail the request, just log
-        }
-    }
+    // if (storageMode === 'save-and-link' && (modelFilePath || modelFileUrl)) { ... }
 
     return {
         success: true,

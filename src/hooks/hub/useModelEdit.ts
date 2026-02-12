@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Model } from '../../types/model';
 import { buildImageOrderFromModel, getUserImageData, resolveImageOrderToUrls } from '../../utils/galleryUtils';
 import { compressImageFile } from '../../utils/imageUtils';
+import { useModelMutations } from '../useModelMutations';
 
 export interface UseModelEditProps {
     model: Model | null;
@@ -10,6 +11,9 @@ export interface UseModelEditProps {
 }
 
 export function useModelEdit({ model, onModelUpdate }: UseModelEditProps) {
+    // React Query Mutations
+    const { updateModel } = useModelMutations();
+
     const [isEditing, setIsEditing] = useState(false);
     const [editedModel, setEditedModel] = useState<Model | null>(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -149,6 +153,12 @@ export function useModelEdit({ model, onModelUpdate }: UseModelEditProps) {
         }
         setRestoreOriginalDescription(false);
 
+        // DEBUG: Check what's in srcModel
+        console.log('[useModelEdit] startEditing called');
+        console.log('[useModelEdit] srcModel.category:', srcModel.category);
+        console.log('[useModelEdit] srcModel.printSettings:', srcModel.printSettings);
+        console.log('[useModelEdit] srcModel.notes:', srcModel.notes);
+
         // Images Logic
         const { images: legacyImages, ...srcModelWithoutImages } = srcModel;
         const parsedImages = Array.isArray(srcModel.parsedImages)
@@ -160,8 +170,28 @@ export function useModelEdit({ model, onModelUpdate }: UseModelEditProps) {
             filePath: jsonFilePath,
             tags: srcModel.tags || [],
             description: initialDescription,
-            parsedImages: parsedImages
+            parsedImages: parsedImages,
+            // CRITICAL FIX: Copy metadata fields so they're available for editing
+            category: srcModel.category || '',
+            notes: srcModel.notes || '',
+            printSettings: srcModel.printSettings || {
+                layerHeight: '',
+                infill: '',
+                nozzle: '',
+                printer: '',
+                material: ''
+            },
+            price: srcModel.price ?? 0,
+            hidden: srcModel.hidden ?? false,
+            designer: srcModel.designer ?? '',
+            license: srcModel.license ?? '',
+            isPrinted: srcModel.isPrinted ?? false,
+            related_files: srcModel.related_files || []
         } as Model;
+
+        // DEBUG: Check what's in nextModel
+        console.log('[useModelEdit] nextModel.category:', nextModel.category);
+        console.log('[useModelEdit] nextModel.printSettings:', nextModel.printSettings);
 
         // Count logic for Gallery
         const parsedImgs = parsedImages;
@@ -204,14 +234,21 @@ export function useModelEdit({ model, onModelUpdate }: UseModelEditProps) {
     };
 
     const saveModelToFile = async (edited: Model, original: Model) => {
-        if (!edited.filePath) return { success: false, error: "Missing file path" };
+        if (!edited.id) return { success: false, error: "Missing model ID" };
+
+        // DEBUG: What's actually in edited when save is clicked?
+        console.log('[useModelEdit] saveModelToFile called');
+        console.log('[useModelEdit] edited.category:', edited.category);
+        console.log('[useModelEdit] edited.printSettings:', edited.printSettings);
+        console.log('[useModelEdit] edited.notes:', edited.notes);
 
         const { invalid } = validateAndNormalizeRelatedFiles(edited.related_files as any);
         if (invalid.length > 0) return { success: false, error: 'validation_failed', invalid } as any;
 
-        const changes: any = { id: edited.id };
+        // Build updates object with only changed fields
+        const updates: any = {};
         const keysToSync = [
-            'name', 'category', 'license', 'tags', 'price',
+            'name', 'description', 'notes', 'category', 'license', 'tags', 'price',
             'isPrinted', 'hidden', 'printSettings', 'designer',
             'printTime', 'filamentUsed', 'userDefined', 'related_files'
         ];
@@ -220,7 +257,7 @@ export function useModelEdit({ model, onModelUpdate }: UseModelEditProps) {
             const newVal = (edited as any)[key];
             const oldVal = (original as any)[key];
             if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
-                changes[key] = newVal;
+                updates[key] = newVal;
             }
         });
 
@@ -231,14 +268,14 @@ export function useModelEdit({ model, onModelUpdate }: UseModelEditProps) {
             : originalTopLevelDescriptionRef.current;
 
         if (restoreOriginalDescription) {
-            if (!changes.userDefined) changes.userDefined = {};
-            changes.userDefined.description = null;
-            delete changes.description;
+            if (!updates.userDefined) updates.userDefined = {};
+            updates.userDefined.description = null;
+            delete updates.description;
         } else if (currentText !== originalLoadedText) {
-            if (!changes.userDefined) changes.userDefined = {};
+            if (!updates.userDefined) updates.userDefined = {};
             const isEmpty = typeof currentText === 'string' && currentText.trim() === '';
-            changes.userDefined.description = isEmpty ? null : currentText;
-            delete changes.description;
+            updates.userDefined.description = isEmpty ? null : currentText;
+            delete updates.description;
         }
 
         // Image Order Enforcement
@@ -247,31 +284,22 @@ export function useModelEdit({ model, onModelUpdate }: UseModelEditProps) {
             let imageOrderFinal = Array.isArray(udObj.imageOrder) ? udObj.imageOrder : buildImageOrderFromModel(edited);
 
             if (Array.isArray(imageOrderFinal) && imageOrderFinal.length > 0) {
-                if (!changes.userDefined) changes.userDefined = {};
-                changes.userDefined.imageOrder = imageOrderFinal;
-                changes.userDefined.thumbnail = imageOrderFinal[0];
-                delete changes.images;
-                delete changes.thumbnail;
+                if (!updates.userDefined) updates.userDefined = {};
+                updates.userDefined.imageOrder = imageOrderFinal;
+                updates.userDefined.thumbnail = imageOrderFinal[0];
+                delete updates.images;
+                delete updates.thumbnail;
             }
         } catch (e) { console.warn('Nested thumbnail enforcement failed:', e); }
 
         try {
-            const response = await fetch('/api/save-model', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filePath: edited.filePath, changes })
+            // Use React Query mutation instead of legacy endpoint
+            const result = await updateModel.mutateAsync({
+                id: edited.id,
+                data: updates  // Changed from 'updates' to 'data' to match mutation signature
             });
 
-            const result = await response.json();
-            if (!result.success) throw new Error(result.error || 'Failed to save');
-
-            let refreshedModel: Model | undefined;
-            const allResp = await fetch('/api/models');
-            if (allResp.ok) {
-                const all = await allResp.json();
-                refreshedModel = all.find((m: any) => m.id === edited.id);
-            }
-            return { success: true, serverResponse: result, refreshedModel };
+            return { success: true, serverResponse: result, refreshedModel: result };
         } catch (err: any) {
             console.error("Save process failed:", err);
             return { success: false, error: err.message };

@@ -112,7 +112,7 @@ function reconcileHiddenFlags() {
 }
 
 // Routes
-router.get('/', (req, res) => {
+router.get('/collections', (req, res) => {
     try {
         const cols = loadCollections();
         res.json({ success: true, collections: cols });
@@ -121,7 +121,7 @@ router.get('/', (req, res) => {
     }
 });
 
-router.post('/', async (req, res) => {
+router.post('/collections', async (req, res) => {
     try {
         const { id, name, description = '', modelIds = [], childCollectionIds = [],
             parentId = null, coverModelId, category = '', tags = [], images = [],
@@ -243,26 +243,116 @@ router.post('/', async (req, res) => {
     }
 });
 
-router.delete('/:id', async (req, res) => {
+// [FIX] Add PUT route for collection updates
+router.put('/collections/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const deleteTask = (currentCols) => {
+        const updates = req.body; // Partial updates
+
+        // Re-use logic from POST /collections but targeted at ID
+        // Simplified update logic for PUT
+        const updateTask = (currentCols) => {
             const idx = currentCols.findIndex(c => c.id === id);
-            if (idx === -1) throw new Error('Not found');
-            const updatedCols = [...currentCols];
-            updatedCols.splice(idx, 1);
-            return updatedCols;
+            if (idx === -1) throw new Error('Collection not found');
+
+            let updatedCol = { ...currentCols[idx], ...updates, id }; // Ensure ID matches
+            updatedCol.lastModified = new Date().toISOString();
+
+            // Fix: ensure modelIds is array
+            if (updates.modelIds && !Array.isArray(updates.modelIds)) {
+                updatedCol.modelIds = currentCols[idx].modelIds || [];
+            }
+            // Fix: ensure tags is array
+            if (updates.tags && !Array.isArray(updates.tags)) {
+                updatedCol.tags = currentCols[idx].tags || [];
+            }
+
+            const newCols = [...currentCols];
+            newCols[idx] = updatedCol;
+            return newCols;
         };
-        await collectionQueue.add(deleteTask);
+
+        await collectionQueue.add(updateTask);
         try { reconcileHiddenFlags(); } catch { }
-        res.json({ success: true, deletedId: id });
+
+        const freshCols = loadCollections();
+        const saved = freshCols.find(c => c.id === id);
+        res.json({ success: true, collection: saved });
+
     } catch (e) {
-        const status = e.message === 'Not found' ? 404 : 500;
+        const status = e.message === 'Collection not found' ? 404 : 500;
         res.status(status).json({ success: false, error: e.message });
     }
 });
 
-router.post('/:id/build-plates', async (req, res) => {
+router.delete('/collections/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const deleteFiles = req.query.deleteFiles === 'true';
+        console.log(`[Collection] DELETE Request: ${id} (Physical: ${deleteFiles})`);
+
+        let physicalPathToDelete = null;
+
+        const deleteTask = (currentCols) => {
+            const idx = currentCols.findIndex(c => c.id === id);
+            if (idx === -1) {
+                console.warn(`[Collection] DELETE Failed - ID not found: ${id}`);
+                throw new Error('Collection not found');
+            }
+
+            const col = currentCols[idx];
+
+            // Resolve physical path if requested
+            if (deleteFiles && col.id.startsWith('col_')) {
+                try {
+                    const b64 = col.id.substring(4);
+                    // Standardize Base64 (replace URL-safe chars back to standard if needed, though usually standard works)
+                    // The creation logic used: replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+                    // So we must reverse: - -> +, _ -> /
+                    const standardB64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+                    const relPath = Buffer.from(standardB64, 'base64').toString('utf8');
+                    const modelsDir = getAbsoluteModelsPath();
+
+                    // Security check: ensure relPath doesn't try to go up
+                    if (!relPath.includes('..') && !path.isAbsolute(relPath)) {
+                        physicalPathToDelete = path.join(modelsDir, relPath);
+                    } else {
+                        console.warn(`[Collection] Skipped physical delete for unsafe path: ${relPath}`);
+                    }
+                } catch (e) {
+                    console.warn(`[Collection] Failed to decode path for ${col.id}:`, e.message);
+                }
+            }
+
+            const updatedCols = [...currentCols];
+            updatedCols.splice(idx, 1);
+            return updatedCols;
+        };
+
+        await collectionQueue.add(deleteTask);
+
+        // Perform physical delete AFTER removing from DB (to prevent ghosting if delete fails)
+        if (physicalPathToDelete && fs.existsSync(physicalPathToDelete)) {
+            console.log(`[Collection] Deleting physical folder: ${physicalPathToDelete}`);
+            try {
+                fs.rmSync(physicalPathToDelete, { recursive: true, force: true });
+            } catch (err) {
+                console.error(`[Collection] Failed to delete folder ${physicalPathToDelete}:`, err);
+                // We don't fail the request because the collection is already gone from DB
+            }
+        }
+
+        try { reconcileHiddenFlags(); } catch { }
+        res.json({ success: true, deletedId: id });
+
+    } catch (e) {
+        console.error(`[Collection] DELETE Error for ${req.params.id}:`, e);
+        const status = e.message === 'Collection not found' ? 404 : 500;
+        res.status(status).json({ success: false, error: e.message });
+    }
+});
+
+router.post('/collections/:id/build-plates', async (req, res) => {
     const { id } = req.params;
     const { name } = req.body;
 
@@ -302,7 +392,7 @@ router.post('/:id/build-plates', async (req, res) => {
     }
 });
 
-router.put('/:id/build-plates/:plateId', async (req, res) => {
+router.put('/collections/:id/build-plates/:plateId', async (req, res) => {
     const { id, plateId } = req.params;
     const updates = req.body;
 
@@ -338,7 +428,7 @@ router.put('/:id/build-plates/:plateId', async (req, res) => {
     }
 });
 
-router.delete('/:id/build-plates/:plateId', async (req, res) => {
+router.delete('/collections/:id/build-plates/:plateId', async (req, res) => {
     const { id, plateId } = req.params;
     try {
         const deleteTask = (currentCols) => {
@@ -362,9 +452,9 @@ router.delete('/:id/build-plates/:plateId', async (req, res) => {
     }
 });
 
-router.post('/auto-import', async (req, res) => {
+router.post('/collections/auto-import', async (req, res) => {
     try {
-        const { targetFolder, strategy = 'smart', clearPrevious = false } = req.body;
+        const { targetFolder, strategy = 'smart', clearPrevious = false, autoTag = false } = req.body;
 
         const config = ConfigManager.loadConfig();
         config.settings.scanStrategy = strategy || 'smart';
@@ -381,13 +471,13 @@ router.post('/auto-import', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Directory not found' });
         }
 
-        console.log(`[Auto-Import] Scanning ${scanRoot} (Strategy: ${strategy}, ClearPrevious: ${clearPrevious})`);
+        console.log(`[Auto-Import] Scanning ${scanRoot} (Strategy: ${strategy}, ClearPrevious: ${clearPrevious}, AutoTag: ${autoTag})`);
 
         // Dynamic require to ensure we get the latest version if files changed
         delete require.cache[require.resolve('../../server-utils/collectionScanner')];
         const { scanDirectory } = require('../../server-utils/collectionScanner');
 
-        const discoveredCollections = scanDirectory(scanRoot, modelsDir, { strategy });
+        const discoveredCollections = scanDirectory(scanRoot, modelsDir, { strategy, autoTag });
 
         const mergeTask = (currentCols) => {
             let updatedCols = [...currentCols];
@@ -411,11 +501,24 @@ router.post('/auto-import', async (req, res) => {
 
                 if (existingIdx !== -1) {
                     const existing = updatedCols[existingIdx];
-                    const mergedIds = [...new Set([...existing.modelIds, ...importCol.modelIds])];
+
+                    // CRITICAL FIX: For Auto-Imported collections, we must OVERWRITE modelIds
+                    // to remove stale IDs (e.g. from path changes or deleted files).
+                    // We only merge if it's a manual collection or user explicitly added things?
+                    // For now, strict sync for Auto-Imported seems safest to fix the "Ghost ID" bug.
+                    const isAuto = existing.category === 'Auto-Imported' || importCol.category === 'Auto-Imported';
+
+                    let finalIds = importCol.modelIds;
+                    if (!isAuto) {
+                        // If it's a manual collection that happens to match a folder, maybe merge?
+                        // But mostly scanner only returns Auto-Imported.
+                        finalIds = [...new Set([...existing.modelIds, ...importCol.modelIds])];
+                    }
+
                     updatedCols[existingIdx] = {
                         ...existing,
-                        modelIds: mergedIds,
-                        category: 'Auto-Imported',
+                        modelIds: finalIds,
+                        category: importCol.category || existing.category, // Keep 'Auto-Imported'
                         parentId: existing.parentId || importCol.parentId,
                         lastModified: new Date().toISOString()
                     };
@@ -425,7 +528,7 @@ router.post('/auto-import', async (req, res) => {
                     added++;
                 }
             }
-            console.log(`[Auto-Import] Merge complete. Added: ${added}, Updated: ${updated}`);
+            console.log(`[Auto-Import] Merge complete (Overwrite Mode). Added: ${added}, Updated: ${updated}`);
             return updatedCols;
         };
 
@@ -441,7 +544,7 @@ router.post('/auto-import', async (req, res) => {
 });
 
 // --- API: Generate Collection Covers ---
-router.post('/generate-covers', async (req, res) => {
+router.post('/collections/generate-covers', async (req, res) => {
     if (activeCoverJob) {
         activeCoverJob.abort();
     }
@@ -559,7 +662,7 @@ router.post('/generate-covers', async (req, res) => {
     }
 });
 
-router.delete('/:id/images/:filename', async (req, res) => {
+router.delete('/collections/:id/images/:filename', async (req, res) => {
     const { id, filename } = req.params;
 
     try {
@@ -609,7 +712,7 @@ router.delete('/:id/images/:filename', async (req, res) => {
 const multer = require('multer');
 const upload = multer(); // Memory storage
 
-router.post('/:id/images', upload.single('image'), async (req, res) => {
+router.post('/collections/:id/images', upload.single('image'), async (req, res) => {
     const collectionId = req.params.id;
     const file = req.file;
     console.log(`[CollectionsRouter] Upload Image Request for ${collectionId}`);
@@ -635,7 +738,7 @@ router.post('/:id/images', upload.single('image'), async (req, res) => {
     res.json({ success: true, imagePath: `/api/images/collections/${collectionId}/${filename}` });
 });
 
-router.post('/:id/documents', upload.single('file'), async (req, res) => {
+router.post('/collections/:id/documents', upload.single('file'), async (req, res) => {
     const collectionId = req.params.id;
     const file = req.file;
     console.log(`[CollectionsRouter] Document Upload Request for ${collectionId}`);
@@ -667,7 +770,7 @@ router.post('/:id/documents', upload.single('file'), async (req, res) => {
     }
 });
 
-router.delete('/:id/documents/:filename', async (req, res) => {
+router.delete('/collections/:id/documents/:filename', async (req, res) => {
     const { id, filename } = req.params;
     console.log(`[CollectionsRouter] Delete Document Request: ${id} / ${filename}`);
 

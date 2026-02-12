@@ -1,0 +1,87 @@
+[
+  {
+    "type": "loose-fallback",
+    "munchiePath": "3D Printer\\ADXL\\ADXL mount-stl-munchie.json",
+    "munchie": {
+      "id": "models-3D-Printer-ADXL-ADXL-mount-7928d97e",
+      "name": "ADXL mount",
+      "description": "",
+      "tags": [
+        "ADXL"
+      ],
+      "printTime": "1h 42m 23s",
+      "favorite": false,
+      "printed": false
+    },
+    "database": {
+      "id": "models-3D-Printer-ADXL-ADXL-mount-7928d97e",
+      "name": "ADXL mount",
+      "description": "",
+      "tags": [],
+      "printTime": 0,
+      "filament": 0,
+      "favorite": false,
+      "printed": false,
+      "collection": "ADXL",
+      "fileCount": 1,
+      "files": [
+        {
+          "name": "ADXL mount.stl",
+          "primary": true,
+          "size": 110284
+        }
+      ]
+    },
+    "checks": {
+      "idMatch": true,
+      "nameMatch": true,
+      "tagsMatch": false,
+      "favoriteMatch": true,
+      "printedMatch": true,
+      "hasFiles": true
+    }
+  },
+  {
+    "type": "loose-regular",
+    "munchiePath": "3D Printer\\Camera\\C-270 tripod\\c270_cam1-stl-munchie.json",
+    "munchie": {
+      "id": "models-3D-Printer-Camera-C-270-tripod-c270_cam1-c8579fa1",
+      "name": "c270_cam1",
+      "description": "",
+      "tags": [
+        "C-270 tripod",
+        "Camera"
+      ],
+      "printTime": "",
+      "favorite": false,
+      "printed": false
+    },
+    "database": {
+      "id": "models-3D-Printer-Camera-C-270-tripod-c270_cam1-c8579fa1",
+      "name": "c270_cam1",
+      "description": "",
+      "tags": [],
+      "printTime": 0,
+      "filament": 0,
+      "favorite": false,
+      "printed": false,
+      "collection": "C-270 tripod",
+      "fileCount": 1,
+      "files": [
+        {
+          "name": "c270_cam1.stl",
+          "primary": true,
+          "size": 505492
+        }
+      ]
+    },
+    "checks": {
+      "idMatch": true,
+      "nameMatch": true,
+      "tagsMatch": false,
+      "favoriteMatch": true,
+      "printedMatch": true,
+      "hasFiles": true
+    }
+  }
+]

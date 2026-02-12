@@ -1,20 +1,21 @@
+import { ChevronRight, Layers } from 'lucide-react';
 import React from 'react';
-import { Layers, ChevronRight } from 'lucide-react';
 import { Model } from "../types/model";
+import { resolveModelThumbnail } from '../utils/thumbnailUtils';
 import { ImageWithFallback } from "./ImageWithFallback";
 
 interface SiblingsSectionProps {
     siblings: Model[];
-    onModelUpdate: (model: Model) => void;
+    onNavigate: (modelId: string) => void;
     detailsViewportRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export const SiblingsSection = ({ 
-    siblings, 
-    onModelUpdate, 
-    detailsViewportRef 
+export const SiblingsSection = ({
+    siblings,
+    onNavigate,
+    detailsViewportRef
 }: SiblingsSectionProps) => {
-    
+
     if (siblings.length === 0) return null;
 
     return (
@@ -33,18 +34,18 @@ export const SiblingsSection = ({
                     <button
                         key={sibling.id}
                         onClick={() => {
-                            onModelUpdate(sibling);
+                            onNavigate(sibling.id);
                             // Scroll back to top so the user sees the new model info
                             detailsViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                         className="group relative aspect-square rounded-lg border overflow-hidden bg-muted/50 hover:border-primary transition-all text-left"
                     >
-                        <ImageWithFallback 
-                            src={sibling.thumbnail} 
-                            alt={sibling.name} 
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105" 
+                        <ImageWithFallback
+                            src={resolveModelThumbnail(sibling)}
+                            alt={sibling.name}
+                            className="w-full h-full object-cover transition-transform group-hover:scale-105"
                         />
-                        
+
                         {/* Overlay Label */}
                         <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2 backdrop-blur-sm transform translate-y-full group-hover:translate-y-0 transition-transform">
                             <p className="text-[10px] text-white font-medium truncate">

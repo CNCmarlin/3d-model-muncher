@@ -1,22 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { BulkEditDrawer } from "./components/BulkEditDrawer";
 import { DemoPage } from "./components/DemoPage";
 
+import { MigrationStatus } from "./components/admin/MigrationStatus";
 import { FilterSidebar } from "./components/FilterSidebar";
 import { ModelHubView } from "./components/ModelHubView";
+import { ModelHubView_DB } from "./components/ModelHubView_DB";
 import { SettingsPage } from "./components/SettingsPage";
 import { TagsProvider } from "./components/TagsContext";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { BulkEditView } from "./components/views/BulkEditView"; // NEW IMPORT
 import { CollectionsView } from "./components/views/CollectionsView";
 import { CollectionView } from "./components/views/CollectionView";
+import { CollectionView_DB } from "./components/views/CollectionView_DB";
 import { ModelsView } from "./components/views/ModelsView";
+import { ModelsView_DB } from "./components/views/ModelsView_DB";
 import { ConfigProvider, useConfig } from "./context/ConfigContext";
 import { NavigationProvider, useNavigation } from "./context/NavigationContext";
+import { useCollections } from "./hooks/queries/useCollections";
+import { useModels } from "./hooks/queries/useModels";
+import { useModelsByIds } from "./hooks/queries/useModelsByIds";
 import { useFilteredModels } from "./hooks/useFilteredModels";
 import { useGlobalDialogs } from "./hooks/useGlobalDialogs";
 import { useModelActions } from "./hooks/useModelActions";
-import { useModelData } from "./hooks/useModelData";
 import { useSelectionMode } from "./hooks/useSelectionMode";
 import { Model } from "./types/model";
 // Import package.json to read the last published version
@@ -38,10 +44,9 @@ import { SpoolmanProvider } from "./context/SpoolmanContext";
 import type { Collection } from "./types/collection";
 import { SortKey } from "./utils/sortUtils";
 
-// Initial type for view
-// Initial type for view - Moved to types/view.ts
 
-
+const EMPTY_MODELS: Model[] = [];
+const EMPTY_COLLECTIONS: Collection[] = [];
 
 function AppContent() {
   // Contexts
@@ -56,6 +61,8 @@ function AppContent() {
     dontShowReleaseNotes,
     setDontShowReleaseNotes
   } = useConfig();
+
+  const useDatabaseBackend = appConfig?.settings?.useDatabaseBackend ?? false;
 
   const {
     currentView,
@@ -77,36 +84,35 @@ function AppContent() {
 
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
 
-  // Custom Hooks
+  // React Query Data Fetching (Database-First)
+  // Legacy Hook: Only fetch if NOT using database backend (to avoid double fetch)
   const {
-    models,
-    setModels,
-    isModelsLoading,
-    isRefreshing,
-    refreshModels
-  } = useModelData();
+    data: models = EMPTY_MODELS,
+    isLoading: isModelsLoading,
+    isFetching: isRefreshing,
+    refetch: refetchModels
+  } = useModels({}, { enabled: !useDatabaseBackend });
 
-  // Helper State (Local UI)
+  const {
+    data: collections = EMPTY_COLLECTIONS,
+    refetch: refetchCollections
+  } = useCollections();
 
+  // Helper to update models optimistically (for mutations later)
+  const setModels = (_newModels: Model[]) => {
+    // For legacy updates (like tag deletion), just trigger a refetch
+    // This ensures the UI reflects the backend state
+    refetchModels();
+  };
 
-  // Bulk/Delete UI State
-  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
+  // Wrapper functions to match expected signatures
+  const refreshModels = async (_isInitial?: boolean): Promise<Model[] | null> => {
+    const result = await refetchModels();
+    return result.data || null;
+  };
 
-  // Collections State (Data)
-  const [collections, setCollections] = useState<Collection[]>([]);
-
-  const refreshCollections = async () => {
-    try {
-      const colResp = await fetch('/api/collections');
-      if (colResp.ok) {
-        const data = await colResp.json();
-        if (data && data.success && Array.isArray(data.collections)) {
-          setCollections(data.collections);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to refresh collections", e);
-    }
+  const refreshCollections = async (): Promise<void> => {
+    await refetchCollections();
   };
 
   // Selection State (Lifted)
@@ -136,13 +142,17 @@ function AppContent() {
     setSelectedModelIds
   });
 
+  // DB-Mode Bulk Edit Data Fetching
+  const { data: bulkModels } = useModelsByIds(selectedModelIds, {
+    enabled: currentView === 'bulk-edit' && useDatabaseBackend && selectedModelIds.length > 0
+  });
+
   // 2. Selection Hook (needs filtered models & lifted state)
   const {
     toggleSelectionMode,
     handleModelSelection,
     selectAllModels,
     deselectAllModels,
-    exitSelectionMode,
     getSelectedModels
   } = useSelectionMode({
     isSelectionMode,
@@ -161,7 +171,8 @@ function AppContent() {
     selectedModelIds,
     setSelectedModelIds,
     setIsSelectionMode,
-    setIsBulkEditOpen,
+    // When bulk edit closes (saved), we go back to models
+    onCloseBulkEdit: () => navHandleBack(),
     refreshModels: handleRefreshModels,
     setSelectedModel
   });
@@ -174,22 +185,21 @@ function AppContent() {
   const handleCollectionCreatedForBulkEdit = (collectionId: string) => {
     setPendingBulkCollectionId(collectionId);
     // Switch to models view so the BulkEditDrawer (and grid) can render
-    setCurrentView('models');
+    setCurrentView('bulk-edit');
 
     // Ensure selection mode is on; the useEffect below will open the drawer
     if (!isSelectionMode) {
       setIsSelectionMode(true);
-    } else {
-      setIsBulkEditOpen(true);
     }
   };
 
   // Watch for pending collection actions to auto-open the drawer
   useEffect(() => {
     if (pendingBulkCollectionId && isSelectionMode) {
-      setIsBulkEditOpen(true);
+      setCurrentView('bulk-edit');
     }
-  }, [pendingBulkCollectionId, isSelectionMode]);
+  }, [pendingBulkCollectionId, isSelectionMode, setCurrentView]);
+
   // Initial Data Loading (Models & Collections)
   useEffect(() => {
     async function initData() {
@@ -200,7 +210,10 @@ function AppContent() {
         const loadedModels = await refreshModels(true);
         if (!loadedModels) return;
 
-        // Apply filters based on Config Defaults
+        // Load collections (needed for sidebar filtering)
+        await refreshCollections();
+
+        // Initialize filters based on Config Defaults
         const defaults = appConfig?.filters || { defaultCategory: 'all', defaultPrintStatus: 'all', defaultLicense: 'all' };
 
         const initialFilterState = {
@@ -215,18 +228,9 @@ function AppContent() {
           sortBy: defaults.defaultSortBy || 'none',
         };
 
-        // Initialize filters via the hook state (triggers effect in useFilteredModels)
+        // Initialize filters via the hook state
         setLastFilters(initialFilterState);
         if (initialFilterState.sortBy) setCurrentSortBy(initialFilterState.sortBy as any);
-
-        // Load Collections
-        try {
-          const colResp = await fetch('/api/collections');
-          if (colResp.ok) {
-            const data = await colResp.json();
-            if (data && data.success && Array.isArray(data.collections)) setCollections(data.collections);
-          }
-        } catch (e) { /* ignore */ }
 
       } catch (error) {
         console.error("Failed to init data", error);
@@ -246,21 +250,13 @@ function AppContent() {
     setCurrentView('model-hero'); // Switch view instead of just opening drawer
   };
 
-
-
-  // handleModelUpdate moved to useModelActions
-
-  // handleBulkModelsUpdate moved to useModelActions
-
-  // Selection helpers moved to useSelectionMode hook
-  // handleModelSelection, selectAllModels, deselectAllModels, exitSelectionMode, getSelectedModels are now from hook
-
   const handleBulkEdit = () => {
+    console.log('[App] handleBulkEdit called. Selection:', selectedModelIds, 'Current view:', currentView, 'Models count:', models.length);
     if (selectedModelIds.length === 0) {
       toast("No models selected", { description: "Please select models first before bulk editing" });
       return;
     }
-    setIsBulkEditOpen(true);
+    setCurrentView('bulk-edit');
   };
 
   // performDelete moved to useModelActions
@@ -278,16 +274,6 @@ function AppContent() {
     setSelectedModel(null); // Close the drawer
   };
 
-  // handleBulkUpdateModels (complex logic) moved to useModelActions
-
-  // handleBulkSavedModels moved to useModelActions
-
-
-
-  // handleCategoriesUpdate and handleConfigUpdate replaced by context actions
-
-
-
   const handleSettingsClick = () => {
     navOpenSettings('general');
     setIsSelectionMode(false);
@@ -302,7 +288,9 @@ function AppContent() {
     refreshCollections,
     selectedModelIds,
     setSelectedModelIds,
-    deleteModels: modelActions.performDelete
+    deleteModels: modelActions.performDelete,
+    appConfig,
+    updateConfig
   });
 
   // --- Handlers that need the dialog hooks ---
@@ -313,8 +301,6 @@ function AppContent() {
   const handleOpenImport = (collectionId?: string) => {
     dialogs.openImport(collectionId);
   };
-
-
 
   // Navigation handlers replaced by context actions
 
@@ -344,14 +330,6 @@ function AppContent() {
     dialogs.openDonation();
   };
 
-
-
-  const globalTags = useMemo(() => {
-    const set = new Set<string>();
-    (models || []).forEach(m => (m.tags || []).forEach(t => { if (t) set.add(t); }));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-  }, [models]);
-
   const collectionsForDisplay = useMemo(() => {
     if (!Array.isArray(collections) || collections.length === 0) {
       return [] as Collection[];
@@ -373,7 +351,7 @@ function AppContent() {
       filteredList = filteredList.filter(col => {
         const nameMatch = (col.name || '').toLowerCase().includes(searchTerm);
         const descriptionMatch = (col.description || '').toLowerCase().includes(searchTerm);
-        const tagsMatch = (col.tags || []).some(tag => tag.toLowerCase().includes(searchTerm));
+        const tagsMatch = (col.tags || []).some((tag: string) => tag.toLowerCase().includes(searchTerm));
         return nameMatch || descriptionMatch || tagsMatch;
       });
     }
@@ -390,7 +368,7 @@ function AppContent() {
     if (hasTagFilter) {
       const targetTags = filters.tags.map(tag => tag.toLowerCase());
       filteredList = filteredList.filter(col => {
-        const collectionTags = (col.tags || []).map(tag => tag.toLowerCase());
+        const collectionTags = (col.tags || []).map((tag: string) => tag.toLowerCase());
         return targetTags.every(tag => collectionTags.includes(tag));
       });
     }
@@ -418,11 +396,11 @@ function AppContent() {
     window.addEventListener('resize', handleResize);
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [setIsSidebarOpen]);
 
   if (!appConfig) {
     return (
-      <TagsProvider tags={globalTags}>
+      <TagsProvider>
         <div className="flex items-center justify-center h-screen bg-background">
           <div className="text-center space-y-4">
             <div className="flex items-center justify-center w-16 h-16 bg-gradient-primary rounded-xl shadow-lg mx-auto">
@@ -439,7 +417,7 @@ function AppContent() {
   }
 
   return (
-    <TagsProvider tags={globalTags}>
+    <TagsProvider>
       <div className="flex h-screen bg-background overflow-hidden">
         {/* Mobile Overlay */}
         {isSidebarOpen && (
@@ -466,6 +444,7 @@ function AppContent() {
               setCurrentView('models');
             }}
             models={(currentView === 'collection-view' && activeCollection) ? collectionBaseModels : models}
+            currentFilters={lastFilters}
             initialFilters={{
               search: '',
               category: appConfig?.filters?.defaultCategory || 'all',
@@ -498,6 +477,7 @@ function AppContent() {
                   </div>
                 </div>
               )}
+              {/* GLOBAL SELECTION INDICATOR REMOVED - Moved to SelectionModeControls */}
             </div>
 
             <div className="flex-1 flex justify-center min-w-0 px-2">
@@ -546,22 +526,45 @@ function AppContent() {
             )}
 
             {currentView === 'models' ? (
-              <ModelsView
-                filteredModels={filteredModels}
-                collectionsForDisplay={collectionsForDisplay}
-                allCollections={collections}
-                sortBy={(currentSortBy || 'none') as SortKey}
-                onModelClick={handleModelClick}
-                onRefresh={handleRefreshModels}
-                isSelectionMode={isSelectionMode}
-                selectedModelIds={selectedModelIds}
-                onModelSelection={handleModelSelection}
-                onToggleSelectionMode={toggleSelectionMode}
-                onSelectAll={selectAllModels}
-                onDeselectAll={deselectAllModels}
-                onBulkEdit={handleBulkEdit}
-                onBulkDelete={handleBulkDeleteClick}
-              />
+              useDatabaseBackend ? (
+                <ModelsView_DB
+                  collectionsForDisplay={collectionsForDisplay}
+                  allCollections={collections}
+                  sortBy={currentSortBy}
+                  onModelClick={handleModelClick}
+                  onRefresh={handleRefreshModels}
+                  isSelectionMode={isSelectionMode}
+                  selectedModelIds={selectedModelIds}
+                  onModelSelection={handleModelSelection}
+                  onToggleSelectionMode={toggleSelectionMode}
+                  onSelectAll={selectAllModels}
+                  onDeselectAll={deselectAllModels}
+                  onBulkEdit={() => {
+                    if (selectedModelIds.length > 0) {
+                      setCurrentView('bulk-edit');
+                    }
+                  }}
+                  onBulkDelete={handleBulkDeleteClick}
+                  currentFilters={lastFilters}
+                />
+              ) : (
+                <ModelsView
+                  filteredModels={filteredModels}
+                  collectionsForDisplay={collectionsForDisplay}
+                  allCollections={collections}
+                  sortBy={(currentSortBy || 'none') as SortKey}
+                  onModelClick={handleModelClick}
+                  onRefresh={handleRefreshModels}
+                  isSelectionMode={isSelectionMode}
+                  selectedModelIds={selectedModelIds}
+                  onModelSelection={handleModelSelection}
+                  onToggleSelectionMode={toggleSelectionMode}
+                  onSelectAll={selectAllModels}
+                  onDeselectAll={deselectAllModels}
+                  onBulkEdit={handleBulkEdit}
+                  onBulkDelete={handleBulkDeleteClick}
+                />
+              )
             ) : currentView === 'settings' ? (
               <SettingsPage
                 onBack={navHandleBack}
@@ -570,7 +573,7 @@ function AppContent() {
                 config={appConfig}
                 onConfigUpdate={updateConfig}
                 models={models}
-                onModelsUpdate={modelActions.handleBulkSavedModels}
+                onModelsUpdate={() => handleRefreshModels()}
                 onModelClick={handleModelClick}
                 onDonationClick={handleDonationClick}
                 initialTab={settingsInitialTab}
@@ -589,86 +592,159 @@ function AppContent() {
                 onRefresh={refreshCollections}
               />
             ) : currentView === 'collection-view' && activeCollection ? (
-              <CollectionView
-                activeCollection={activeCollection}
-                filteredModels={filteredModels}
-                collections={collections}
-                onOpenCollection={navOpenCollection}
-                onImportClick={handleOpenImport}
-                onUploadClick={handleCollectionUpload}
-                onBack={() => {
-                  if (hasActiveFilters) {
-                    handleFilterChange({
-                      search: '', category: 'all', printStatus: 'all', license: 'all', fileType: 'all', tags: [], showHidden: true, showMissingImages: false, sortBy: currentSortBy
-                    });
+              useDatabaseBackend ? (
+                <CollectionView_DB
+                  activeCollection={activeCollection}
+                  collections={collections}
+                  onOpenCollection={navOpenCollection}
+                  onImportClick={handleOpenImport}
+                  onUploadClick={handleCollectionUpload}
+                  onBack={() => {
+                    if (hasActiveFilters) {
+                      handleFilterChange({
+                        search: '', category: 'all', printStatus: 'all', license: 'all', fileType: 'all', tags: [], showHidden: true, showMissingImages: false, sortBy: currentSortBy
+                      });
+                      setSidebarResetKey(k => k + 1);
+                      return;
+                    }
+                    if (activeCollection?.parentId) {
+                      const parent = collections.find(c => c.id === activeCollection.parentId);
+                      if (parent) { setActiveCollection(parent); return; }
+                    }
+                    setActiveCollection(null);
+                    setCurrentView('models');
                     setSidebarResetKey(k => k + 1);
-                    return;
-                  }
-                  if (activeCollection?.parentId) {
-                    const parent = collections.find(c => c.id === activeCollection.parentId);
-                    if (parent) { setActiveCollection(parent); return; }
-                  }
-                  setActiveCollection(null);
-                  setCurrentView('models');
-                  setSidebarResetKey(k => k + 1);
-                  setIsSelectionMode(false);
-                  setSelectedModelIds([]);
-                }}
-                onModelClick={handleModelClick}
-                config={appConfig}
-                isFiltering={hasActiveFilters}
-                isSelectionMode={isSelectionMode}
-                selectedModelIds={selectedModelIds}
-                onModelSelection={handleModelSelection}
-                onToggleSelectionMode={toggleSelectionMode}
-                onSelectAll={selectAllModels}
-                onDeselectAll={deselectAllModels}
-                onBulkEdit={handleBulkEdit}
-                onBulkDelete={handleBulkDeleteClick}
-                onRefresh={refreshCollections}
-              />
+                    setIsSelectionMode(false);
+                    setSelectedModelIds([]);
+                  }}
+                  onModelClick={handleModelClick}
+                  isFiltering={hasActiveFilters}
+                  isSelectionMode={isSelectionMode}
+                  selectedModelIds={selectedModelIds}
+                  onModelSelection={handleModelSelection}
+                  onToggleSelectionMode={toggleSelectionMode}
+                  onSelectAll={selectAllModels}
+                  onDeselectAll={deselectAllModels}
+                  onBulkEdit={handleBulkEdit}
+                  onBulkDelete={handleBulkDeleteClick}
+                  onRefresh={refreshCollections}
+                  currentSortBy={(currentSortBy || 'none') as SortKey}
+                />
+              ) : (
+                <CollectionView
+                  activeCollection={activeCollection}
+                  filteredModels={filteredModels}
+                  collections={collections}
+                  onOpenCollection={navOpenCollection}
+                  onImportClick={handleOpenImport}
+                  onUploadClick={handleCollectionUpload}
+                  onBack={() => {
+                    if (hasActiveFilters) {
+                      handleFilterChange({
+                        search: '', category: 'all', printStatus: 'all', license: 'all', fileType: 'all', tags: [], showHidden: true, showMissingImages: false, sortBy: currentSortBy
+                      });
+                      setSidebarResetKey(k => k + 1);
+                      return;
+                    }
+                    if (activeCollection?.parentId) {
+                      const parent = collections.find(c => c.id === activeCollection.parentId);
+                      if (parent) { setActiveCollection(parent); return; }
+                    }
+                    setActiveCollection(null);
+                    setCurrentView('models');
+                    setSidebarResetKey(k => k + 1);
+                    setIsSelectionMode(false);
+                    setSelectedModelIds([]);
+                  }}
+                  onModelClick={handleModelClick}
+                  config={appConfig}
+                  isFiltering={hasActiveFilters}
+                  isSelectionMode={isSelectionMode}
+                  selectedModelIds={selectedModelIds}
+                  onModelSelection={handleModelSelection}
+                  onToggleSelectionMode={toggleSelectionMode}
+                  onSelectAll={selectAllModels}
+                  onDeselectAll={deselectAllModels}
+                  onBulkEdit={handleBulkEdit}
+                  onBulkDelete={handleBulkDeleteClick}
+                  onRefresh={refreshCollections}
+                />
+              )
             ) : currentView === 'model-hero' && selectedModel ? (
-              <ModelHubView
-                model={selectedModel}
-                models={models}
-                categories={categories}
-                collections={collections}
-                defaultModelView={appConfig?.settings?.defaultModelView ?? 'images'}
-                defaultModelColor={appConfig?.settings?.defaultModelColor}
-                isSidebarOpen={isSidebarOpen}
-                onClose={() => {
-                  setSelectedModel(null);
-                  setCurrentView(activeCollection ? 'collection-view' : 'models');
-                }}
-                onModelUpdate={modelActions.handleModelUpdate}
-                onDelete={handleSingleModelDelete}
-                onOpenCollection={navOpenCollection}
-                onFilterChange={handleFilterChange}
-                onSettingsClick={handleSettingsClick}
-              />
+              useDatabaseBackend ? (
+                <ModelHubView_DB
+                  model={selectedModel}
+                  models={models}
+                  categories={categories}
+                  collections={collections}
+                  defaultModelView={appConfig?.settings?.defaultModelView ?? 'images'}
+                  defaultModelColor={appConfig?.settings?.defaultModelColor}
+                  onClose={() => {
+                    setSelectedModel(null);
+                    setCurrentView(activeCollection ? 'collection-view' : 'models');
+                  }}
+                  onDelete={handleSingleModelDelete}
+                  onOpenCollection={navOpenCollection}
+                />
+              ) : (
+                <ModelHubView
+                  model={selectedModel}
+                  models={models}
+                  categories={categories}
+                  collections={collections}
+                  defaultModelView={appConfig?.settings?.defaultModelView ?? 'images'}
+                  defaultModelColor={appConfig?.settings?.defaultModelColor}
+                  isSidebarOpen={isSidebarOpen}
+                  onClose={() => {
+                    setSelectedModel(null);
+                    setCurrentView(activeCollection ? 'collection-view' : 'models');
+                  }}
+                  onModelUpdate={modelActions.handleModelUpdate}
+                  onDelete={handleSingleModelDelete}
+                  onOpenCollection={navOpenCollection}
+                  onFilterChange={handleFilterChange}
+                  onSettingsClick={handleSettingsClick}
+                  onSelectModel={handleModelClick}
+                />
+              )
+            ) : currentView === 'bulk-edit' ? (
+              (() => {
+                const bulkModelsToRender = useDatabaseBackend ? (bulkModels || []) : getSelectedModels(models);
+                console.log('[App] Rendering BulkEditView', {
+                  mode: useDatabaseBackend ? 'DB' : 'Legacy',
+                  totalModels: models.length,
+                  selectedIds: selectedModelIds.length,
+                  renderedModels: bulkModelsToRender.length,
+                  firstSelectedId: selectedModelIds[0],
+                  firstModelId: models[0]?.id
+                });
+                return (
+                  <BulkEditView
+                    models={bulkModelsToRender}
+                    onClose={navHandleBack}
+                    onRemoveFromSelection={(id) => setSelectedModelIds(prev => prev.filter(mid => mid !== id))}
+                    onClearSelections={() => {
+                      deselectAllModels();
+                      if (isSelectionMode) toggleSelectionMode();
+                    }}
+                    categories={categories}
+                    collectionsList={collections}
+                    pendingBulkCollectionId={pendingBulkCollectionId}
+                  />
+                );
+              })()
+            ) : currentView === 'admin-migration' ? (
+              <div className="container mx-auto p-4 overflow-y-auto h-full">
+                <Button variant="ghost" onClick={() => setCurrentView('settings')} className="mb-4">
+                  &larr; Back to Settings
+                </Button>
+                <MigrationStatus />
+              </div>
             ) : (
               <DemoPage onBack={navHandleBack} />
             )}
           </main>
         </div>
-
-        {(currentView === 'models' || currentView === 'collection-view') && (
-          <BulkEditDrawer
-            models={getSelectedModels(models)}
-            isOpen={isBulkEditOpen}
-            onClose={() => setIsBulkEditOpen(false)}
-            onBulkUpdate={modelActions.handleBulkModelsUpdate}
-            onRefresh={handleRefreshModels}
-            onBulkSaved={modelActions.handleBulkSavedModels}
-            onModelUpdate={modelActions.handleModelUpdate}
-            onClearSelections={exitSelectionMode}
-            categories={categories}
-            modelDirectory={appConfig?.settings?.modelDirectory || './models'}
-            collectionsList={collections}
-            pendingBulkCollectionId={pendingBulkCollectionId}
-            onBulkEditComplete={() => setPendingBulkCollectionId(null)}
-          />
-        )}
 
         <GlobalDialogs
           {...dialogs.dialogProps}

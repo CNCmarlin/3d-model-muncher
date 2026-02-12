@@ -27,11 +27,13 @@ export function useSelectionMode({
     };
 
     const handleModelSelection = (modelId: string, opts?: { shiftKey?: boolean; index?: number }) => {
+        console.log('[useSelectionMode] handleModelSelection:', modelId, opts);
         const currentIndex = typeof opts?.index === 'number'
             ? opts!.index as number
             : filteredModels.findIndex(m => m.id === modelId);
 
         if (opts?.shiftKey && selectionAnchorIndex !== null && currentIndex !== -1) {
+            // ... (existing logic)
             const start = Math.min(selectionAnchorIndex, currentIndex);
             const end = Math.max(selectionAnchorIndex, currentIndex);
             const rangeIds = filteredModels.slice(start, end + 1).map(m => m.id);
@@ -43,16 +45,20 @@ export function useSelectionMode({
                 } else {
                     rangeIds.forEach(id => set.add(id));
                 }
-                return Array.from(set);
+                const newVal = Array.from(set);
+                console.log('[useSelectionMode] Range selection update:', newVal);
+                return newVal;
             });
             return;
         }
 
-        setSelectedModelIds(prev =>
-            prev.includes(modelId)
+        setSelectedModelIds(prev => {
+            const newVal = prev.includes(modelId)
                 ? prev.filter(id => id !== modelId)
-                : [...prev, modelId]
-        );
+                : [...prev, modelId];
+            console.log('[useSelectionMode] Single selection update:', newVal, 'Previous:', prev);
+            return newVal;
+        });
         if (currentIndex !== -1) setSelectionAnchorIndex(currentIndex);
     };
 

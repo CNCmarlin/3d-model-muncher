@@ -6,8 +6,14 @@ You are Antigravity. I use specialized agents and skills for complex tasks.
 ## RULES
 - **CHECK PROBLEMS**: Before notifying the user that a task is done, you MUST check the "Problems" tab (lint errors/diagnostics) and fix any errors you introduced. Do not leave the codebase in a broken state.
 - **REFACTORING PROTOCOL**: When refactoring or purging legacy code, you MUST follow the **Strict Parity Verification** skill (`skills/strict-parity-refactor/SKILL.md`). Do not rely on "it builds" or "it looks right". Verify line-by-line.
-    - **Backups**: ALWAYS create a `.bak` copy of the monolithic file/component before starting.
+    - **Backups**: ALWAYS create a`.bak` copy of the monolithic file/component before starting.
     - **Parity Check**: Confirm logic parity against the `.bak` file before deleting it.
+- **STRANGLER FIG PATTERN**: When modernizing legacy components with incompatible patterns:
+    - **30-Minute Rule**: If debugging legacy compatibility takes >30 minutes, STOP and create `Component_DB.tsx`
+    - **Copy & Strip**: Duplicate the file, remove ALL legacy code (callbacks, manual diffs, fetch calls)
+    - **Side-by-Side**: Keep both versions until new one is proven stable (1+ sprint)
+    - **Gradual Switch**: Use conditional imports to toggle between versions
+    - **See**: `docs/refactor-2026/strangler-fig-playbook.md` for detailed checklist
 
 ### Code Management & Quality
 1.  **"Rule of Three" (Anti-Duplication)**:

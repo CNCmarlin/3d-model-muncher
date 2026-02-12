@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, FolderOpen, GitFork, Layers, Loader2, Package } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FolderOpen, GitFork, Layers, Loader2, Package, Tags } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { toast } from "sonner";
 import { useDialog } from "../hooks/useDialog";
@@ -21,6 +21,7 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
   const [selectedFolder, setSelectedFolder] = useState<string>("(Root)");
   const [strategy, setStrategy] = useState<"smart" | "strict" | "top-level">("smart");
   const [clearPrevious, setClearPrevious] = useState(false);
+  const [autoTag, setAutoTag] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{ count: number; message: string } | null>(null);
@@ -32,6 +33,7 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
     if (open) {
       setResult(null);
       setClearPrevious(false);
+      setAutoTag(false);
       setSelectedFolder("(Root)");
       fetch('/api/model-folders')
         .then(res => res.json())
@@ -60,14 +62,15 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scanStrategy: strategy })
       });
-      // 2. TRIGGER THE SCAN: This is your existing code
+      // 2. TRIGGER THE SCAN
       const response = await fetch('/api/collections/auto-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetFolder: selectedFolder === '(Root)' ? '' : selectedFolder,
           strategy: strategy,
-          clearPrevious: clearPrevious
+          clearPrevious: clearPrevious,
+          autoTag: autoTag
         })
       });
       const data = await response.json();
@@ -168,14 +171,28 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
                 </RadioGroup>
               </div>
 
-              <div className="flex items-start space-x-2 border-t pt-4">
-                <Checkbox id="clearPrevious" checked={clearPrevious} onCheckedChange={(c) => setClearPrevious(!!c)} />
-                <div className="grid gap-1.5 leading-none">
-                  <Label htmlFor="clearPrevious" className="text-sm font-medium text-destructive">Clean Re-Import (Reset)</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Check this to <b>delete all existing auto-imported collections</b> before scanning.
-                    <br /><span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
-                  </p>
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-start space-x-2">
+                  <Checkbox id="autoTag" checked={autoTag} onCheckedChange={(c) => setAutoTag(!!c)} />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="autoTag" className="text-sm font-medium flex items-center gap-2">
+                      <Tags className="h-3 w-3" /> Auto-Tag Models
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically add the <b>folder name</b> as a tag to all models found within it.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-2">
+                  <Checkbox id="clearPrevious" checked={clearPrevious} onCheckedChange={(c) => setClearPrevious(!!c)} />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="clearPrevious" className="text-sm font-medium text-destructive">Clean Re-Import (Reset)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Check this to <b>delete all existing auto-imported collections</b> before scanning.
+                      <br /><span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

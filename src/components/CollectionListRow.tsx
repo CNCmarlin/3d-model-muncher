@@ -1,13 +1,13 @@
+import { Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import type { Category } from "../types/category";
+import type { Collection } from "../types/collection";
+import CollectionEditDrawer from "./CollectionEditDrawer";
+import { ImageWithFallback } from "./ImageWithFallback";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
-import CollectionEditDrawer from "./CollectionEditDrawer";
-import { ImageWithFallback } from "./ImageWithFallback";
-import type { Collection } from "../types/collection";
-import type { Category } from "../types/category";
 
 interface CollectionListRowProps {
   collection: Collection;
@@ -60,7 +60,8 @@ export function CollectionListRow({ collection, categories, collections, onOpen,
   return (
     <>
       <div
-        className="flex items-center gap-4 p-4 bg-card rounded-lg border hover:bg-accent/50 hover:border-primary/30 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md"
+        className="flex items-center gap-4 p-3 rounded-xl border hover:bg-accent/50 hover:border-primary/50 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md"
+        style={{ backgroundColor: 'var(--card)' }}
         onClick={handleOpen}
       >
         <div className="flex-shrink-0 pl-1">
@@ -68,10 +69,11 @@ export function CollectionListRow({ collection, categories, collections, onOpen,
             <ImageWithFallback
               src={collection?.images && collection.images.length > 0 ? collection.images[0] : ""}
               alt={collection?.name || "Collection image"}
-              className="w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors"
+              fallback={<Folder className="w-8 h-8 text-primary/80" />}
+              className="w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors flex items-center justify-center bg-muted/30"
               draggable={false}
             />
-            <Badge variant="secondary" className="absolute top-2 left-2 text-xs pointer-events-none">
+            <Badge variant="secondary" className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 h-auto pointer-events-none bg-background/80 backdrop-blur-sm shadow-sm">
               Collection
             </Badge>
           </div>

@@ -4,3 +4,4 @@ dist-backend/
 build/
 data/*
 .env
+/generated/prisma

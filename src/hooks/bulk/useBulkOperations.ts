@@ -2,10 +2,10 @@ import { Model } from '@/types/model';
 import { RendererPool } from '@/utils/rendererPool';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useBulkEditModels } from '../mutations/useBulkEditModels';
 import { useBulkEditForm } from './useBulkEditForm';
 
 // Separate helper for saving a single model file interaction
-// This needs to be exported or self-contained
 async function saveModelToFile(edited: Model, original: Model) {
     if (!edited.filePath) {
         console.error("No filePath specified for model");
@@ -22,7 +22,7 @@ async function saveModelToFile(edited: Model, original: Model) {
         }
     });
 
-    // Special handling for nested userDefined if needed (mirrored from original)
+    // Special handling for nested userDefined if needed
     if (edited.userDefined) {
         if (Array.isArray(edited.userDefined.images)) {
             if (!changes.userDefined) changes.userDefined = {};
@@ -33,13 +33,11 @@ async function saveModelToFile(edited: Model, original: Model) {
             changes.userDefined.imageOrder = edited.userDefined.imageOrder;
         }
         if (typeof (edited.userDefined as any).description !== 'undefined') {
-            // Handle legacy description migration if present
             if (!changes.userDefined) changes.userDefined = {};
             changes.userDefined.description = (edited.userDefined as any).description;
         }
     }
 
-    // Handle root description migration
     if (typeof changes.description !== 'undefined') {
         if (!changes.userDefined) changes.userDefined = {};
         changes.userDefined.description = changes.description;
@@ -64,40 +62,38 @@ async function saveModelToFile(edited: Model, original: Model) {
 interface UseBulkOperationsProps {
     models: Model[];
     form: ReturnType<typeof useBulkEditForm>;
-    onBulkUpdate: (updates: Partial<Model>) => void;
+
     onRefresh?: () => Promise<void>;
     onBulkSaved?: (updatedModels: Model[]) => void;
-    onBulkEditComplete: () => void;
     onClose: () => void;
     onClearSelections?: () => void;
-    modelDirectory?: string;
+
     pendingBulkCollectionId: string | null;
+    openMoveConfirmation?: () => Promise<boolean>;
 }
 
 export function useBulkOperations({
     models,
     form,
-    onBulkUpdate,
     onRefresh,
     onBulkSaved,
-    onBulkEditComplete,
     onClose,
-    onClearSelections,
-    modelDirectory,
-    pendingBulkCollectionId
+    // pendingBulkCollectionId, // Unused in operations, generic handling moved to update logic or form init
+    openMoveConfirmation
 }: UseBulkOperationsProps) {
-    const { editState, fieldSelection, uniqueKeyForModel, isStlModel } = form;
+    // const { editState, fieldSelection } = form; // No longer used directly, we use form.stagedEdits in handleSave
     const [isSaving, setIsSaving] = useState(false);
     const [isGeneratingImages, setIsGeneratingImages] = useState(false);
     const [generateProgress, setGenerateProgress] = useState({ current: 0, total: 0 });
     const [closeRequestedWhileGenerating, setCloseRequestedWhileGenerating] = useState(false);
+
+    const bulkEditModels = useBulkEditModels();
 
     // Image Generation Logic
     const handleGenerateImages = async () => {
         if (isGeneratingImages) return [];
         const modelHasImage = (m: Model) => {
             if (!m) return false;
-            // Quick check logic
             return !!m.thumbnail || (m.images && m.images.length > 0) || (m.parsedImages && m.parsedImages.length > 0) || (m.userDefined?.images && m.userDefined.images.length > 0);
         };
 
@@ -131,7 +127,7 @@ export function useBulkOperations({
                 if (!updatedModel.userDefined) updatedModel.userDefined = {} as any;
                 const imgs = updatedModel.userDefined?.images || [];
                 updatedModel.userDefined!.images = [...imgs, dataUrl];
-                // basic path logic
+
                 if (!updatedModel.filePath && updatedModel.modelUrl) {
                     let rel = updatedModel.modelUrl.replace('/models/', '');
                     if (rel.endsWith('.3mf')) rel = rel.replace('.3mf', '-munchie.json');
@@ -164,166 +160,107 @@ export function useBulkOperations({
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            const updates: Partial<Model> = {};
+            // We need to group models by the *exact* set of updates they are receiving
+            // to efficiently use the bulk-update endpoint.
+            // Map<JSONStringOfUpdates, Array<ModelId>>
+            const updatesGrouped = new Map<string, string[]>();
 
-            // 1. Build updates object from simple fields
-            if (fieldSelection.category && editState.category) updates.category = editState.category;
-            if (fieldSelection.license && editState.license) updates.license = editState.license;
-            if (fieldSelection.designer && editState.designer) updates.designer = editState.designer;
-            if (fieldSelection.isPrinted && editState.isPrinted !== undefined) updates.isPrinted = editState.isPrinted;
-            if (fieldSelection.hidden && editState.hidden !== undefined) updates.hidden = editState.hidden;
-            if (fieldSelection.notes && editState.notes !== undefined) updates.notes = editState.notes;
-            if (fieldSelection.source && editState.source !== undefined) updates.source = editState.source;
-            if (fieldSelection.price && editState.price !== undefined) updates.price = editState.price;
-            if (fieldSelection.printTime && editState.printTime !== undefined) updates.printTime = editState.printTime;
-            if (fieldSelection.filamentUsed && editState.filamentUsed !== undefined) updates.filamentUsed = editState.filamentUsed;
+            const { stagedEdits } = form; // This is the new state
 
-            if (fieldSelection.tags && editState.tags) {
-                (updates as any).bulkTagChanges = editState.tags;
+            // Iterate over ALL models that have staged edits
+            // (We iterate over 'models' to be safe, or just keys of stagedEdits)
+            const modelsToUpdate = models.filter(m => stagedEdits[m.id] && Object.keys(stagedEdits[m.id]).length > 0);
+
+            if (modelsToUpdate.length === 0) {
+                toast.info("No changes staged to save");
+                setIsSaving(false);
+                return;
             }
 
-            // 2. Collection Updates
-            if (fieldSelection.collection && editState.collectionId && editState.collectionAction && editState.collectionAction !== 'none') {
-                try {
-                    const resp = await fetch('/api/collections/bulk-update', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            collectionId: editState.collectionId,
-                            action: editState.collectionAction,
-                            modelIds: models.map(m => m.id)
-                        })
-                    });
-                    const res = await resp.json();
-                    if (!res.success) throw new Error(res.error);
-                    toast.success(`Collection updated: ${editState.collectionAction} ${models.length} models`);
-                    window.dispatchEvent(new Event('collection-updated'));
-                } catch (e) {
-                    console.error("Collection update failed", e);
-                    toast.error("Collection update failed");
+            modelsToUpdate.forEach(model => {
+                const editState = stagedEdits[model.id];
+                const updates: any = {};
+                const tagChanges: any = {};
+
+                // 1. Standard Fields (Always from stagedEdits now)
+                if (editState.category) updates.category = editState.category;
+                if (editState.license) updates.license = editState.license;
+                if (editState.designer) updates.designer = editState.designer;
+                if (editState.isPrinted !== undefined) updates.isPrinted = editState.isPrinted;
+                if (editState.hidden !== undefined) updates.hidden = editState.hidden;
+                if (editState.notes !== undefined) updates.notes = editState.notes;
+                if (editState.source !== undefined) updates.source = editState.source;
+                if (editState.price !== undefined) updates.price = parseFloat(String(editState.price)) || 0;
+                if (editState.printTime !== undefined) updates.printTime = parseInt(editState.printTime) || 0;
+                if (editState.filamentUsed !== undefined) updates.filamentUsed = parseFloat(editState.filamentUsed) || 0;
+                // Deep merge printSettings to prevent overwriting existing keys with a partial update
+                if (editState.printSettings) {
+                    updates.printSettings = {
+                        ...(model.printSettings || {}),
+                        ...editState.printSettings
+                    };
                 }
+
+                if (editState.tags) {
+                    if (editState.tags.add?.length) tagChanges.add = editState.tags.add;
+                    if (editState.tags.remove?.length) tagChanges.remove = editState.tags.remove;
+                    if (Object.keys(tagChanges).length > 0) {
+                        updates.tags = tagChanges;
+                    }
+                }
+
+                // 2. Collection Operations
+                if (editState.collectionId) {
+                    if (editState.collectionAction === 'add' || !editState.collectionAction) {
+                        updates.collectionId = editState.collectionId;
+                        // Move files confirmation logic is tricky in batch.
+                        // For now we assume false or global setting, or we can prompt ONCE.
+                        // updates.moveFiles = ... 
+                    } else if (editState.collectionAction === 'remove') {
+                        updates.collectionId = null;
+                    }
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    const key = JSON.stringify(updates);
+                    if (!updatesGrouped.has(key)) {
+                        updatesGrouped.set(key, []);
+                    }
+                    updatesGrouped.get(key)!.push(model.id);
+                }
+            });
+
+            // 3. Execute Bulk Updates (Grouped)
+            const promises: Promise<any>[] = [];
+
+            // Helper for move confirmation (ask once if any collection move is happening?)
+            let moveFilesGlobal = false;
+            // Check if any update involves collectionId
+            const anyCollectionMove = Array.from(updatesGrouped.keys()).some(k => k.includes('collectionId'));
+            if (anyCollectionMove && openMoveConfirmation) {
+                moveFilesGlobal = await openMoveConfirmation();
             }
 
-            // 3. Regenerate Munchie
-            if (fieldSelection.regenerateMunchie) {
-                await fetch('/api/regenerate-munchie-files', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ modelIds: models.map(m => m.id) })
-                });
+            for (const [updateJson, ids] of updatesGrouped.entries()) {
+                const updates = JSON.parse(updateJson);
+                if (updates.collectionId) {
+                    updates.moveFiles = moveFilesGlobal;
+                }
+                promises.push(bulkEditModels.mutateAsync({ ids, updates }));
+            }
+
+            if (promises.length > 0) {
+                await Promise.all(promises);
+                if (onBulkSaved) onBulkSaved(models); // Trigger parent refresh
                 if (onRefresh) await onRefresh();
-                if (onClearSelections) onClearSelections();
-
-                // Return early if no other updates
-                const hasPerModel = fieldSelection.printSettings || fieldSelection.relatedFiles;
-                if (Object.keys(updates).length === 0 && !hasPerModel) {
-                    onClose();
-                    return;
-                }
+                onClose();
+            } else {
+                toast.info("No effective changes to save");
             }
-
-            // 4. Per-Model Logic & Saving
-            onBulkUpdate(updates);
-
-            const savedModels: Model[] = [];
-
-            for (const model of models) {
-                // Logic to compute file path (simplified from original)
-                let jsonPath = model.filePath;
-                if (jsonPath) {
-                    if (jsonPath.endsWith('.3mf')) jsonPath = jsonPath.replace(/\.3mf$/i, '-munchie.json');
-                    else if (jsonPath.endsWith('.stl') || jsonPath.endsWith('.STL')) jsonPath = jsonPath.replace(/\.stl$/i, '-stl-munchie.json');
-                    else if (!jsonPath.endsWith('.json')) jsonPath = `${jsonPath}-munchie.json`;
-                } else if (model.modelUrl) {
-                    let rel = model.modelUrl.replace('/models/', '');
-                    if (rel.endsWith('.3mf')) rel = rel.replace('.3mf', '-munchie.json');
-                    else if (rel.endsWith('.stl')) rel = rel.replace('.stl', '-stl-munchie.json');
-                    else rel = `${rel}-munchie.json`;
-                    jsonPath = rel;
-                } else {
-                    jsonPath = `${model.name}-munchie.json`;
-                }
-
-                // Sanitize path (strip double suffixes)
-                if (jsonPath?.includes('-munchie.json_')) {
-                    jsonPath = jsonPath.split('_')[0];
-                }
-
-                const updatedModel = { ...model, filePath: jsonPath };
-
-                // Related Files Application
-                if (fieldSelection.relatedFiles) {
-                    if (editState.relatedClearAll) {
-                        (updatedModel as any).related_files = [];
-                    } else if (editState.relatedIncluded && editState.relatedIncluded.length > 0) {
-                        const includedIds = editState.relatedIncluded;
-                        const relatedUrls = includedIds
-                            .filter(key => key !== uniqueKeyForModel(model))
-                            .map(key => {
-                                const m = models.find(x => uniqueKeyForModel(x) === key);
-                                let url = m?.modelUrl || '';
-                                const configured = (modelDirectory || './models').replace(/\\/g, '/');
-                                // simple relative logic
-                                if (url.startsWith(configured)) url = url.substring(configured.length);
-                                else if (url.startsWith('/' + configured)) url = url.substring(configured.length + 1);
-                                if (url.startsWith('/')) url = url.substring(1);
-                                return url;
-                            }).filter(Boolean);
-
-                        (updatedModel as any).related_files = relatedUrls;
-
-                        if (editState.relatedHideOthers && editState.relatedPrimary) {
-                            const key = uniqueKeyForModel(model);
-                            if (includedIds.includes(key)) {
-                                updatedModel.hidden = (key !== editState.relatedPrimary);
-                            }
-                        }
-                    }
-                }
-
-                // Apply Bulk Tags
-                if (fieldSelection.tags && editState.tags) {
-                    let newTags = [...(model.tags || [])];
-                    if (editState.tags.remove) {
-                        newTags = newTags.filter(t => !editState.tags!.remove!.includes(t));
-                    }
-                    if (editState.tags.add) {
-                        editState.tags.add.forEach(t => { if (!newTags.includes(t)) newTags.push(t); });
-                    }
-                    updatedModel.tags = newTags;
-                }
-
-                // Apply standard updates
-                Object.keys(updates).forEach(key => {
-                    if (key !== 'bulkTagChanges') (updatedModel as any)[key] = (updates as any)[key];
-                });
-
-                // Apply Print Settings (STL only)
-                if (fieldSelection.printSettings && editState.printSettings && isStlModel(model)) {
-                    // Filter empty
-                    const ps: any = {};
-                    Object.entries(editState.printSettings).forEach(([k, v]) => {
-                        if (v?.trim()) ps[k] = v.trim();
-                    });
-                    if (Object.keys(ps).length > 0) {
-                        (updatedModel as any).printSettings = { ...(updatedModel as any).printSettings, ...ps };
-                    }
-                }
-
-                await saveModelToFile(updatedModel, model);
-                savedModels.push(updatedModel);
-            } // end loop
-
-            if (onBulkSaved) onBulkSaved(savedModels);
-            else if (onRefresh) await onRefresh();
-
-            if (pendingBulkCollectionId && onBulkEditComplete) onBulkEditComplete();
-
-            onClose();
 
         } catch (error) {
             console.error(error);
-            toast.error("Failed to save bulk changes");
+            toast.error("Failed to save changes");
         } finally {
             setIsSaving(false);
         }
@@ -334,6 +271,7 @@ export function useBulkOperations({
         isGeneratingImages,
         generateProgress,
         handleSave,
+        modelHasImage: (m: Model) => !!m.thumbnail || (m.images && m.images.length > 0),
         handleGenerateImages,
         setCloseRequestedWhileGenerating
     };
