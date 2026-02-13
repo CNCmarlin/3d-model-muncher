@@ -3,7 +3,7 @@ import { Model, TagInfo } from '@/types/model';
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import { Activity, BarChart3, Edit2, Eye, Search, Tag, Trash2 } from 'lucide-react';
 import React from 'react';
-import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { ImageWithFallback } from "@/components/models/ImageWithFallback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

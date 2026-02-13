@@ -3,8 +3,8 @@ import { createRoot, Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ModelCard } from '@/components/ModelCard';
-import { ModelHubView } from '@/components/ModelHubView';
+import { ModelCard } from '@/components/models/ModelCard';
+import { ModelHubView } from '@/components/models/ModelHubView';
 import * as downloadUtils from '@/utils/downloadUtils';
 
 let container: HTMLDivElement | null = null;

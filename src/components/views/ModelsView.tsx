@@ -1,7 +1,7 @@
 import { Collection } from '@/types/collection';
 import { Model } from '@/types/model';
 import { SortKey, sortCollections } from '@/utils/sortUtils';
-import { ModelGrid } from '@/components/ModelGrid';
+import { ModelGrid } from '@/components/models/ModelGrid';
 
 interface ModelsViewProps {
     filteredModels: Model[];

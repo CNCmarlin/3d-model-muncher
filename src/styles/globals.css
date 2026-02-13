@@ -1,4 +1,24 @@
 @import "tailwindcss";
+@source "../components/*.tsx";
+@source "../components/models/*.tsx";
+@source "../components/models/details/*.tsx";
+@source "../components/collections/*.tsx";
+@source "../components/dialogs/*.tsx";
+@source "../components/dialogs/bulk-edit/*.tsx";
+@source "../components/layout/*.tsx";
+@source "../components/settings/*.tsx";
+@source "../components/views/*.tsx";
+@source "../components/bulk-edit/*.tsx";
+@source "../components/shared/*.tsx";
+@source "../components/common/*.tsx";
+@source "../components/ui/*.tsx";
+@source "../context/*.tsx";
+@source "../hooks/*.ts";
+@source "../hooks/**/*.ts";
+@source "../hooks/**/*.tsx";
+@source "../utils/*.ts";
+@source "../utils/*.tsx";
+@source "../*.tsx";
 @custom-variant dark (&:is(.dark *));
 
 /* Color aliases for frequently used hex values */
@@ -157,15 +177,15 @@
   .bg-gradient-primary {
     background: linear-gradient(135deg, var(--brand-primary) 0%, #6a1b9a 100%);
   }
-  
+
   .bg-gradient-secondary {
     background: linear-gradient(135deg, var(--brand-secondary) 0%, var(--brand-purple-light) 100%);
   }
-  
+
   .bg-gradient-accent {
     background: linear-gradient(135deg, var(--brand-accent-light) 0%, var(--brand-light-bg) 100%);
   }
-  
+
   .bg-gradient-dark {
     background: linear-gradient(135deg, var(--brand-dark-bg) 0%, var(--brand-dark) 100%);
   }
@@ -193,12 +213,12 @@
 }
 */
 
-[data-sonner-toaster][data-sonner-theme=dark] [data-description]  {
+[data-sonner-toaster][data-sonner-theme=dark] [data-description] {
   color: var(--muted-foreground);
 }
 
 /* Radix ScrollArea inserts an inner wrapper with `display: table` via an inline style.
    That can break mobile layout for components placed inside the ScrollArea. */
-[data-radix-scroll-area-viewport] > div {
+[data-radix-scroll-area-viewport]>div {
   display: block !important;
 }

@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Category } from "@/types/category";
 import type { Collection } from "@/types/collection";
 import CollectionEditDrawer from "@/components/CollectionEditDrawer";
-import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { ImageWithFallback } from "@/components/models/ImageWithFallback";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

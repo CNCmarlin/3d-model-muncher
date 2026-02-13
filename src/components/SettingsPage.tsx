@@ -1,6 +1,6 @@
 import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
 import React, { Suspense } from 'react';
-import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { ImageWithFallback } from "@/components/models/ImageWithFallback";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

@@ -3,8 +3,8 @@ import { DemoPage } from "@/components/DemoPage";
 
 import { MigrationStatus } from "@/components/admin/MigrationStatus";
 import { FilterSidebar } from "@/components/FilterSidebar";
-import { ModelHubView } from "@/components/ModelHubView";
-import { ModelHubView_DB } from "@/components/ModelHubView_DB";
+import { ModelHubView } from "@/components/models/ModelHubView";
+import { ModelHubView_DB } from "@/components/models/ModelHubView_DB";
 import { SettingsPage } from "@/components/SettingsPage";
 import { TagsProvider } from "@/components/TagsContext";
 import { ThemeProvider } from "@/components/ThemeProvider";

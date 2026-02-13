@@ -3,7 +3,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dispatch, SetStateAction, useState } from 'react';
 import { DonationDialog } from '@/components/DonationDialog';
-import { ModelUploadDialog } from '@/components/ModelUploadDialog';
+import { ModelUploadDialog } from '@/components/models/ModelUploadDialog';
 import { ThingiverseImportDialog } from '@/components/ThingiverseImportDialog';
 
 interface GlobalDialogsProps {

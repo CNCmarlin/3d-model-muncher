@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Canvas } from '@react-three/fiber';
-import { SharedModelScene } from '@/components/SharedModelScene';
+import { SharedModelScene } from '@/components/models/SharedModelScene';
 import { ConfigManager } from '@/utils/configManager';
 
 
