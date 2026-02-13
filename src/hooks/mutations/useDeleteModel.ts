@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { deleteModel } from '../../api/services/modelService';
-import { Model } from '../../types/model';
+import { deleteModel } from '@/api/services/modelService';
+import { Model } from '@/types/model';
 
 export function useDeleteModel() {
     const queryClient = useQueryClient();

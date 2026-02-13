@@ -1,4 +1,4 @@
-import { useConfig } from '../context/ConfigContext';
+import { useConfig } from '@/context/ConfigContext';
 import { useModelMutations_DB } from './useModelMutations_DB';
 import { useModelMutations_Legacy } from './useModelMutations_Legacy';
 

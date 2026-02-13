@@ -1,9 +1,9 @@
 import { useSettingsConfig } from '@/hooks/settings/useSettingsConfig';
 import { Download, RefreshCw, Save, Upload } from 'lucide-react';
 import { useRef } from 'react';
-import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Separator } from "../ui/separator";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 
 type ConfigSettingsProps = ReturnType<typeof useSettingsConfig>;
 

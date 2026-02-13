@@ -3,15 +3,15 @@ import { Model, TagInfo } from '@/types/model';
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import { Activity, BarChart3, Edit2, Eye, Search, Tag, Trash2 } from 'lucide-react';
 import React from 'react';
-import { ImageWithFallback } from "../ImageWithFallback";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { ScrollArea } from "../ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Helper component for smart truncation
 const TruncatedBadge = ({ name }: { name: string }) => {

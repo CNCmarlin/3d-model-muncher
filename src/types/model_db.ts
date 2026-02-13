@@ -1,4 +1,4 @@
-import type { License } from '../constants/licenses';
+import type { License } from '@/constants/licenses';
 
 /**
  * DATABASE-FIRST Model Type

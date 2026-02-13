@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X, Bot } from "lucide-react";
-import { Input } from "../ui/input";
-import { Button } from "../ui/button";
-import { Textarea } from "../ui/textarea";
-import { ScrollArea } from "../ui/scroll-area";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "../ui/select";
-import { Sheet, SheetContent, SheetHeader } from "../ui/sheet";
-import { Switch } from "../ui/switch";
-import { Label } from "../ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
-import { Separator } from "../ui/separator";
-import TagsInput from "../TagsInput";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Separator } from "@/components/ui/separator";
+import TagsInput from "@/components/TagsInput";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Images as ImagesIcon } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type ModelEntry = {
   id?: string;
@@ -29,8 +29,8 @@ type ModelEntry = {
   images?: string[];
 };
 
-import type { Category } from '../../types/category';
-import { resolveModelThumbnail } from '../../utils/thumbnailUtils';
+import type { Category } from '@/types/category';
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 
 interface ExperimentalTabProps {
   categories?: Category[];

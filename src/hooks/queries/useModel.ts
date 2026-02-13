@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { getModel } from '../../api/services/modelService';
-import { useConfig } from '../../context/ConfigContext';
-import { Model } from '../../types/model';
-import { adaptDbModelToLegacy } from '../../utils/dbAdapter';
+import { getModel } from '@/api/services/modelService';
+import { useConfig } from '@/context/ConfigContext';
+import { Model } from '@/types/model';
+import { adaptDbModelToLegacy } from '@/utils/dbAdapter';
 
 interface UseModelOptions {
     enabled?: boolean;

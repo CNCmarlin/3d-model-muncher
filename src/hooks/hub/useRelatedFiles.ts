@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Model } from '../../types/model';
+import { Model } from '@/types/model';
 
 export function useRelatedFiles(model: Model | null, isEditing: boolean) {
     // Track whether a related file has an associated munchie JSON we can view

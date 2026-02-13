@@ -1,20 +1,20 @@
 import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
 import React, { Suspense } from 'react';
-import { ImageWithFallback } from "./ImageWithFallback";
-import { Alert, AlertDescription } from "./ui/alert";
-import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Separator } from "./ui/separator";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Sub-components
-import { MigrationStatus } from './admin/MigrationStatus';
-import { BackupSettings } from './settings/BackupSettings';
-import { CategorySettings } from './settings/CategorySettings';
-import { CollectionsSettings } from './settings/CollectionsSettings';
-import { GeneralSettings } from './settings/GeneralSettings';
-import { IntegrationsSettings } from './settings/IntegrationsSettings';
-import { IntegritySettings } from './settings/IntegritySettings';
-import { TagsTab } from './settings/TagsTab';
+import { MigrationStatus } from '@/components/admin/MigrationStatus';
+import { BackupSettings } from '@/components/settings/BackupSettings';
+import { CategorySettings } from '@/components/settings/CategorySettings';
+import { CollectionsSettings } from '@/components/settings/CollectionsSettings';
+import { GeneralSettings } from '@/components/settings/GeneralSettings';
+import { IntegrationsSettings } from '@/components/settings/IntegrationsSettings';
+import { IntegritySettings } from '@/components/settings/IntegritySettings';
+import { TagsTab } from '@/components/settings/TagsTab';
 
 // Hooks
 import { useNavigation } from '@/context/NavigationContext';

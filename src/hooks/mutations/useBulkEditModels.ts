@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { bulkEditModels } from '../../api/services/modelService';
+import { bulkEditModels } from '@/api/services/modelService';
 
 export function useBulkEditModels() {
     const queryClient = useQueryClient();

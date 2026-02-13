@@ -15,9 +15,9 @@ import {
     X
 } from 'lucide-react';
 import React from 'react';
-import { ModelViewerErrorBoundary } from "./ErrorBoundary";
-import { ImageWithFallback } from "./ImageWithFallback";
-import { ModelViewer3D } from "./ModelViewer3D";
+import { ModelViewerErrorBoundary } from "@/components/ErrorBoundary";
+import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { ModelViewer3D } from "@/components/ModelViewer3D";
 
 
 interface ModelPreviewSectionProps {

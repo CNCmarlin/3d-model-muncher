@@ -1,11 +1,11 @@
-import { Category } from '../../types/category';
-import { Collection } from '../../types/collection';
-import { Model } from '../../types/model';
-import { SortKey, sortCollections } from '../../utils/sortUtils';
-import { CollectionCard } from '../CollectionCard';
-import { CollectionListRow } from '../CollectionListRow';
-import { LayoutControls } from '../LayoutControls';
-import { useLayoutSettings } from '../LayoutSettingsContext';
+import { Category } from '@/types/category';
+import { Collection } from '@/types/collection';
+import { Model } from '@/types/model';
+import { SortKey, sortCollections } from '@/utils/sortUtils';
+import { CollectionCard } from '@/components/CollectionCard';
+import { CollectionListRow } from '@/components/CollectionListRow';
+import { LayoutControls } from '@/components/LayoutControls';
+import { useLayoutSettings } from '@/components/LayoutSettingsContext';
 
 interface CollectionsViewProps {
     collections: Collection[];

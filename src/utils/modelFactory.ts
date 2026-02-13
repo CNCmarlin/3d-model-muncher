@@ -1,4 +1,4 @@
-import { Model } from '../types/model';
+import { Model } from '@/types/model';
 
 /**
  * The "Single Source of Truth" for creating model identities.

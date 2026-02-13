@@ -39,9 +39,9 @@ import { Model } from "@/types/model";
 
 import { useBulkEditForm } from "@/hooks/bulk/useBulkEditForm";
 import { useBulkOperations } from "@/hooks/bulk/useBulkOperations";
-import { BulkEditSection } from "./bulk-edit/BulkEditSection";
-import { BulkRelatedFilesEditor } from "./bulk-edit/BulkRelatedFilesEditor";
-import { BulkTagEditor } from "./bulk-edit/BulkTagEditor";
+import { BulkEditSection } from "@/components/bulk-edit/BulkEditSection";
+import { BulkRelatedFilesEditor } from "@/components/bulk-edit/BulkRelatedFilesEditor";
+import { BulkTagEditor } from "@/components/bulk-edit/BulkTagEditor";
 
 interface BulkEditDrawerProps {
   models: Model[];

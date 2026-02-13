@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LICENSES, isKnownLicense } from '../constants/licenses';
-import { Category } from "../types/category";
-import { Model } from "../types/model";
+import { LICENSES, isKnownLicense } from '@/constants/licenses';
+import { Category } from "@/types/category";
+import { Model } from "@/types/model";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
-} from "./ui/alert-dialog";
-import { Button } from "./ui/button";
-import { ScrollArea } from "./ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Separator } from "./ui/separator";
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
 import {
@@ -21,31 +21,31 @@ import {
   Upload
 } from "lucide-react";
 import { toast } from 'sonner';
-import type { Collection } from "../types/collection";
-import { downloadAllFiles, triggerDownload } from "../utils/downloadUtils";
-import { DescriptionSection_DB } from './DescriptionSection_DB';
-import { GcodeSection } from './GcodeSection';
-import { MetadataSection } from './MetadataSection';
-import { ModelPreviewSection } from './ModelPreviewSection';
-import { ModelUploadDialog } from "./ModelUploadDialog";
-import { NotesSection_DB } from './NotesSection_DB';
-import { PrintSettingsSection } from "./PrintSettingsSection";
-import { RelatedFilesSection } from './RelatedFilesSection';
-import { SiblingsSection } from "./SiblingsSection";
-import { SourceSection } from "./SourceSection";
-import { TagsSection } from "./TagsSection";
+import type { Collection } from "@/types/collection";
+import { downloadAllFiles, triggerDownload } from "@/utils/downloadUtils";
+import { DescriptionSection_DB } from '@/components/DescriptionSection_DB';
+import { GcodeSection } from '@/components/GcodeSection';
+import { MetadataSection } from '@/components/MetadataSection';
+import { ModelPreviewSection } from '@/components/ModelPreviewSection';
+import { ModelUploadDialog } from "@/components/ModelUploadDialog";
+import { NotesSection_DB } from '@/components/NotesSection_DB';
+import { PrintSettingsSection } from "@/components/PrintSettingsSection";
+import { RelatedFilesSection } from '@/components/RelatedFilesSection';
+import { SiblingsSection } from "@/components/SiblingsSection";
+import { SourceSection } from "@/components/SourceSection";
+import { TagsSection } from "@/components/TagsSection";
 
 // Hooks
-import { useDocumentUpload } from "../hooks/hub/useDocumentUpload";
-import { useGcodeHandler } from "../hooks/hub/useGcodeHandler";
-import { useModelEdit } from "../hooks/hub/useModelEdit";
-import { useModelGallery } from "../hooks/hub/useModelGallery";
-import { useRelatedFiles } from "../hooks/hub/useRelatedFiles";
-import { useSiblings } from "../hooks/hub/useSiblings";
-import { useDeleteModel } from "../hooks/mutations/useDeleteModel";
-import { useUpdateCollection } from "../hooks/mutations/useUpdateCollection";
-import { useUpdateModel } from "../hooks/mutations/useUpdateModel";
-import { useModel } from "../hooks/queries/useModel";
+import { useDocumentUpload } from "@/hooks/hub/useDocumentUpload";
+import { useGcodeHandler } from "@/hooks/hub/useGcodeHandler";
+import { useModelEdit } from "@/hooks/hub/useModelEdit";
+import { useModelGallery } from "@/hooks/hub/useModelGallery";
+import { useRelatedFiles } from "@/hooks/hub/useRelatedFiles";
+import { useSiblings } from "@/hooks/hub/useSiblings";
+import { useDeleteModel } from "@/hooks/mutations/useDeleteModel";
+import { useUpdateCollection } from "@/hooks/mutations/useUpdateCollection";
+import { useUpdateModel } from "@/hooks/mutations/useUpdateModel";
+import { useModel } from "@/hooks/queries/useModel";
 
 interface ModelHubViewProps {
   model: Model | null;

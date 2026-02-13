@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Model } from '../types/model_db';
+import type { Model } from '@/types/model_db';
 
 /**
  * DATABASE-FIRST Model Mutations Hook

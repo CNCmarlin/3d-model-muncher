@@ -1,8 +1,8 @@
 import { ChevronRight, Layers } from 'lucide-react';
 import React from 'react';
-import { Model } from "../types/model";
-import { resolveModelThumbnail } from '../utils/thumbnailUtils';
-import { ImageWithFallback } from "./ImageWithFallback";
+import { Model } from "@/types/model";
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
+import { ImageWithFallback } from "@/components/ImageWithFallback";
 
 interface SiblingsSectionProps {
     siblings: Model[];

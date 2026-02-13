@@ -1,10 +1,10 @@
+import { Category } from '@/types/category';
+import { AppConfig } from '@/types/config';
+import { ConfigManager } from '@/utils/configManager';
+import { applyThemeColor } from '@/utils/themeUtils';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import * as pkg from '../../package.json';
-import { Category } from '../types/category';
-import { AppConfig } from '../types/config';
-import { ConfigManager } from '../utils/configManager';
-import { applyThemeColor } from '../utils/themeUtils';
 
 interface ConfigContextType {
     appConfig: AppConfig | null;

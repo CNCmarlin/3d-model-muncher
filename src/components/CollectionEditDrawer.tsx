@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react';
 import { Plus, List, Loader2, LayoutGrid, Upload, Trash2, Image as ImageIcon, Star, Box, Copy, FileText } from 'lucide-react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from './ui/sheet';
-import { ScrollArea } from './ui/scroll-area';
-import { Input } from './ui/input';
-import { Label } from "./ui/label";
-import { Textarea } from './ui/textarea';
-import { Button } from './ui/button';
-import TagsInput from './TagsInput';
-import { Switch } from './ui/switch';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Label } from "@/components/ui/label";
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import TagsInput from '@/components/TagsInput';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue
-} from "./ui/select";
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import type { Collection } from '../types/collection';
-import type { Category } from '../types/category';
+import type { Collection } from '@/types/collection';
+import type { Category } from '@/types/category';
 
 
 interface CollectionEditDrawerProps {

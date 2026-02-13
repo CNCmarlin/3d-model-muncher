@@ -1,18 +1,18 @@
 import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { getLabel } from "../constants/labels";
-import { useDialog } from "../hooks/useDialog";
-import type { Category } from "../types/category";
-import type { Collection } from "../types/collection";
-import { ConfigManager } from "../utils/configManager";
-import CollectionEditDrawer from "./CollectionEditDrawer";
-import { ConfirmDialog } from "./shared/ConfirmDialog";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
-import { Checkbox } from "./ui/checkbox";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { getLabel } from "@/constants/labels";
+import { useDialog } from "@/hooks/useDialog";
+import type { Category } from "@/types/category";
+import type { Collection } from "@/types/collection";
+import { ConfigManager } from "@/utils/configManager";
+import CollectionEditDrawer from "@/components/CollectionEditDrawer";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export interface CollectionCardProps {
   collection: Collection;

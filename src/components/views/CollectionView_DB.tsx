@@ -1,12 +1,12 @@
 import { ArrowLeft, FolderInput, Loader2, Upload } from 'lucide-react';
 import { useState } from 'react';
-import { useConfig } from '../../context/ConfigContext';
-import { useModelsPaginated } from '../../hooks/queries/useModelsPaginated';
-import { Collection } from '../../types/collection';
-import { Model } from '../../types/model';
-import { SortKey, sortCollections } from '../../utils/sortUtils';
-import { ModelGrid } from '../ModelGrid';
-import { Button } from '../ui/button';
+import { useConfig } from '@/context/ConfigContext';
+import { useModelsPaginated } from '@/hooks/queries/useModelsPaginated';
+import { Collection } from '@/types/collection';
+import { Model } from '@/types/model';
+import { SortKey, sortCollections } from '@/utils/sortUtils';
+import { ModelGrid } from '@/components/ModelGrid';
+import { Button } from '@/components/ui/button';
 
 interface CollectionViewDBProps {
     activeCollection: Collection;

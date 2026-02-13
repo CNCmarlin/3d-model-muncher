@@ -2,8 +2,8 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Model } from '../../../types/model';
-import { useBulkOperations } from '../useBulkOperations';
+import { Model } from '@/types/model';
+import { useBulkOperations } from '@/hooks/bulk/useBulkOperations';
 
 // Mocks
 const { mockBulkEditModels } = vi.hoisted(() => ({

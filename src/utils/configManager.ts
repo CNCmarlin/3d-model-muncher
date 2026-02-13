@@ -1,4 +1,4 @@
-import { AppConfig } from "../types/config";
+import { AppConfig } from "@/types/config";
 
 // We keep this for browser downloads, but server-side we look for 'config.json'
 const CONFIG_FILENAME = "3d-model-muncher-config.json";

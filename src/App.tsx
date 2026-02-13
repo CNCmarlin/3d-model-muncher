@@ -1,48 +1,48 @@
 import { useEffect, useMemo, useState } from "react";
-import { DemoPage } from "./components/DemoPage";
+import { DemoPage } from "@/components/DemoPage";
 
-import { MigrationStatus } from "./components/admin/MigrationStatus";
-import { FilterSidebar } from "./components/FilterSidebar";
-import { ModelHubView } from "./components/ModelHubView";
-import { ModelHubView_DB } from "./components/ModelHubView_DB";
-import { SettingsPage } from "./components/SettingsPage";
-import { TagsProvider } from "./components/TagsContext";
-import { ThemeProvider } from "./components/ThemeProvider";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { BulkEditView } from "./components/views/BulkEditView"; // NEW IMPORT
-import { CollectionsView } from "./components/views/CollectionsView";
-import { CollectionView } from "./components/views/CollectionView";
-import { CollectionView_DB } from "./components/views/CollectionView_DB";
-import { ModelsView } from "./components/views/ModelsView";
-import { ModelsView_DB } from "./components/views/ModelsView_DB";
-import { ConfigProvider, useConfig } from "./context/ConfigContext";
-import { NavigationProvider, useNavigation } from "./context/NavigationContext";
-import { useCollections } from "./hooks/queries/useCollections";
-import { useModels } from "./hooks/queries/useModels";
-import { useModelsByIds } from "./hooks/queries/useModelsByIds";
-import { useFilteredModels } from "./hooks/useFilteredModels";
-import { useGlobalDialogs } from "./hooks/useGlobalDialogs";
-import { useModelActions } from "./hooks/useModelActions";
-import { useSelectionMode } from "./hooks/useSelectionMode";
-import { Model } from "./types/model";
+import { MigrationStatus } from "@/components/admin/MigrationStatus";
+import { FilterSidebar } from "@/components/FilterSidebar";
+import { ModelHubView } from "@/components/ModelHubView";
+import { ModelHubView_DB } from "@/components/ModelHubView_DB";
+import { SettingsPage } from "@/components/SettingsPage";
+import { TagsProvider } from "@/components/TagsContext";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { BulkEditView } from "@/components/views/BulkEditView"; // NEW IMPORT
+import { CollectionsView } from "@/components/views/CollectionsView";
+import { CollectionView } from "@/components/views/CollectionView";
+import { CollectionView_DB } from "@/components/views/CollectionView_DB";
+import { ModelsView } from "@/components/views/ModelsView";
+import { ModelsView_DB } from "@/components/views/ModelsView_DB";
+import { ConfigProvider, useConfig } from "@/context/ConfigContext";
+import { NavigationProvider, useNavigation } from "@/context/NavigationContext";
+import { useCollections } from "@/hooks/queries/useCollections";
+import { useModels } from "@/hooks/queries/useModels";
+import { useModelsByIds } from "@/hooks/queries/useModelsByIds";
+import { useFilteredModels } from "@/hooks/useFilteredModels";
+import { useGlobalDialogs } from "@/hooks/useGlobalDialogs";
+import { useModelActions } from "@/hooks/useModelActions";
+import { useSelectionMode } from "@/hooks/useSelectionMode";
+import { Model } from "@/types/model";
 // Import package.json to read the last published version
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { Box, FileCheck, Files, Heart, List, RefreshCw, Sidebar, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { GlobalDialogs } from "./components/GlobalDialogs";
-import { LayoutSettingsProvider } from "./components/LayoutSettingsContext";
-import { PrinterStatusHub } from "./components/PrinterStatusHub";
-import { Button } from "./components/ui/button";
+import { GlobalDialogs } from "@/components/GlobalDialogs";
+import { LayoutSettingsProvider } from "@/components/LayoutSettingsContext";
+import { PrinterStatusHub } from "@/components/PrinterStatusHub";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "./components/ui/dropdown-menu";
-import { Toaster } from "./components/ui/sonner";
-import { SpoolmanProvider } from "./context/SpoolmanContext";
-import type { Collection } from "./types/collection";
-import { SortKey } from "./utils/sortUtils";
+} from "@/components/ui/dropdown-menu";
+import { Toaster } from "@/components/ui/sonner";
+import { SpoolmanProvider } from "@/context/SpoolmanContext";
+import type { Collection } from "@/types/collection";
+import { SortKey } from "@/utils/sortUtils";
 
 
 const EMPTY_MODELS: Model[] = [];

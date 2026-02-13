@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { Model } from '../../types/model';
+import { Model } from '@/types/model';
 
 export function useDocumentUpload(model: Model | null, onModelUpdate: (model: Model) => void) {
 

@@ -1,5 +1,5 @@
 import { CheckSquare, Download, Edit, List, ShoppingCart, Square, Trash2, X } from "lucide-react";
-import { Button } from "./ui/button";
+import { Button } from "@/components/ui/button";
 
 interface SelectionModeControlsProps {
   isSelectionMode: boolean;

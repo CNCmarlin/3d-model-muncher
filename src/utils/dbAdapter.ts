@@ -1,5 +1,5 @@
-import type { Model as LegacyModel } from '../types/model';
-import type { Collection as DbCollection, Model as DbModel } from '../types/model_db';
+import type { Model as LegacyModel } from '@/types/model';
+import type { Collection as DbCollection, Model as DbModel } from '@/types/model_db';
 
 /**
  * DATABASE API ADAPTER

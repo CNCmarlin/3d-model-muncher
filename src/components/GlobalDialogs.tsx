@@ -2,9 +2,9 @@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dispatch, SetStateAction, useState } from 'react';
-import { DonationDialog } from './DonationDialog';
-import { ModelUploadDialog } from './ModelUploadDialog';
-import { ThingiverseImportDialog } from './ThingiverseImportDialog';
+import { DonationDialog } from '@/components/DonationDialog';
+import { ModelUploadDialog } from '@/components/ModelUploadDialog';
+import { ThingiverseImportDialog } from '@/components/ThingiverseImportDialog';
 
 interface GlobalDialogsProps {
     // Release Notes

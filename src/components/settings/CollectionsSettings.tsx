@@ -5,14 +5,14 @@ import { Model } from '@/types/model';
 import { Edit2, FolderOpen, Library, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { adaptDbCollectionsToLegacy } from '../../utils/dbAdapter';
-import { Button } from '../ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Separator } from '../ui/separator';
+import { adaptDbCollectionsToLegacy } from '@/utils/dbAdapter';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 
 // External Components
-import { AutoImportDialog } from '../AutoImportDialog'; // Wrapper handles imports if needed, assumes likely exists or I need to find it
-import { CollectionEditorDialog } from '../CollectionEditorDialog';
+import { AutoImportDialog } from '@/components/AutoImportDialog'; // Wrapper handles imports if needed, assumes likely exists or I need to find it
+import { CollectionEditorDialog } from '@/components/CollectionEditorDialog';
 
 interface CollectionsSettingsProps {
     models: Model[]; // Needed for counts and editor

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Model } from '../../types/model';
+import { Model } from '@/types/model';
 
 interface UseGcodeHandlerProps {
     currentModel: Model | null;

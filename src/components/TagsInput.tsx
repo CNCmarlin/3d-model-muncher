@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useGlobalTags } from './TagsContext';
-import { Input } from './ui/input';
-import { Button } from './ui/button';
-import { Badge } from './ui/badge';
+import { useGlobalTags } from '@/components/TagsContext';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Plus, X } from 'lucide-react';
 
 export type TagsInputSize = 'sm' | 'md';

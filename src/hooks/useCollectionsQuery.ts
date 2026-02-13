@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import type { Collection } from '../types/collection';
+import type { Collection } from '@/types/collection';
 
 /**
  * DATABASE-FIRST Collections Query Hook

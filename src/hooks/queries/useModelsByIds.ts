@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { getModels } from '../../api/services/modelService';
+import { getModels } from '@/api/services/modelService';
 
 interface UseModelsByIdsOptions {
     enabled?: boolean;

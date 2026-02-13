@@ -1,8 +1,8 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Collection } from '../types/collection';
-import { Model } from '../types/model';
+import { Collection } from '@/types/collection';
+import { Model } from '@/types/model';
 
 interface UseGlobalDialogsProps {
     collections: Collection[];

@@ -1,12 +1,12 @@
 import { Moon, Sun, Monitor } from "lucide-react";
-import { Button } from "./ui/button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { useTheme } from "./ThemeProvider";
+} from "@/components/ui/dropdown-menu";
+import { useTheme } from "@/components/ThemeProvider";
 // ... no longer import ConfigManager here; ThemeToggle uses UI-only prefs now
 
 const UI_PREFS_KEY = '3d-model-muncher-ui-prefs';

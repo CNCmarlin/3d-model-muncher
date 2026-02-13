@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { getModels } from '../../api/services/modelService';
-import { useConfig } from '../../context/ConfigContext';
-import { adaptDbModelsToLegacy } from '../../utils/dbAdapter';
+import { getModels } from '@/api/services/modelService';
+import { useConfig } from '@/context/ConfigContext';
+import { adaptDbModelsToLegacy } from '@/utils/dbAdapter';
 
 export function useModels(filters: Record<string, any> = {}, options: { enabled?: boolean } = {}) {
     const { appConfig } = useConfig();

@@ -1,4 +1,4 @@
-import { useModelMutations } from '../useModelMutations';
+import { useModelMutations } from '@/hooks/useModelMutations';
 
 /**
  * DEPRECATED HOOK

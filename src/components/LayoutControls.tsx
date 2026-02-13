@@ -1,7 +1,7 @@
 import { LayoutGrid, List, Sliders } from "lucide-react";
-import { Button } from "./ui/button";
-import { Slider } from "./ui/slider";
-import { useLayoutSettings } from "./LayoutSettingsContext";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { useLayoutSettings } from "@/components/LayoutSettingsContext";
 
 interface LayoutControlsProps {
   className?: string;

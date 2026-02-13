@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Model } from '../../types/model';
-import { normalizeModelPath } from '../../utils/downloadUtils';
-import { getUserImageData, resolveImageOrderToUrls } from '../../utils/galleryUtils';
+import { Model } from '@/types/model';
+import { normalizeModelPath } from '@/utils/downloadUtils';
+import { getUserImageData, resolveImageOrderToUrls } from '@/utils/galleryUtils';
 
 interface UseModelGalleryProps {
     model: Model | null;

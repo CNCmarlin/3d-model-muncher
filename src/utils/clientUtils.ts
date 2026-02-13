@@ -1,4 +1,4 @@
-import { DuplicateGroup, Model } from "../types/model";
+import { DuplicateGroup, Model } from "@/types/model";
 
 /**
  * Finds duplicate files based on hash

@@ -3,7 +3,7 @@ import React from 'react';
 import { Codesandbox, Upload, RefreshCw, Clock, Weight, ChevronUp, ChevronDown, HardDrive } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Model } from "../types/model";
+import { Model } from "@/types/model";
 
 interface GcodeSectionProps {
   currentModel: Model; // Used the Model type here

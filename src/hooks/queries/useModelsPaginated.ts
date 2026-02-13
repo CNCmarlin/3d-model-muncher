@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useConfig } from '../../context/ConfigContext';
-import type { Model } from '../../types/model';
-import { adaptDbModelsToLegacy } from '../../utils/dbAdapter';
+import { useConfig } from '@/context/ConfigContext';
+import type { Model } from '@/types/model';
+import { adaptDbModelsToLegacy } from '@/utils/dbAdapter';
 
 interface PaginatedResponse {
     data: Model[];

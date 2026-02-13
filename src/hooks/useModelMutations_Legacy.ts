@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import type { Model } from '../types/model';
+import type { Model } from '@/types/model';
 
 /**
  * LEGACY Model Mutations Hook

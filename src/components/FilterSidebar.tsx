@@ -2,19 +2,19 @@
 import * as LucideIcons from 'lucide-react';
 import { ChevronDown, ChevronRight, CircleCheckBig, Eye, FileBox, FileText, Filter, Layers, LayoutGrid, Search, Settings, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { LICENSES } from '../constants/licenses';
-import { Category } from "../types/category";
-import { Collection } from "../types/collection";
-import { Model } from "../types/model";
-import { useGlobalTagsContext } from "./TagsContext";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
-import { Input } from "./ui/input";
-import { ScrollArea } from "./ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Switch } from "./ui/switch";
+import { LICENSES } from '@/constants/licenses';
+import { Category } from "@/types/category";
+import { Collection } from "@/types/collection";
+import { Model } from "@/types/model";
+import { useGlobalTagsContext } from "@/components/TagsContext";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 interface FilterSidebarProps {
   onFilterChange: (filters: {

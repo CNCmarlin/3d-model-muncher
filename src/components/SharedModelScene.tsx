@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Suspense, memo } from "react";
 import { PerspectiveCamera, OrbitControls, Center, Bounds } from "@react-three/drei";
-import { ModelMesh } from "./ModelMesh";
+import { ModelMesh } from "@/components/ModelMesh";
 
 interface SharedModelSceneProps {
   modelUrl?: string;

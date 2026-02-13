@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { getCollections } from '../../api/services/collectionService';
-import { useConfig } from '../../context/ConfigContext';
-import { Collection } from '../../types/collection';
-import { adaptDbCollectionsToLegacy } from '../../utils/dbAdapter';
+import { getCollections } from '@/api/services/collectionService';
+import { useConfig } from '@/context/ConfigContext';
+import { Collection } from '@/types/collection';
+import { adaptDbCollectionsToLegacy } from '@/utils/dbAdapter';
 
 export function useCollections(options: { enabled?: boolean } = {}) {
     const { appConfig } = useConfig();

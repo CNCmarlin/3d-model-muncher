@@ -19,25 +19,25 @@ import {
 import type { MouseEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { Collection } from '../types/collection';
-import type { AppConfig } from '../types/config';
-import { Model } from '../types/model';
-import { downloadMultipleModels } from "../utils/downloadUtils";
-import { resolveModelThumbnail } from '../utils/thumbnailUtils';
-import { CollectionCard } from './CollectionCard';
-import CollectionEditDrawer from './CollectionEditDrawer';
-import { CollectionEditorDialog } from './CollectionEditorDialog';
-import { CollectionListRow } from './CollectionListRow';
-import { ImageWithFallback } from "./ImageWithFallback";
-import { LayoutControls } from "./LayoutControls";
-import { useLayoutSettings } from "./LayoutSettingsContext";
-import { ModelCard } from './ModelCard';
-import { ProjectView } from './ProjectView';
-import { SelectionModeControls } from './SelectionModeControls';
-import { Badge } from "./ui/badge";
-import { Button } from './ui/button';
-import { Checkbox } from "./ui/checkbox";
-import { ScrollArea } from './ui/scroll-area';
+import type { Collection } from '@/types/collection';
+import type { AppConfig } from '@/types/config';
+import { Model } from '@/types/model';
+import { downloadMultipleModels } from "@/utils/downloadUtils";
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
+import { CollectionCard } from '@/components/CollectionCard';
+import CollectionEditDrawer from '@/components/CollectionEditDrawer';
+import { CollectionEditorDialog } from '@/components/CollectionEditorDialog';
+import { CollectionListRow } from '@/components/CollectionListRow';
+import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { LayoutControls } from "@/components/LayoutControls";
+import { useLayoutSettings } from "@/components/LayoutSettingsContext";
+import { ModelCard } from '@/components/ModelCard';
+import { ProjectView } from '@/components/ProjectView';
+import { SelectionModeControls } from '@/components/SelectionModeControls';
+import { Badge } from "@/components/ui/badge";
+import { Button } from '@/components/ui/button';
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 interface CollectionGridProps {

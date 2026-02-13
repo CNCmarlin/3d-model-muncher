@@ -1,4 +1,4 @@
-import { Model } from '../types/model';
+import { Model } from '@/types/model';
 
 // Helper: extract data URL from userDefined image entry
 export const getUserImageData = (entry: any) => {

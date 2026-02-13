@@ -5,3 +5,9 @@ build/
 data/*
 .env
 /generated/prisma
+/git-legacy-1.0
+/docs
+/planning
+gemini.md
+*.bak
+*.recovery

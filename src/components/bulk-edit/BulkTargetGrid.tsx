@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Model } from "@/types/model";
 import { FileQuestion, X } from "lucide-react";
-import { ImageWithFallback } from "../ImageWithFallback";
+import { ImageWithFallback } from "@/components/ImageWithFallback";
 
 interface BulkTargetGridProps {
     models: Model[];

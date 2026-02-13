@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
-import { Model } from '../types/model';
-import { adaptDbModelsToLegacy } from '../utils/dbAdapter';
+import { Model } from '@/types/model';
+import { adaptDbModelsToLegacy } from '@/utils/dbAdapter';
 
 export function useModelData() {
     const [models, setModels] = useState<Model[]>([]);

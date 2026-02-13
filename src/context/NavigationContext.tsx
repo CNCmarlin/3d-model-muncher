@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useContext, useState } from 'react';
-import { Collection } from '../types/collection';
-import { ViewType } from '../types/view';
+import { Collection } from '@/types/collection';
+import { ViewType } from '@/types/view';
 
 // Settings Action Type
 export interface SettingsAction {

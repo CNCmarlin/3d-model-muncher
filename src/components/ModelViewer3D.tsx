@@ -1,12 +1,12 @@
 import { useRef, useState, Suspense, memo, useMemo, useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import '@react-three/fiber';
-import { Button } from "./ui/button";
+import { Button } from "@/components/ui/button";
 import { Eye, EyeOff, RotateCw, Palette, ImagePlus } from "lucide-react";
-import { Tooltip, TooltipTrigger, TooltipContent } from "./ui/tooltip";
-import { Skeleton } from "./ui/skeleton";
-import { ThreeJSManager, disposeWebGLContext } from "../utils/threeJSManager";
-import { SharedModelScene } from "./SharedModelScene";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ThreeJSManager, disposeWebGLContext } from "@/utils/threeJSManager";
+import { SharedModelScene } from "@/components/SharedModelScene";
 
 interface ModelViewer3DProps {
   modelUrl?: string;

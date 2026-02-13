@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Model } from '../../types/model';
-import { buildImageOrderFromModel, getUserImageData, resolveImageOrderToUrls } from '../../utils/galleryUtils';
-import { compressImageFile } from '../../utils/imageUtils';
-import { useModelMutations } from '../useModelMutations';
+import { Model } from '@/types/model';
+import { buildImageOrderFromModel, getUserImageData, resolveImageOrderToUrls } from '@/utils/galleryUtils';
+import { compressImageFile } from '@/utils/imageUtils';
+import { useModelMutations } from '@/hooks/useModelMutations';
 
 export interface UseModelEditProps {
     model: Model | null;

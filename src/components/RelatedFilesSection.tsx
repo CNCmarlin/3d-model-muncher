@@ -13,9 +13,9 @@ import {
     X
 } from 'lucide-react';
 import React from 'react';
-import { useModelMutations } from '../hooks/useModelMutations';
-import { Model } from "../types/model";
-import { Badge } from './ui/badge';
+import { useModelMutations } from '@/hooks/useModelMutations';
+import { Model } from "@/types/model";
+import { Badge } from '@/components/ui/badge';
 
 // Helper for UI display
 function truncatePath(path: string, maxLength: number = 40) {

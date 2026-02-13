@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Collection } from '../../types/collection';
-import { Model } from '../../types/model';
+import { Collection } from '@/types/collection';
+import { Model } from '@/types/model';
 
 export function useSiblings(model: Model | null, collections: Collection[], models: Model[]) {
     const [allModelsForSiblings, setAllModelsForSiblings] = useState<Model[]>([]);

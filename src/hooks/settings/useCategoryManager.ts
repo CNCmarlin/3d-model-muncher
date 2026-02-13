@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Category } from "../../types/category";
-import { AppConfig } from "../../types/config";
-import { Model } from "../../types/model";
+import { Category } from "@/types/category";
+import { AppConfig } from "@/types/config";
+import { Model } from "@/types/model";
 
 interface UseCategoryManagerProps {
     categories: Category[]; // Initial categories

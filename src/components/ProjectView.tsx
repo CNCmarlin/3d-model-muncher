@@ -1,20 +1,20 @@
 import { Box, CheckCircle2, CircleDashed, LayoutGrid, Plus, Printer, Slice, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Collection } from '../types/collection';
-import { Model } from '../types/model';
-import { resolveModelThumbnail } from '../utils/thumbnailUtils';
-import { ImageWithFallback } from './ImageWithFallback';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
+import { Collection } from '@/types/collection';
+import { Model } from '@/types/model';
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { Input } from './ui/input';
-import { ScrollArea, ScrollBar } from './ui/scroll-area';
+} from "@/components/ui/dropdown-menu";
+import { Input } from '@/components/ui/input';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 interface ProjectViewProps {
     collection: Collection;

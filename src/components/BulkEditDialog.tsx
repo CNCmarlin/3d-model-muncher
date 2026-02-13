@@ -18,9 +18,9 @@ import { Category } from "@/types/category";
 import { Collection } from "@/types/collection";
 import { Model } from "@/types/model";
 import { Layers, Library, RefreshCw, Save, Users } from "lucide-react";
-import { useMediaQuery } from "../hooks/useMediaQuery";
-import { BulkOperationsPanel } from "./bulk-edit/BulkOperationsPanel";
-import { BulkTargetGrid } from "./bulk-edit/BulkTargetGrid";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { BulkOperationsPanel } from "@/components/bulk-edit/BulkOperationsPanel";
+import { BulkTargetGrid } from "@/components/bulk-edit/BulkTargetGrid";
 
 interface BulkEditDialogProps {
     isOpen: boolean;

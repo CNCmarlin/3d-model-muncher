@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Canvas } from '@react-three/fiber';
-import { SharedModelScene } from '../components/SharedModelScene';
-import { ConfigManager } from '../utils/configManager';
+import { SharedModelScene } from '@/components/SharedModelScene';
+import { ConfigManager } from '@/utils/configManager';
 
 
 // Shared scene for offscreen capture, matching color from config

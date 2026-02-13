@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useConfig } from '../context/ConfigContext';
-import type { Model as LegacyModel } from '../types/model';
-import type { Model as DbModel } from '../types/model_db';
-import { adaptDbModelsToLegacy } from '../utils/dbAdapter';
+import { useConfig } from '@/context/ConfigContext';
+import type { Model as LegacyModel } from '@/types/model';
+import type { Model as DbModel } from '@/types/model_db';
+import { adaptDbModelsToLegacy } from '@/utils/dbAdapter';
 
 /**
  * DATABASE-FIRST Models Query Hook

@@ -1,6 +1,6 @@
 import { Loader2, Printer } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { AppConfig, PrinterConfig } from '../types/config';
+import { AppConfig, PrinterConfig } from '@/types/config';
 
 interface PrinterStatusHubProps {
   config: AppConfig;

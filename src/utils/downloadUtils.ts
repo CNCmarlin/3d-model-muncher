@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { toast } from "sonner";
-import { Model } from "../types/model";
+import { Model } from "@/types/model";
 
 export function normalizeModelPath(url: string | undefined | null): string | null {
   if (!url) return null;

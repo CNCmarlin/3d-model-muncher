@@ -1,7 +1,7 @@
 import { createStandardModelIdentity } from "@/utils/modelFactory";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { CorruptedFile, DuplicateGroup, HashCheckResult, Model } from "../../types/model";
+import { CorruptedFile, DuplicateGroup, HashCheckResult, Model } from "@/types/model";
 
 interface UseIntegrityCheckProps {
     models: Model[];

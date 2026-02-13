@@ -1,7 +1,7 @@
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tag } from "lucide-react"; 
-import TagsInput from "./TagsInput";
+import TagsInput from "@/components/TagsInput";
 
 interface TagsSectionProps {
   isEditing: boolean;

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { ConfigManager } from "../utils/configManager";
+import { ConfigManager } from "@/utils/configManager";
 
 const UI_PREFS_KEY = '3d-model-muncher-ui-prefs';
 

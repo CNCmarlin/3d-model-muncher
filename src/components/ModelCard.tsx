@@ -1,13 +1,13 @@
 import { useState, useRef } from "react";
-import { Model } from "../types/model";
-import { AppConfig } from "../types/config";
-import { Badge } from "./ui/badge";
-import { Checkbox } from "./ui/checkbox";
-import { ImageWithFallback } from "./ImageWithFallback";
-import { resolveModelThumbnail } from "../utils/thumbnailUtils";
+import { Model } from "@/types/model";
+import { AppConfig } from "@/types/config";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ImageWithFallback } from "@/components/ImageWithFallback";
+import { resolveModelThumbnail } from "@/utils/thumbnailUtils";
 import { HardDrive, Box } from "lucide-react";
-import { Grid3DViewer } from "./Grid3DViewer";
-import { useSpoolman } from '../context/SpoolmanContext';
+import { Grid3DViewer } from "@/components/Grid3DViewer";
+import { useSpoolman } from '@/context/SpoolmanContext';
 import { AlertTriangle, Droplet } from 'lucide-react';
 
 interface ModelCardProps {

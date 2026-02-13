@@ -5,17 +5,17 @@ import { getDisplayPath } from '@/utils/clientUtils';
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import { Activity, AlertTriangle, BarChart3, Box, Check, Clock, FileCheck, Files, FolderPlus, HeartPulse, Plus, RefreshCw, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { ImageWithFallback } from '../ImageWithFallback';
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Checkbox } from "../ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
-import { Label } from "../ui/label";
-import { Progress } from "../ui/progress";
-import { ScrollArea } from "../ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Separator } from "../ui/separator";
+import { ImageWithFallback } from '@/components/ImageWithFallback';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from "@/components/ui/separator";
 
 type IntegritySettingsProps = ReturnType<typeof useIntegrityCheck> & {
     models: Model[];

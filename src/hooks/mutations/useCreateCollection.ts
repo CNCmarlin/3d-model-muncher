@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { createCollection } from '../../api/services/collectionService';
+import { createCollection } from '@/api/services/collectionService';
 
 export function useCreateCollection() {
     const queryClient = useQueryClient();

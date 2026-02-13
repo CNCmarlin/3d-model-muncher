@@ -14,7 +14,7 @@ import { parse3MF as realParse3MF, computeMD5 } from "./threeMFToJson";
 export function generate3MFJsonForDirectory(dir: string) {
   scan3MFDirectory(dir);
 }
-import { Model, DuplicateGroup, HashCheckResult, CorruptedFile } from "../types/model";
+import { Model, DuplicateGroup, HashCheckResult, CorruptedFile } from "@/types/model";
 
 /**
  * Generates a real file hash for a model using MD5

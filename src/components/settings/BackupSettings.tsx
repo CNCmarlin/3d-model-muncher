@@ -3,11 +3,11 @@ import { useSettingsConfig } from '@/hooks/settings/useSettingsConfig';
 import { Model } from '@/types/model';
 import { Archive, Download, FileText, HardDrive, RefreshCw, RotateCcw, Save, Settings, Upload } from 'lucide-react';
 import { useRef } from 'react';
-import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Label } from "../ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Separator } from "../ui/separator";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 
 type BackupSettingsProps = ReturnType<typeof useBackups> & {
     models: Model[];

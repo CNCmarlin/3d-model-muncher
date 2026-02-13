@@ -1,4 +1,4 @@
-import { Model } from "../types/model";
+import { Model } from "@/types/model";
 
 export interface FilterState {
   search: string;

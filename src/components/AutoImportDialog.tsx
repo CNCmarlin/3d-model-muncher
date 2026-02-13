@@ -1,14 +1,14 @@
 import { AlertTriangle, CheckCircle2, FolderOpen, GitFork, Layers, Loader2, Package, Tags } from "lucide-react";
 import { useEffect, useState } from 'react';
 import { toast } from "sonner";
-import { useDialog } from "../hooks/useDialog";
-import { ConfirmDialog } from "./shared/ConfirmDialog";
-import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Label } from "./ui/label";
-import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { useDialog } from "@/hooks/useDialog";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface AutoImportDialogProps {
   open: boolean;
