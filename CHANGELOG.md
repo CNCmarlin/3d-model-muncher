@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.0...v1.1.1) (2026-02-14)
+
+
+### Bug Fixes
+
+* add missing server/ directory to Dockerfile production stage ([3752f23](https://github.com/CNCmarlin/3d-model-muncher/commit/3752f2390eb3c1e7d6d1dcec29749c27829dc3d9))
+
 # [1.1.0](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.0.0...v1.1.0) (2026-02-14)
 
 
