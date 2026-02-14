@@ -8,6 +8,19 @@ data/*
 /git-legacy-1.0
 /docs
 /planning
-gemini.md
 *.bak
 *.recovery
+
+# Editor & tools
+.vscode/
+.VSCodeCounter/
+.agent/
+.idx/
+
+# AI instructions
+GEMINI.md
+
+# Debug artifacts
+*.log
+heal_preview*.json
+verification_comparison.json
