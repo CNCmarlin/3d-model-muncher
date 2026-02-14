@@ -6,7 +6,7 @@ import { useDialog } from "@/hooks/useDialog";
 import type { Category } from "@/types/category";
 import type { Collection } from "@/types/collection";
 import { ConfigManager } from "@/utils/configManager";
-import CollectionEditDrawer from "@/components/CollectionEditDrawer";
+import CollectionEditDrawer from "@/components/collections/CollectionEditDrawer";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

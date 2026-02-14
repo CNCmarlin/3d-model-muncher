@@ -2,8 +2,8 @@ import { Category } from '@/types/category';
 import { Collection } from '@/types/collection';
 import { Model } from '@/types/model';
 import { SortKey, sortCollections } from '@/utils/sortUtils';
-import { CollectionCard } from '@/components/CollectionCard';
-import { CollectionListRow } from '@/components/CollectionListRow';
+import { CollectionCard } from '@/components/collections/CollectionCard';
+import { CollectionListRow } from '@/components/collections/CollectionListRow';
 import { LayoutControls } from '@/components/LayoutControls';
 import { useLayoutSettings } from '@/components/LayoutSettingsContext';
 

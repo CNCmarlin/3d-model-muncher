@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 
 // External Components
 import { AutoImportDialog } from '@/components/AutoImportDialog'; // Wrapper handles imports if needed, assumes likely exists or I need to find it
-import { CollectionEditorDialog } from '@/components/CollectionEditorDialog';
+import { CollectionEditorDialog } from '@/components/collections/CollectionEditorDialog';
 
 interface CollectionsSettingsProps {
     models: Model[]; // Needed for counts and editor
