@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Collection } from '@/types/collection';
 import { Model } from '@/types/model';
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
-import { ImageWithFallback } from '@/components/models/ImageWithFallback';
+import { ImageWithFallback } from '@/components/common/ImageWithFallback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {

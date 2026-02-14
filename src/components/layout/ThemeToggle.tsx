@@ -6,7 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useTheme } from "@/components/ThemeProvider";
+import { useTheme } from "@/components/common/ThemeProvider";
 // ... no longer import ConfigManager here; ThemeToggle uses UI-only prefs now
 
 const UI_PREFS_KEY = '3d-model-muncher-ui-prefs';

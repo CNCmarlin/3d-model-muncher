@@ -5,7 +5,7 @@ import { getDisplayPath } from '@/utils/clientUtils';
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import { Activity, AlertTriangle, BarChart3, Box, Check, Clock, FileCheck, Files, FolderPlus, HeartPulse, Plus, RefreshCw, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { ImageWithFallback } from '@/components/models/ImageWithFallback';
+import { ImageWithFallback } from '@/components/common/ImageWithFallback';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 
 // External Components
-import { AutoImportDialog } from '@/components/AutoImportDialog'; // Wrapper handles imports if needed, assumes likely exists or I need to find it
+import { AutoImportDialog } from '@/components/shared/AutoImportDialog'; // Wrapper handles imports if needed, assumes likely exists or I need to find it
 import { CollectionEditorDialog } from '@/components/collections/CollectionEditorDialog';
 
 interface CollectionsSettingsProps {

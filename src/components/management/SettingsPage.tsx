@@ -1,11 +1,11 @@
-import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
-import React, { Suspense } from 'react';
-import { ImageWithFallback } from "@/components/models/ImageWithFallback";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
+import React, { Suspense } from 'react';
 // Sub-components
 import { MigrationStatus } from '@/components/admin/MigrationStatus';
 import { BackupSettings } from '@/components/settings/BackupSettings';
@@ -29,7 +29,7 @@ import { Category } from '@/types/category';
 import { AppConfig } from '@/types/config';
 import { Model } from '@/types/model';
 
-const ExperimentalTab = React.lazy(() => import('./settings/ExperimentalTab'));
+const ExperimentalTab = React.lazy(() => import('@/components/settings/ExperimentalTab'));
 
 type SettingsPageProps = {
   config?: AppConfig;

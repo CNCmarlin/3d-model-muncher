@@ -6,7 +6,7 @@ import { LICENSES } from '@/constants/licenses';
 import { Category } from "@/types/category";
 import { Collection } from "@/types/collection";
 import { Model } from "@/types/model";
-import { useGlobalTagsContext } from "@/components/TagsContext";
+import { useGlobalTagsContext } from "@/components/common/TagsContext";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

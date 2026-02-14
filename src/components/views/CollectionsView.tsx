@@ -4,8 +4,8 @@ import { Model } from '@/types/model';
 import { SortKey, sortCollections } from '@/utils/sortUtils';
 import { CollectionCard } from '@/components/collections/CollectionCard';
 import { CollectionListRow } from '@/components/collections/CollectionListRow';
-import { LayoutControls } from '@/components/LayoutControls';
-import { useLayoutSettings } from '@/components/LayoutSettingsContext';
+import { LayoutControls } from '@/components/layout/LayoutControls';
+import { useLayoutSettings } from '@/components/layout/LayoutSettingsContext';
 
 interface CollectionsViewProps {
     collections: Collection[];

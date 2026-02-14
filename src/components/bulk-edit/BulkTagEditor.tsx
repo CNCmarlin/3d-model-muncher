@@ -1,4 +1,4 @@
-import TagsInput from '@/components/TagsInput';
+import TagsInput from '@/components/common/TagsInput';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';

@@ -1,14 +1,14 @@
-import { DemoPage } from "@/components/DemoPage";
+import { DemoPage } from "@/components/management/DemoPage";
 import { useEffect, useMemo, useState } from "react";
 
 import { MigrationStatus } from "@/components/admin/MigrationStatus";
-import { FilterSidebar } from "@/components/FilterSidebar";
+import { FilterSidebar } from "@/components/layout/FilterSidebar";
 import { ModelHubView } from "@/components/models/ModelHubView";
 import { ModelHubView_DB } from "@/components/models/ModelHubView_DB";
-import { SettingsPage } from "@/components/SettingsPage";
-import { TagsProvider } from "@/components/TagsContext";
-import { ThemeProvider } from "@/components/ThemeProvider";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { SettingsPage } from "@/components/management/SettingsPage";
+import { TagsProvider } from "@/components/common/TagsContext";
+import { ThemeProvider } from "@/components/common/ThemeProvider";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { BulkEditView } from "@/components/views/BulkEditView"; // NEW IMPORT
 import { CollectionsView } from "@/components/views/CollectionsView";
 import { CollectionView } from "@/components/views/CollectionView";
@@ -26,9 +26,9 @@ import { useModelActions } from "@/hooks/useModelActions";
 import { useSelectionMode } from "@/hooks/useSelectionMode";
 import { Model } from "@/types/model";
 // Import package.json to read the last published version
-import { GlobalDialogs } from "@/components/GlobalDialogs";
-import { LayoutSettingsProvider } from "@/components/LayoutSettingsContext";
-import { PrinterStatusHub } from "@/components/PrinterStatusHub";
+import { GlobalDialogs } from "@/components/shared/GlobalDialogs";
+import { LayoutSettingsProvider } from "@/components/layout/LayoutSettingsContext";
+import { PrinterStatusHub } from "@/components/layout/PrinterStatusHub";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
