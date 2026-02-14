@@ -56,6 +56,9 @@ COPY --from=builder /app/server.js ./server.js
 # Ensure server-utils (runtime adapters/helpers) are included in the production image
 COPY --from=builder /app/server-utils ./server-utils
 
+# Copy server routes, schemas, and services
+COPY --from=builder /app/server ./server
+
 # Copy public folder (Needed for capture.html)
 COPY --from=builder /app/public ./public
 
