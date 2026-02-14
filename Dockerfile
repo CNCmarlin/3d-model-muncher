@@ -19,9 +19,6 @@ RUN npm run build
 # This ensures thumbnailGenerator.ts and other new files are compiled.
 RUN npm run build:backend
 
-# Build the backend utilities
-RUN npx tsc --outDir dist-backend --module commonjs --target es2019 src/utils/threeMFToJson.ts src/utils/configManager.ts
-
 # Production stage
 FROM node:22-slim AS production
 
