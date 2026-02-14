@@ -1,8 +1,8 @@
 
-import { useState } from 'react';
-import { toast } from 'sonner';
 import { Collection } from '@/types/collection';
 import { Model } from '@/types/model';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface UseGlobalDialogsProps {
     collections: Collection[];
@@ -35,7 +35,7 @@ export function useGlobalDialogs({
     const [uploadTargetCollectionName, setUploadTargetCollectionName] = useState<string | undefined>(undefined);
 
     const openUpload = (activeCollection?: Collection | null) => {
-        if (activeCollection && activeCollection.id.startsWith('col_')) {
+        if (activeCollection && activeCollection.id?.startsWith('col_')) {
             try {
                 const b64 = activeCollection.id.substring(4);
                 const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));

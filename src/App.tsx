@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
 import { DemoPage } from "@/components/DemoPage";
+import { useEffect, useMemo, useState } from "react";
 
 import { MigrationStatus } from "@/components/admin/MigrationStatus";
 import { FilterSidebar } from "@/components/FilterSidebar";
@@ -26,9 +26,6 @@ import { useModelActions } from "@/hooks/useModelActions";
 import { useSelectionMode } from "@/hooks/useSelectionMode";
 import { Model } from "@/types/model";
 // Import package.json to read the last published version
-import { TooltipProvider } from "@radix-ui/react-tooltip";
-import { Box, FileCheck, Files, Heart, List, RefreshCw, Sidebar, Upload } from "lucide-react";
-import { toast } from "sonner";
 import { GlobalDialogs } from "@/components/GlobalDialogs";
 import { LayoutSettingsProvider } from "@/components/LayoutSettingsContext";
 import { PrinterStatusHub } from "@/components/PrinterStatusHub";
@@ -43,6 +40,9 @@ import { Toaster } from "@/components/ui/sonner";
 import { SpoolmanProvider } from "@/context/SpoolmanContext";
 import type { Collection } from "@/types/collection";
 import { SortKey } from "@/utils/sortUtils";
+import { TooltipProvider } from "@radix-ui/react-tooltip";
+import { Box, FileCheck, Files, Heart, List, RefreshCw, Sidebar, Upload } from "lucide-react";
+import { toast } from "sonner";
 
 
 const EMPTY_MODELS: Model[] = [];
@@ -294,8 +294,13 @@ function AppContent() {
   });
 
   // --- Handlers that need the dialog hooks ---
-  const handleCollectionUpload = (collection?: Collection) => {
-    dialogs.openUpload(collection || activeCollection);
+  const handleCollectionUpload = (collection?: Collection | any) => {
+    // If called as an event handler, first arg is an Event. We want to skip it.
+    const actualCollection = (collection && typeof collection === 'object' && 'id' in collection)
+      ? collection
+      : activeCollection;
+
+    dialogs.openUpload(actualCollection);
   };
 
   const handleOpenImport = (collectionId?: string) => {
