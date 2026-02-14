@@ -1,3 +1,17 @@
+# [1.1.0](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.0.0...v1.1.0) (2026-02-14)
+
+
+### Bug Fixes
+
+* add 22 untracked model files + fix .gitignore pattern ([e5eb460](https://github.com/CNCmarlin/3d-model-muncher/commit/e5eb4600e82500476f96e71743afa2d29b810090))
+* resolve thumbnail rendering, sync camera angles, and fix config loading ([cb1254c](https://github.com/CNCmarlin/3d-model-muncher/commit/cb1254cadff609e180a898b8e5d827669e4b627c))
+
+
+### Features
+
+* Implement collection editor dialog, add architectural documentation and a reorganization script, and remove outdated log and release files. ([30eec41](https://github.com/CNCmarlin/3d-model-muncher/commit/30eec4125c12cff13be1ed445e3bdcbebf1cf520))
+* stable legacy migration v1.0 - settings polish, tag deletion fix, ui consistency ([1f1679c](https://github.com/CNCmarlin/3d-model-muncher/commit/1f1679cb073fb45bbcdcf77be95595901126eb17))
+
 ## [0.16.0](https://github.com/robsturgill/3d-model-muncher/compare/v0.15.1...v0.15.2) (2025-12-18)
 
 Features
