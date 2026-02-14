@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.2...v1.1.3) (2026-02-14)
+
+
+### Bug Fixes
+
+* remove redundant tsc command from Dockerfile ([a7bfe4f](https://github.com/CNCmarlin/3d-model-muncher/commit/a7bfe4f26beb51a59e2c3fd835bebc0ca7d557bd))
+
 ## [1.1.2](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.1...v1.1.2) (2026-02-14)
 
 
