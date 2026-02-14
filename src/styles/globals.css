@@ -6,6 +6,7 @@
 @source "../components/dialogs/*.tsx";
 @source "../components/dialogs/bulk-edit/*.tsx";
 @source "../components/layout/*.tsx";
+@source "../components/management/*.tsx";
 @source "../components/settings/*.tsx";
 @source "../components/views/*.tsx";
 @source "../components/bulk-edit/*.tsx";
