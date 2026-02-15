@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.4...v1.2.0) (2026-02-15)
+
+
+### Features
+
+* polish onboarding workflow (layout, healer, copy) ([3d6a55a](https://github.com/CNCmarlin/3d-model-muncher/commit/3d6a55a17e19171b0e81c668b8e2cc60eb5e9a30))
+
 ## [1.1.4](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.3...v1.1.4) (2026-02-15)
 
 
