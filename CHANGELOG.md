@@ -1,3 +1,10 @@
+## [1.1.4](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.3...v1.1.4) (2026-02-15)
+
+
+### Bug Fixes
+
+* add filePath mismatch detection to heal function ([4817ce2](https://github.com/CNCmarlin/3d-model-muncher/commit/4817ce25b940e0f0874ffb52c324fdd500c3335c))
+
 ## [1.1.3](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.2...v1.1.3) (2026-02-14)
 
 
