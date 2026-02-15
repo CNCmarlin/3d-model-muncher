@@ -18,6 +18,11 @@ export function PhaseVisuals({ onNext }: PhaseVisualsProps) {
 
     const [isAutoImportOpen, setIsAutoImportOpen] = useState(false);
 
+    // Calculate percent for card display
+    const thumbPercent = thumbnails.progress && thumbnails.progress.total > 0
+        ? Math.round((thumbnails.progress.current / thumbnails.progress.total) * 100)
+        : 0;
+
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
@@ -35,19 +40,40 @@ export function PhaseVisuals({ onNext }: PhaseVisualsProps) {
                     </div>
                 </div>
 
-                <div className="p-4 border rounded-xl bg-card flex items-center justify-between">
+                <div
+                    className={`p-4 border rounded-xl bg-card flex items-center justify-between transition-colors ${thumbnails.isGenerating ? 'border-primary/50 bg-primary/5' : ''}`}
+                >
                     <div className="space-y-1">
-                        <div className="font-medium">Generate Missing</div>
+                        <div className="font-medium flex items-center gap-2">
+                            Generate Missing
+                            {thumbnails.isGenerating && (
+                                <span className="text-xs font-normal text-primary animate-pulse flex items-center gap-1">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Running... {thumbnails.progress ? `${thumbnails.progress.current}/${thumbnails.progress.total}` : ''}
+                                </span>
+                            )}
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                            Scans for 3MF embedded pngs or renders STL snapshots.
+                            {thumbnails.isGenerating
+                                ? `Generating in background (${thumbPercent}%). Click 'View Status' to see details.`
+                                : "Scans for 3MF embedded pngs or renders STL snapshots."}
                         </div>
                     </div>
                     <Button
-                        variant="outline"
+                        variant={thumbnails.isGenerating ? "secondary" : "outline"}
                         onClick={() => thumbnails.setIsDialogOpen(true)}
                     >
-                        <ImageIcon className="mr-2 h-4 w-4" />
-                        Generate
+                        {thumbnails.isGenerating ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                View Status
+                            </>
+                        ) : (
+                            <>
+                                <ImageIcon className="mr-2 h-4 w-4" />
+                                Generate
+                            </>
+                        )}
                     </Button>
                 </div>
             </div>
@@ -123,6 +149,7 @@ export function PhaseVisuals({ onNext }: PhaseVisualsProps) {
                 onStop={thumbnails.handleStopGeneration}
                 isGenerating={thumbnails.isGenerating}
                 results={thumbnails.results}
+                progress={thumbnails.progress}
             />
 
             <AutoImportDialog

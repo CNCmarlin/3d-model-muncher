@@ -1,3 +1,22 @@
+import { CollectionCard } from '@/components/collections/CollectionCard';
+import CollectionEditDialog from '@/components/collections/CollectionEditDialog';
+import { CollectionEditorDialog } from '@/components/collections/CollectionEditorDialog';
+import { CollectionListRow } from '@/components/collections/CollectionListRow';
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { LayoutControls } from "@/components/layout/LayoutControls";
+import { useLayoutSettings } from "@/components/layout/LayoutSettingsContext";
+import { SelectionModeControls } from '@/components/layout/SelectionModeControls';
+import { ProjectView } from '@/components/management/ProjectView';
+import { ModelCard } from '@/components/models/ModelCard';
+import { Badge } from "@/components/ui/badge";
+import { Button } from '@/components/ui/button';
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from '@/components/ui/scroll-area';
+import type { Collection } from '@/types/collection';
+import type { AppConfig } from '@/types/config';
+import { Model } from '@/types/model';
+import { downloadMultipleModels } from "@/utils/downloadUtils";
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import {
   ArrowLeft,
   Box,
@@ -19,25 +38,6 @@ import {
 import type { MouseEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { Collection } from '@/types/collection';
-import type { AppConfig } from '@/types/config';
-import { Model } from '@/types/model';
-import { downloadMultipleModels } from "@/utils/downloadUtils";
-import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
-import { CollectionCard } from '@/components/collections/CollectionCard';
-import CollectionEditDrawer from '@/components/collections/CollectionEditDrawer';
-import { CollectionEditorDialog } from '@/components/collections/CollectionEditorDialog';
-import { CollectionListRow } from '@/components/collections/CollectionListRow';
-import { ImageWithFallback } from "@/components/common/ImageWithFallback";
-import { LayoutControls } from "@/components/layout/LayoutControls";
-import { useLayoutSettings } from "@/components/layout/LayoutSettingsContext";
-import { ModelCard } from '@/components/models/ModelCard';
-import { ProjectView } from '@/components/management/ProjectView';
-import { SelectionModeControls } from '@/components/layout/SelectionModeControls';
-import { Badge } from "@/components/ui/badge";
-import { Button } from '@/components/ui/button';
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 interface CollectionGridProps {
@@ -426,9 +426,21 @@ export default function CollectionGrid({
               {/* Child Collections (Folders) */}
               {childCollections.length > 0 && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <Folder className="h-4 w-4" />
-                    Folders
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                      <Folder className="h-4 w-4" />
+                      Collections
+                    </div>
+                    {(items.length > 0) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => document.getElementById('models-section')?.scrollIntoView({ behavior: 'smooth' })}
+                      >
+                        Jump to Models <ChevronRight className="h-3 w-3 rotate-90" />
+                      </Button>
+                    )}
                   </div>
                   {viewMode === 'grid' ? (
                     <div className={`grid ${dynamicGridClasses} gap-4`}>
@@ -483,7 +495,7 @@ export default function CollectionGrid({
                 items.length > 0 && (
                   <div className="space-y-3">
                     {childCollections.length > 0 && (
-                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                      <div id="models-section" className="flex items-center gap-2 text-sm font-medium text-muted-foreground pt-2">
                         <FileCheck className="h-4 w-4" />
                         Models
                       </div>
@@ -783,7 +795,7 @@ export default function CollectionGrid({
       {/* --- DIALOGS --- */}
 
       {/* 1. Create New Collection Drawer */}
-      <CollectionEditDrawer
+      <CollectionEditDialog
         open={isCreateCollectionOpen}
         onOpenChange={setIsCreateCollectionOpen}
         collection={null}
@@ -800,7 +812,7 @@ export default function CollectionGrid({
       />
 
       {/* 2. [NEW] Edit ACTIVE Collection Drawer */}
-      <CollectionEditDrawer
+      <CollectionEditDialog
         open={isEditDrawerOpen}
         onOpenChange={setIsEditDrawerOpen}
         collection={activeCollection ?? null} // We pass the active collection here

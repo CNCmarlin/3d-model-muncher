@@ -14,7 +14,7 @@ try {
 }
 
 // --- Helpers ---
-const { hasEmbeddedThumbnail } = require('../../server-utils/thumbnailExtraction');
+const { hasEmbeddedThumbnail, extractEmbeddedThumbnail } = require('../../server-utils/thumbnailExtraction');
 
 function getModelsDirectory() {
     if (process.env.MODELS_PATH) return process.env.MODELS_PATH;
@@ -359,6 +359,45 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                     }
                 });
 
+                // --- 5.0. 3MF EMBEDDED RESCUE (NEW) ---
+                // If the model is a 3MF, ensure we have the embedded thumbnail extracted.
+                // This handles cases where the scanner didn't populate parsedImages with base64.
+                const modelRelPath = data.filePath || '';
+                if (modelRelPath.toLowerCase().endsWith('.3mf')) {
+                    const absModelPath = path.join(modelsDir, modelRelPath);
+                    if (fs.existsSync(absModelPath)) {
+                        // Use currentBaseName to ensure consistent naming with the rest of the logic
+                        const reliableName = `${currentBaseName}-embedded-thumb.png`;
+                        const embeddedPath = path.join(dir, reliableName);
+
+                        // Check if we track it (either as a file reference or legacy base64)
+                        const hasEmbeddedRef = data.parsedImages.some(img => img.includes('-embedded-thumb') || img.startsWith('data:image'));
+                        const physicalExists = siblings.includes(reliableName); // siblings is a list of filenames in the folder
+
+                        if (!hasEmbeddedRef && !physicalExists) {
+                            if (!isDryRun) {
+                                try {
+                                    const extracted = await extractEmbeddedThumbnail(absModelPath, embeddedPath);
+                                    if (extracted) {
+                                        console.log(`      -> Action: Rescued Embedded Thumbnail from ${path.basename(absModelPath)}`);
+                                        const newRel = path.relative(modelsDir, embeddedPath).replace(/\\/g, '/');
+                                        const newUrl = `/models/${newRel}`;
+                                        data.parsedImages.push(newUrl);
+                                        proposal.additions.push(`${reliableName} (Rescued from 3MF Metadata)`);
+                                        hasChanged = true;
+                                        // Update siblings so subsequent steps (like Scrubbing) see it
+                                        siblings.push(reliableName);
+                                    }
+                                } catch (e) {
+                                    console.warn("       Failed to rescue embedded thumb:", e.message);
+                                }
+                            } else {
+                                proposal.additions.push(`${reliableName} (Would Rescue from 3MF Metadata)`);
+                            }
+                        }
+                    }
+                }
+
                 // --- 5a. BASE64 EXTRACTION ---
                 // Convert legacy Base64 thumbnails to files to reduce JSON size and fix "Stale" errors.
                 data.parsedImages = data.parsedImages.map(imgUrl => {
@@ -679,10 +718,18 @@ router.get('/library-check-backups', async (req, res) => {
 // POST /api/admin/purge-thumbnails-preview (dry run — list files that would be deleted)
 router.post('/purge-thumbnails-preview', async (req, res) => {
     try {
+        const { only3mf = false } = req.body; // Extract flag
         const modelsDir = getAbsoluteModelsPath();
-        const THUMB_PATTERN = /\.(stl|3mf)-thumb\.png$/i;
+
+        // Define pattern based on flag
+        const THUMB_PATTERN = only3mf
+            ? /\.3mf-thumb\.png$/i
+            : /\.(stl|3mf)-thumb\.png$/i;
+
         const files = [];
         let totalSize = 0;
+
+        // ... (rest of logic handles filtering by pattern automatically)
 
         // Helper: check if a thumbnail's model has other images (embedded from .3mf)
         function checkForOtherImages(thumbFullPath) {
@@ -778,12 +825,18 @@ router.post('/purge-thumbnails-preview', async (req, res) => {
 // POST /api/admin/purge-thumbnails (execute deletion)
 router.post('/purge-thumbnails', async (req, res) => {
     try {
-        const { skipWithoutOtherImages = false } = req.body || {};
+        const { skipWithoutOtherImages = false, only3mf = false } = req.body || {};
         const modelsDir = getAbsoluteModelsPath();
-        const THUMB_PATTERN = /\.(stl|3mf)-thumb\.png$/i;
+
+        // Define pattern based on flag
+        const THUMB_PATTERN = only3mf
+            ? /\.3mf-thumb\.png$/i
+            : /\.(stl|3mf)-thumb\.png$/i;
+
         let deleted = 0;
         let skipped = 0;
         const errors = [];
+
 
         // Helper: check if a thumbnail's model has other images
         function checkForOtherImages(thumbFullPath) {
@@ -833,7 +886,8 @@ router.post('/purge-thumbnails', async (req, res) => {
                 } else if (THUMB_PATTERN.test(entry.name)) {
                     try {
                         const hasOtherImages = checkForOtherImages(full);
-                        if (!hasOtherImages && !skipWithoutOtherImages) {
+                        // FIX: Delete if it HAS other images (safe) OR if we are forced to delete lone images
+                        if (hasOtherImages || !skipWithoutOtherImages) {
                             fs.unlinkSync(full);
                             deleted++;
                         } else {
@@ -916,6 +970,13 @@ router.post('/purge-thumbnails', async (req, res) => {
 
 // POST /api/admin/generate-thumbnails
 let activeThumbnailJob = null;
+let activeThumbnailStatus = { total: 0, current: 0, status: 'idle', startTime: null };
+
+// GET /api/admin/thumbnail-status
+router.get('/thumbnail-status', (req, res) => {
+    res.json(activeThumbnailStatus);
+});
+
 router.post('/generate-thumbnails', async (req, res) => {
     if (activeThumbnailJob) {
         activeThumbnailJob.abort();
@@ -937,10 +998,15 @@ router.post('/generate-thumbnails', async (req, res) => {
         const config = ConfigManager.loadConfig();
         const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#6366f1';
 
+
+
         let processed = 0;
         let errors = [];
         let skipped = 0;
         let targets = [];
+
+        // Reset Status
+        activeThumbnailStatus = { total: 0, current: 0, status: 'scanning', startTime: Date.now() };
 
         function findTargets(dir) {
             if (signal.aborted) return;
@@ -969,6 +1035,10 @@ router.post('/generate-thumbnails', async (req, res) => {
             }
         }
         findTargets(modelsDir);
+
+        // Update Status with Total
+        activeThumbnailStatus.total = targets.length;
+        activeThumbnailStatus.status = 'generating';
 
         console.log(`📸 Starting photo shoot for ${targets.length} models...`);
         const MAX_CONSECUTIVE_ERRORS = 5;
@@ -1007,6 +1077,7 @@ router.post('/generate-thumbnails', async (req, res) => {
                     fs.writeFileSync(target.jsonPath, JSON.stringify(json, null, 2));
                 }
                 processed++;
+                activeThumbnailStatus.current = processed; // Update Progress
                 consecutiveErrors = 0;
             } catch (err) {
                 if (err.message && err.message.includes('cancelled')) break;
@@ -1017,6 +1088,7 @@ router.post('/generate-thumbnails', async (req, res) => {
         }
 
         activeThumbnailJob = null;
+        activeThumbnailStatus.status = 'idle';
         res.json({
             success: true,
             processed,
@@ -1027,12 +1099,24 @@ router.post('/generate-thumbnails', async (req, res) => {
 
     } catch (error) {
         activeThumbnailJob = null;
+        activeThumbnailStatus.status = 'error';
         console.error('General generation error:', error);
         if (error.message && error.message.includes('cancelled')) {
             return res.json({ success: false, aborted: true, message: 'Cancelled by user' });
         }
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// POST /api/admin/cancel-thumbnails
+router.post('/cancel-thumbnails', (req, res) => {
+    if (activeThumbnailJob) {
+        activeThumbnailJob.abort();
+        activeThumbnailJob = null;
+        activeThumbnailStatus.status = 'cancelled';
+        return res.json({ success: true, message: 'Job Cancelled' });
+    }
+    res.json({ success: false, message: 'No active job' });
 });
 
 module.exports = router;

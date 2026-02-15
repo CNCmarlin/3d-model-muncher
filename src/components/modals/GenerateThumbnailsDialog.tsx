@@ -1,7 +1,9 @@
+
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { AlertCircle, AlertTriangle, CheckCircle2, Info, Loader2, XCircle } from "lucide-react";
 import { useState } from "react";
 
@@ -20,9 +22,10 @@ interface GenerateThumbnailsDialogProps {
     onStop: () => void;
     isGenerating: boolean;
     results: GenerationResults | null;
+    progress: { total: number; current: number; status: string } | null;
 }
 
-export function GenerateThumbnailsDialog({ isOpen, onClose, onStart, onStop, isGenerating, results }: GenerateThumbnailsDialogProps) {
+export function GenerateThumbnailsDialog({ isOpen, onClose, onStart, onStop, isGenerating, results, progress }: GenerateThumbnailsDialogProps) {
     const [force, setForce] = useState(false);
     const [skipEmbedded, setSkipEmbedded] = useState(true);
 
@@ -30,14 +33,13 @@ export function GenerateThumbnailsDialog({ isOpen, onClose, onStart, onStop, isG
         onStart({ force, skipEmbedded });
     };
 
-    // Prevent closing while generating
-    const handleOpenChange = (open: boolean) => {
-        if (!open && isGenerating) return;
-        if (!open) onClose();
-    };
+    // calculate percent
+    const percent = progress && progress.total > 0
+        ? Math.round((progress.current / progress.total) * 100)
+        : 0;
 
     return (
-        <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Generate Missing Thumbnails</DialogTitle>
@@ -53,12 +55,24 @@ export function GenerateThumbnailsDialog({ isOpen, onClose, onStart, onStop, isG
                 <div className="space-y-6 py-4">
                     {/* STATE: GENERATING */}
                     {isGenerating && (
-                        <div className="flex flex-col items-center justify-center py-8 space-y-4">
-                            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-                            <p className="text-sm text-muted-foreground text-center animate-pulse">
-                                Processing models...<br />
-                                <span className="text-xs">This may take a while. You can keep this window open.</span>
-                            </p>
+                        <div className="flex flex-col items-center justify-center py-4 space-y-6">
+                            <div className="w-full space-y-2">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                    <span>Processing...</span>
+                                    <span>{progress ? `${progress.current} / ${progress.total}` : 'Initializing...'}</span>
+                                </div>
+                                <Progress value={percent} className="h-2" />
+                            </div>
+
+                            <div className="flex flex-col items-center gap-2 text-center">
+                                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                <p className="text-sm text-muted-foreground animate-pulse">
+                                    {progress?.status === 'scanning' ? 'Scanning library...' : 'Rendering snapshots...'}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    You can close this window. The process will continue in the background.
+                                </p>
+                            </div>
                         </div>
                     )}
 
@@ -182,9 +196,12 @@ export function GenerateThumbnailsDialog({ isOpen, onClose, onStart, onStop, isG
                     )}
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="gap-2 sm:gap-0">
                     {isGenerating ? (
-                        <Button variant="destructive" onClick={onStop}>Stop Generation</Button>
+                        <>
+                            <Button variant="outline" onClick={onClose}>Run in Background</Button>
+                            <Button variant="destructive" onClick={onStop}>Stop Generation</Button>
+                        </>
                     ) : (
                         <>
                             <Button variant="outline" onClick={onClose}>

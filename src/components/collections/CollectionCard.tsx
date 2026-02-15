@@ -1,18 +1,18 @@
-import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-import { getLabel } from "@/constants/labels";
-import { useDialog } from "@/hooks/useDialog";
-import type { Category } from "@/types/category";
-import type { Collection } from "@/types/collection";
-import { ConfigManager } from "@/utils/configManager";
-import CollectionEditDrawer from "@/components/collections/CollectionEditDrawer";
+import CollectionEditDialog from "@/components/collections/CollectionEditDialog";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { getLabel } from "@/constants/labels";
+import { useDialog } from "@/hooks/useDialog";
+import type { Category } from "@/types/category";
+import type { Collection } from "@/types/collection";
+import { ConfigManager } from "@/utils/configManager";
+import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export interface CollectionCardProps {
   collection: Collection;
@@ -81,7 +81,7 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
         if (collectionId) onOpen(collectionId);
       }}
     >
-      <CardHeader className="p-0">
+      <CardHeader className="p-0 shrink-0">
         <div className="relative aspect-square overflow-hidden rounded-t-lg bg-muted/40 flex items-center justify-center">
           {coverSrc ? (
             <img
@@ -93,20 +93,20 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
           ) : (
             <Folder className="w-14 h-14 text-primary/80" />
           )}
-          <div className="absolute top-3 left-3">
-            <Badge variant="secondary">Collection</Badge>
+          <div className="absolute top-2 left-2 z-10">
+            <Badge variant="secondary" className="px-1.5 py-0 h-5 text-[10px]">Collection</Badge>
           </div>
-          <div className="absolute top-3 right-3 flex items-center gap-2">
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-6 w-6 bg-background/50 backdrop-blur-sm hover:bg-background/80"
                   onClick={(e) => e.stopPropagation()}
                   title="Collection actions"
                 >
-                  <MoreVertical className="h-4 w-4" />
+                  <MoreVertical className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
@@ -121,12 +121,12 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-4 flex-1">
-        <h3 className="mb-1 font-medium line-clamp-2">{collection?.name || 'Untitled collection'}</h3>
+      <CardContent className="p-2 pt-1 flex-1">
+        <h3 className="mb-0.5 font-medium line-clamp-2 leading-tight">{collection?.name || 'Untitled collection'}</h3>
         {collection?.description && (
-          <p className="text-sm text-muted-foreground line-clamp-2">{collection.description}</p>
+          <p className="text-sm text-muted-foreground line-clamp-5 leading-snug">{collection.description}</p>
         )}
-        <div className="text-muted-foreground space-y-1 mt-2">
+        <div className="text-muted-foreground space-y-0.5 mt-1 text-xs">
           {/* Metadata Rows Logic - Simplified for brevity in replace tool, but keeping structure */}
           {(() => {
             const effectiveCfg = ConfigManager.loadConfig();
@@ -148,21 +148,23 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
           })()}
         </div>
       </CardContent>
-      <CardFooter className="p-4 pt-0 mt-auto">
-        <Button variant="outline" size="sm" className="w-full justify-between">
+      <CardFooter className="p-2 pt-0 mt-auto">
+        <Button variant="ghost" size="sm" className="w-full justify-between px-2 bg-muted/30 hover:bg-muted/50">
           {`View ${modelCount} model${modelCount !== 1 ? 's' : ''}`}
           <ChevronRight className="h-4 w-4" />
         </Button>
       </CardFooter>
 
-      <CollectionEditDrawer
-        open={editDialog.isOpen}
-        onOpenChange={editDialog.setIsOpen}
-        collection={collection ?? null}
-        collections={collections}
-        categories={categories}
-        onSaved={handleSaved}
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <CollectionEditDialog
+          open={editDialog.isOpen}
+          onOpenChange={editDialog.setIsOpen}
+          collection={collection ?? null}
+          collections={collections}
+          categories={categories}
+          onSaved={handleSaved}
+        />
+      </div>
 
       <ConfirmDialog
         open={deleteDialog.isOpen}

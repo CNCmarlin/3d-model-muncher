@@ -29,8 +29,16 @@ export function useSettingsConfig(
                 const data = await resp.json();
                 if (data && data.success && data.config) {
                     if (cancelled) return;
-                    console.debug('[useSettingsConfig] loaded server config, lastModified=', data.config.lastModified);
-                    setLocalConfig(data.config);
+
+                    let cleanConfig = data.config;
+                    // [FIX] Recursive unwrap to prevent nesting disaster (mirroring ConfigContext logic)
+                    while (cleanConfig && cleanConfig.success && cleanConfig.config) {
+                        console.warn('[useSettingsConfig] Detected nested config, unwrapping...');
+                        cleanConfig = cleanConfig.config;
+                    }
+
+                    console.debug('[useSettingsConfig] loaded server config, lastModified=', cleanConfig.lastModified);
+                    setLocalConfig(cleanConfig);
                     // Don't trigger onConfigUpdate here loops
                 }
             } catch (err) {

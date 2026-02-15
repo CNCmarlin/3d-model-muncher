@@ -1,8 +1,9 @@
+
 import { Category } from '@/types/category';
 import { AppConfig } from '@/types/config';
 import { ConfigManager } from '@/utils/configManager';
 import { applyThemeColor } from '@/utils/themeUtils';
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import * as pkg from '../../package.json';
 
@@ -30,6 +31,12 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     const [dontShowReleaseNotes, setDontShowReleaseNotes] = useState(false);
     const [isReleaseNotesOpen, setIsReleaseNotesOpen] = useState(false);
 
+    // [Ref Fix] Keep a ref to appConfig to avoid stale closures in callbacks
+    const configRef = useRef<AppConfig | null>(null);
+    useEffect(() => {
+        configRef.current = appConfig;
+    }, [appConfig]);
+
 
     // 1. Theme Persistence Effect
     useEffect(() => {
@@ -55,20 +62,6 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
                 } catch (e) {
                     console.warn('LocalStorage config read failed', e);
                 }
-
-                // B. Try Server (Authoritative)
-                // If server succeeds, it overrides local storage (unless we want offline-first, but server is truth)
-                // logic in App.tsx was: if (!config) try server. 
-                // But actually, we often want the server to win if it's available. 
-                // However, sticking to App.tsx strict parity: "Logic allows local storage to win if it exists" -> wait, line 195 says "if (!config)". 
-                // So checking server only if local is missing? 
-                // actually line 203: "Sync server config to local storage".
-                // Let's reproduce the App.tsx hybrid approach:
-                // If missing local, fetch server.
-                // Actually, for a web app, server *should* be authoritative.
-                // But App.tsx code:
-                // if (!config) { try fetch /api/load-config }
-                // So it prioritized localStorage.
 
                 // B. Try Server (Authoritative)
                 // Always fetch from server to ensure we have the latest config (e.g. DB mode toggle)
@@ -186,35 +179,27 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
 
     const updateCategories = (newCategories: Category[]) => {
         setCategories(newCategories);
-        if (appConfig) {
-            const updatedConfig = { ...appConfig, categories: newCategories };
+        const current = configRef.current;
+        if (current) {
+            const updatedConfig = { ...current, categories: newCategories };
             updateConfig(updatedConfig);
         }
     };
 
     const updateRunTimestamp = (key: string) => {
-        if (!appConfig) return;
+        const current = configRef.current;
+        if (!current) return;
 
         const now = new Date().toISOString();
-        const updatedTimestamps = { ...(appConfig.lastRunTimestamps || {}), [key]: now };
+        const updatedTimestamps = { ...(current.lastRunTimestamps || {}), [key]: now };
 
         const updatedConfig = {
-            ...appConfig,
+            ...current,
             lastRunTimestamps: updatedTimestamps
         };
 
-        // Optimistic update
-        setAppConfig(updatedConfig);
-
-        // Persist
-        ConfigManager.saveConfig(updatedConfig);
-
-        // Server Sync (Background)
-        fetch('/api/save-config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedConfig)
-        }).catch(err => console.warn('Background timestamp save failed:', err));
+        // Reuse main update logic
+        updateConfig(updatedConfig);
     };
 
     return (

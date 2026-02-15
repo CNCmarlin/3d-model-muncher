@@ -1,14 +1,13 @@
-import { useState, useRef } from "react";
-import { Model } from "@/types/model";
-import { AppConfig } from "@/types/config";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { Grid3DViewer } from "@/components/models/Grid3DViewer";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ImageWithFallback } from "@/components/common/ImageWithFallback";
-import { resolveModelThumbnail } from "@/utils/thumbnailUtils";
-import { HardDrive, Box } from "lucide-react";
-import { Grid3DViewer } from "@/components/models/Grid3DViewer";
 import { useSpoolman } from '@/context/SpoolmanContext';
-import { AlertTriangle, Droplet } from 'lucide-react';
+import { AppConfig } from "@/types/config";
+import { Model } from "@/types/model";
+import { resolveModelThumbnail } from "@/utils/thumbnailUtils";
+import { AlertTriangle, Box, Clock, DollarSign, DraftingCompass, Droplet, Folder, HardDrive, Layers, User, Weight } from "lucide-react";
+import { useRef, useState } from "react";
 
 interface ModelCardProps {
   model: Model;
@@ -33,7 +32,7 @@ export function ModelCard({
   const hoverTimer = useRef<NodeJS.Timeout | null>(null);
 
   const showBadge = config?.settings?.showPrintedBadge !== false;
-  
+
   // Resolve the URL (prefer local filePath served via API, or direct modelUrl)
   // Ensure your API serves files correctly!
   const modelUrl = model.modelUrl || model.filePath;
@@ -41,8 +40,8 @@ export function ModelCard({
   // Handle Hover with Delay
   const handleMouseEnter = () => {
     // Don't load 3D if in selection mode (distracting) or if no URL
-    if (isSelectionMode || !modelUrl) return; 
-    
+    if (isSelectionMode || !modelUrl) return;
+
     setIsHovered(true);
     // Wait 600ms before triggering the heavy 3D load
     // This allows the user to scroll past without triggering 50 downloads
@@ -61,10 +60,10 @@ export function ModelCard({
   };
 
   let stockStatus: 'ok' | 'low' | 'empty' | null = null;
-  
+
   const preferredSpoolId = model.userDefined?.preferredSpoolId;
   const neededWeightStr = model.gcodeData?.totalFilamentWeight || model.filamentUsed;
-  
+
   if (preferredSpoolId && neededWeightStr) {
     const match = neededWeightStr.match(/([\d.]+)\s*g/i);
     const needed = match ? parseFloat(match[1]) : 0;
@@ -79,18 +78,101 @@ export function ModelCard({
     }
   }
 
+  // Helper to resolve field content
+  const getFieldContent = (fieldType: string | undefined): { icon: React.ReactNode, label: string, value: string | number | null } | null => {
+    if (!fieldType || fieldType === 'none') return null;
+
+    switch (fieldType) {
+      case 'printTime':
+        return {
+          icon: <Clock className="w-3 h-3" />,
+          label: 'Print Time',
+          value: model.printTime || model.gcodeData?.printTime || model.userDefined?.printTime || null
+        };
+      case 'filamentUsed':
+        return {
+          icon: <Weight className="w-3 h-3" />,
+          label: 'Filament',
+          value: model.filamentUsed || model.gcodeData?.totalFilamentWeight || null
+        };
+      case 'fileSize':
+        return {
+          icon: <HardDrive className="w-3 h-3" />,
+          label: 'Size',
+          value: model.fileSize || null
+        };
+      case 'category':
+        return {
+          icon: <Folder className="w-3 h-3" />,
+          label: 'Category',
+          value: model.category
+        };
+      case 'designer':
+        return {
+          icon: <User className="w-3 h-3" />,
+          label: 'Designer',
+          value: model.designer || model.userDefined?.designer || null
+        };
+      case 'layerHeight':
+        return {
+          icon: <Layers className="w-3 h-3" />,
+          label: 'Layer Height',
+          value: model.printSettings?.layerHeight ? `${model.printSettings.layerHeight}mm` : null
+        };
+      case 'nozzle':
+        return {
+          icon: <DraftingCompass className="w-3 h-3" />,
+          label: 'Nozzle',
+          value: model.printSettings?.nozzle ? `${model.printSettings.nozzle}mm` : null
+        };
+      case 'price':
+        const priceVal = model.price || model.userDefined?.price;
+        if (!priceVal) return { icon: <DollarSign className="w-3 h-3" />, label: 'Price', value: null };
+        // Remove leading $ if present to rely on icon
+        const formattedPrice = String(priceVal).startsWith('$') ? String(priceVal).substring(1) : priceVal;
+        return {
+          icon: <DollarSign className="w-3 h-3" />,
+          label: 'Price',
+          value: formattedPrice
+        };
+      default:
+        return null;
+    }
+  };
+
+  const primaryField = getFieldContent(config?.settings?.modelCardPrimary);
+  const secondaryField = getFieldContent(config?.settings?.modelCardSecondary);
+  const tertiaryField = getFieldContent(config?.settings?.modelCardTertiary);
+
+  // Default fallbacks if not configured (to match original behavior or reasonable defaults)
+  // const leftField = primaryField || { icon: <Folder className="w-3 h-3" />, label: 'Category', value: model.category };
+  // const centerField = secondaryField; // Center is optional/tertiary usually, but here we shift
+  // const rightField = tertiaryField;
+
+  // If we only have 2 fields configured (legacy behavior), we might want to stick to split?
+  // But user asked for 3rd field.
+  // Actually, let's map them to positions:
+  // Primary -> Left
+  // Secondary -> Center
+  // Tertiary -> Right
+  // But wait, user said "make them centered on the bottom".
+  // If I have 3 slots: L, C, R.
+
+  const field1 = primaryField;
+  const field2 = secondaryField;
+  const field3 = tertiaryField;
+
   return (
     <div
-      className={`group relative flex flex-col bg-card rounded-lg border transition-all duration-200 overflow-hidden cursor-pointer hover:shadow-md ${
-        isSelected ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"
-      }`}
+      className={`group relative flex flex-col bg-card rounded-lg border transition-all duration-200 overflow-hidden cursor-pointer hover:shadow-md ${isSelected ? "border-primary ring-1 ring-primary" : "hover:border-primary/50"
+        }`}
       onClick={onClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {/* Aspect Ratio Container */}
       <div className="relative w-full aspect-[4/3] bg-muted overflow-hidden">
-        
+
         {/* 1. Static Image (Always shown initially) */}
         {(!show3D) && (
           <div className="absolute inset-0">
@@ -105,12 +187,12 @@ export function ModelCard({
         {/* 2. 3D Viewer (Loads after hover delay) */}
         {show3D && modelUrl && (
           <div className="absolute inset-0 z-10 bg-background/50 animate-in fade-in duration-300">
-             <div className="w-full h-full" onClick={(e) => e.stopPropagation()}>
-                <Grid3DViewer 
-                  url={modelUrl} 
-                  color={config?.settings?.defaultModelColor || '#aaaaaa'}
-                />
-             </div>
+            <div className="w-full h-full" onClick={(e) => e.stopPropagation()}>
+              <Grid3DViewer
+                url={modelUrl}
+                color={config?.settings?.defaultModelColor || '#aaaaaa'}
+              />
+            </div>
           </div>
         )}
 
@@ -135,7 +217,7 @@ export function ModelCard({
             <div className="pointer-events-auto">
               <Checkbox
                 checked={isSelected}
-                onCheckedChange={() => {}}
+                onCheckedChange={() => { }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectionChange?.(model.id, e.nativeEvent.shiftKey);
@@ -144,20 +226,20 @@ export function ModelCard({
               />
             </div>
           )}
-          
+
           {model.isPrinted && showBadge && (
             <Badge variant="default" className="bg-green-600/90 hover:bg-green-600/90 backdrop-blur-sm shadow-sm">Printed</Badge>
           )}
         </div>
-        
+
         {/* Loading Indicator (Visual feedback while 3D initializes) */}
         {isHovered && !show3D && (
-            <div className="absolute bottom-2 right-2 z-20">
-                <Badge variant="secondary" className="gap-1 opacity-70">
-                    <Box className="h-3 w-3 animate-pulse" />
-                    <span className="text-[10px]">Loading 3D...</span>
-                </Badge>
-            </div>
+          <div className="absolute bottom-2 right-2 z-20">
+            <Badge variant="secondary" className="gap-1 opacity-70">
+              <Box className="h-3 w-3 animate-pulse" />
+              <span className="text-[10px]">Loading 3D...</span>
+            </Badge>
+          </div>
         )}
       </div>
 
@@ -166,14 +248,46 @@ export function ModelCard({
         <h3 className="font-semibold text-sm truncate leading-tight" title={model.name}>
           {model.name}
         </h3>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-normal truncate max-w-[100px]">
-             {model.category}
-          </Badge>
-          <div className="flex items-center gap-1">
-             <HardDrive className="h-3 w-3" />
-             <span>{model.fileSize}</span>
+
+        {/* Tags Section */}
+        {model.tags && model.tags.length > 0 && (
+          <div className="flex gap-1 overflow-hidden flex-wrap h-9 content-start">
+            {model.tags.slice(0, 6).map(tag => (
+              <Badge key={tag} variant="secondary" className="text-[10px] h-4 px-1.5 font-normal truncate max-w-[120px]">
+                {tag}
+              </Badge>
+            ))}
+            {model.tags.length > 6 && (
+              <span className="text-[9px] text-muted-foreground self-center">+{model.tags.length - 6}</span>
+            )}
           </div>
+        )}
+
+        {/* footer fields */}
+        <div className="flex items-center justify-center gap-4 text-xs mt-1 min-h-[1.25rem]">
+          {/* Left Field */}
+          {field1 && field1.value ? (
+            <div className="flex items-center gap-1 min-w-0 font-semibold text-foreground" title={field1.label}>
+              {field1.icon}
+              <span className="truncate max-w-[60px]">{field1.value}</span>
+            </div>
+          ) : <div className="hidden" />}
+
+          {/* Center Field */}
+          {field2 && field2.value ? (
+            <div className="flex items-center gap-1 min-w-0 font-semibold text-foreground" title={field2.label}>
+              {field2.icon}
+              <span className="truncate max-w-[60px]">{field2.value}</span>
+            </div>
+          ) : <div className="hidden" />}
+
+          {/* Right Field */}
+          {field3 && field3.value ? (
+            <div className="flex items-center gap-1 min-w-0 font-semibold text-foreground" title={field3.label}>
+              {field3.icon}
+              <span className="truncate max-w-[60px] text-right">{field3.value}</span>
+            </div>
+          ) : <div className="hidden" />}
         </div>
       </div>
     </div>

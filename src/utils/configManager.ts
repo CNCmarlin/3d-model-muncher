@@ -26,6 +26,7 @@ export class ConfigManager {
       showPrintedBadge: true,
       modelCardPrimary: 'printTime',
       modelCardSecondary: 'filamentUsed',
+      modelCardTertiary: 'none',
       autoSave: true,
       modelDirectory: "./models",
       gcodeOverwriteBehavior: 'prompt',
@@ -104,6 +105,11 @@ export class ConfigManager {
           const allowed = ['none', 'printTime', 'filamentUsed', 'fileSize', 'category', 'designer', 'layerHeight', 'nozzle', 'price'];
           return allowed.includes(val) ? val : this.defaultConfig.settings.modelCardSecondary;
         })(),
+        modelCardTertiary: ((): 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price' => {
+          const val = config?.settings?.modelCardTertiary;
+          const allowed = ['none', 'printTime', 'filamentUsed', 'fileSize', 'category', 'designer', 'layerHeight', 'nozzle', 'price'];
+          return allowed.includes(val) ? val : this.defaultConfig.settings.modelCardTertiary;
+        })(),
         showPrintedBadge: typeof config?.settings?.showPrintedBadge === 'boolean'
           ? config.settings.showPrintedBadge
           : this.defaultConfig.settings.showPrintedBadge,
@@ -130,7 +136,7 @@ export class ConfigManager {
           ? config.filters.defaultSortBy
           : this.defaultConfig.filters.defaultSortBy
       },
-// [FIX] Explicitly map all integration fields so they persist
+      // [FIX] Explicitly map all integration fields so they persist
       integrations: {
         spoolman: {
           url: config?.integrations?.spoolman?.url || ""

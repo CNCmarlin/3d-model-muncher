@@ -1,7 +1,7 @@
+import { XMLParser } from "fast-xml-parser";
+import { unzipSync } from "fflate";
 import * as fs from "fs";
 import * as path from "path";
-import { unzipSync } from "fflate";
-import { XMLParser } from "fast-xml-parser";
 
 interface PrintSettings {
   layerHeight: string;
@@ -137,8 +137,8 @@ export async function parse3MF(filePath: string, id: string, precomputedHash?: s
         }
 
         // optional infill keys (if present in config)
-  // include sparse_infill_density (used in project_settings.config) as the preferred infill key
-  const infillKeyCandidates = ["sparse_infill_density"];
+        // include sparse_infill_density (used in project_settings.config) as the preferred infill key
+        const infillKeyCandidates = ["sparse_infill_density"];
         for (const k of infillKeyCandidates) {
           if (settings[k] != null && settings[k] !== "") {
             let iv = String(settings[k]).trim();
@@ -170,7 +170,7 @@ export async function parse3MF(filePath: string, id: string, precomputedHash?: s
           .replace(/&gt;/g, '>')
           .replace(/&quot;/g, '"')
           .replace(/&#039;/g, "'");
-        
+
         // Then strip out any HTML tags
         return decodedText.replace(/<[^>]*>/g, '');
       }
@@ -193,7 +193,7 @@ export async function parse3MF(filePath: string, id: string, precomputedHash?: s
             // Double decode because the XML contains &amp;lt; which needs to be decoded twice
             metadata.description = decodeHtmlEntities(decodeHtmlEntities(value));
           }
-          
+
           if (key === "profiletitle") {
             // If layer height wasn't found in project_settings.config, fall back to parsing profiletitle
             if (!metadata.printSettings.layerHeight) {
@@ -221,7 +221,7 @@ export async function parse3MF(filePath: string, id: string, precomputedHash?: s
       } else if (metadataNodes) {
         const key = (metadataNodes["@_name"] || "").toLowerCase();
         const value = metadataNodes["#text"] || "";
-        
+
         if (key === "title") {
           metadata.name = decodeHtmlEntities(value);
         }
@@ -265,22 +265,43 @@ export async function parse3MF(filePath: string, id: string, precomputedHash?: s
 
     // ---- IMAGE PROCESSING ----
     // Collect all images from the 3MF file into parsedImages array
-    // First, add the primary thumbnail if it exists
-    if (unzipped["Metadata/plate_1.png"]) {
-      const b64 = Buffer.from(unzipped["Metadata/plate_1.png"]).toString("base64");
-      const dataUrl = `data:image/png;base64,${b64}`;
-      metadata.parsedImages.push(dataUrl);
-    } else if (unzipped["Metadata/thumbnail.png"]) {
-      const b64 = Buffer.from(unzipped["Metadata/thumbnail.png"]).toString("base64");
-      const dataUrl = `data:image/png;base64,${b64}`;
-      metadata.parsedImages.push(dataUrl);
+
+    // Helper to add image if it exists
+    const tryAddImage = (internalPath: string) => {
+      if (unzipped[internalPath]) {
+        const ext = internalPath.toLowerCase().endsWith('.jpg') || internalPath.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'png';
+        const b64 = Buffer.from(unzipped[internalPath]).toString("base64");
+        const dataUrl = `data:image/${ext};base64,${b64}`;
+        metadata.parsedImages.push(dataUrl);
+        return true;
+      }
+      return false;
+    };
+
+    // 1. Explicitly check for known standard locations (PNG & JPG)
+    const success1 = tryAddImage("Metadata/plate_1.png");
+    const success2 = tryAddImage("Metadata/thumbnail.png");
+    const success3 = tryAddImage("Metadata/plate_1.jpg"); // New Support
+    const success4 = tryAddImage("Metadata/thumbnail.jpg"); // New Support
+
+    // 2. Fallback: Scan Metadata/ folder for ANY other images (Common in various slicers)
+    for (const file in unzipped) {
+      if (file.startsWith("Metadata/") && (file.endsWith(".png") || file.endsWith(".jpg") || file.endsWith(".jpeg"))) {
+        // Avoid duplicates if we already added them via explicit check
+        if (file === "Metadata/plate_1.png" || file === "Metadata/thumbnail.png" ||
+          file === "Metadata/plate_1.jpg" || file === "Metadata/thumbnail.jpg") continue;
+
+        tryAddImage(file);
+      }
     }
 
-    // Add any additional images from Auxiliaries/Model Pictures/
+    // 3. Add any additional images from Auxiliaries/Model Pictures/
     for (const file in unzipped) {
-      if (file.startsWith("Auxiliaries/Model Pictures/") && file.endsWith(".webp")) {
+      if (file.startsWith("Auxiliaries/Model Pictures/") && (file.endsWith(".webp") || file.endsWith(".png") || file.endsWith(".jpg"))) {
+        const ext = file.split('.').pop()?.toLowerCase() || 'png';
+        const finalExt = ext === 'jpg' ? 'jpeg' : ext;
         const b64 = Buffer.from(unzipped[file]).toString("base64");
-        const dataUrl = `data:image/webp;base64,${b64}`;
+        const dataUrl = `data:image/${finalExt};base64,${b64}`;
         metadata.parsedImages.push(dataUrl);
       }
     }
@@ -333,7 +354,7 @@ export async function parseSTL(filePath: string, id: string, precomputedHash?: s
   // Use filename as name for STL files
   const fileName = path.basename(filePath, '.stl');
   metadata.name = fileName;
-  
+
   // Set the model URL (relative to models directory)
   const relativePath = path.relative(process.cwd(), filePath);
   metadata.modelUrl = "/" + relativePath.replace(/\\/g, "/");
@@ -346,13 +367,13 @@ function generateUniqueId(filePath: string, hash?: string): string {
   // Use the relative path from the models directory, normalize separators
   const relativePath = path.relative(process.cwd(), filePath);
   const normalizedPath = relativePath.replace(/[\/\\]/g, '-').replace(/\.(3mf|stl)$/i, '');
-  
+
   // Clean the path to be safe for IDs (remove special characters)
   const cleanPath = normalizedPath.replace(/[^a-zA-Z0-9\-_]/g, '-');
-  
+
   // If we have a hash, use the first 8 characters for uniqueness
   const hashSuffix = hash ? `-${hash.substring(0, 8)}` : '';
-  
+
   // Create a unique ID combining path and hash
   return `${cleanPath}${hashSuffix}`;
 }
@@ -375,24 +396,24 @@ export async function scanDirectory(dir: string, fileType: "3mf" | "stl" = "3mf"
         localSkipped += subResult.skipped;
       } else if (entry.isFile()) {
         const lowerName = entry.name.toLowerCase();
-        
+
         // Determine if this is a target 3D file
-        const isTarget3mf = fileType === "3mf" && lowerName.endsWith(".3mf") && 
-                           !lowerName.endsWith(".gcode.3mf") && !lowerName.endsWith(".3mf.gcode");
+        const isTarget3mf = fileType === "3mf" && lowerName.endsWith(".3mf") &&
+          !lowerName.endsWith(".gcode.3mf") && !lowerName.endsWith(".3mf.gcode");
         const isTargetStl = fileType === "stl" && lowerName.endsWith(".stl");
 
         if (isTarget3mf || isTargetStl) {
-          const outPath = isTarget3mf 
+          const outPath = isTarget3mf
             ? fullPath.replace(/\.3mf$/, "-munchie.json")
             : fullPath.replace(/\.stl$/i, "-stl-munchie.json");
 
           console.log(`Processing ${fileType.toUpperCase()}: ${fullPath}`);
-          
+
           // 1. Generate Fresh Metadata from the physical file
           const buffer = fs.readFileSync(fullPath);
           const hash = computeMD5(buffer);
           const uniqueId = generateUniqueId(fullPath, hash);
-          const freshMetadata = isTarget3mf 
+          const freshMetadata = isTarget3mf
             ? await parse3MF(fullPath, uniqueId, hash)
             : await parseSTL(fullPath, uniqueId, hash);
 
@@ -407,25 +428,25 @@ export async function scanDirectory(dir: string, fileType: "3mf" | "stl" = "3mf"
               finalData = {
                 ...existing,       // Preserve all existing user data
                 ...freshMetadata,  // Update with fresh file-based data (hash, size)
-                
+
                 // --- LOCK DOWN CRITICAL IDENTITY FIELDS ---
                 // We never want the scanner to reset these to defaults if they exist
                 id: existing.id || freshMetadata.id,
                 isProjectRoot: existing.isProjectRoot ?? freshMetadata.isProjectRoot,
                 isRelatedPart: existing.isRelatedPart ?? freshMetadata.isRelatedPart,
                 hidden: existing.hidden ?? freshMetadata.hidden,
-                category: (existing.category && existing.category !== "Uncategorized") 
-                  ? existing.category 
+                category: (existing.category && existing.category !== "Uncategorized")
+                  ? existing.category
                   : freshMetadata.category,
-                
+
                 // Preserve user-added tags while merging with any new file-found tags
                 tags: Array.from(new Set([...(existing.tags || []), ...(freshMetadata.tags || [])])),
-                
+
                 // Ensure timestamps are handled logically
                 created: existing.created || freshMetadata.created,
                 lastModified: new Date().toISOString()
               };
-              
+
               console.log(`🔄 Merged existing data for: ${outPath}`);
             } catch (mergeErr) {
               console.warn(`⚠️ Could not parse existing JSON at ${outPath}, overwriting.`, mergeErr);

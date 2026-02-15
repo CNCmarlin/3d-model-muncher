@@ -20,15 +20,19 @@ export function resolveModelThumbnail(model: any): string {
           return model.parsedImages[idx];
         }
         // legacy fallbacks
-        if (idx === 0 && model.thumbnail) return model.thumbnail;
+        if (idx === 0 && model.thumbnail && !model.thumbnail.startsWith('parsed:')) return model.thumbnail;
         if (Array.isArray(model.images) && model.images[idx - 1]) return model.images[idx - 1];
       }
+      // [FIX] If we explicitly have a parsed: pointer but can't resolve it, 
+      // do NOT fall through to legacy fields which might also be corrupted. Return empty.
+      return '';
     } else if (thumbnailDesc.startsWith('user:')) {
       const idx = parseInt(thumbnailDesc.split(':')[1] || '', 10);
       const userImages = (model as any)?.userDefined?.images;
       if (!isNaN(idx) && Array.isArray(userImages) && userImages[idx]) {
         return getUserImageData(userImages[idx]);
       }
+      return '';
     } else {
       // treat as literal data URL or direct string
       return thumbnailDesc;
@@ -41,7 +45,9 @@ export function resolveModelThumbnail(model: any): string {
   }
 
   // Backwards-compatible fallbacks
-  if (model.thumbnail) return model.thumbnail;
+  // [FIX] Ensure legacy thumbnail is not a pointer (corruption safeguard)
+  if (model.thumbnail && !model.thumbnail.startsWith('parsed:')) return model.thumbnail;
+
   if (model.coverImagePath) {
     return model.coverImagePath.startsWith('/') ? model.coverImagePath : `/models/${model.coverImagePath}`;
   }

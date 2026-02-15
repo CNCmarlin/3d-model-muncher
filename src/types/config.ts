@@ -55,6 +55,7 @@ export interface AppConfig {
     scanStrategy: 'smart' | 'strict' | 'top-level';
     modelCardPrimary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     modelCardSecondary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
+    modelCardTertiary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     autoSave: boolean;
     modelDirectory: string;
     gcodeOverwriteBehavior?: 'prompt' | 'overwrite';

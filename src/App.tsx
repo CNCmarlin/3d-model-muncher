@@ -88,7 +88,7 @@ function AppContent() {
   // Onboarding Redirect Logic
   useEffect(() => {
     if (appConfig && !isConfigLoading) {
-      const isCompleted = appConfig.settings.onboardingCompleted;
+      const isCompleted = appConfig.settings?.onboardingCompleted;
       if (!isCompleted && currentView !== 'onboarding') {
         // Only redirect if we haven't completed onboarding
         // console.log("Redirecting to onboarding...");

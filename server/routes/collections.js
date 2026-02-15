@@ -121,6 +121,22 @@ router.get('/collections', (req, res) => {
     }
 });
 
+// [NEW] GET /collections/:id - Fetch single collection details
+router.get('/collections/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const cols = loadCollections();
+        const col = cols.find(c => c.id === id);
+
+        if (!col) {
+            return res.status(404).json({ success: false, error: 'Collection not found' });
+        }
+        res.json({ success: true, collection: col });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message || 'Server error' });
+    }
+});
+
 router.post('/collections', async (req, res) => {
     try {
         const { id, name, description = '', modelIds = [], childCollectionIds = [],

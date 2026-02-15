@@ -154,7 +154,7 @@ export function PhasePreferences({ config, onUpdateConfig, onNext }: PhasePrefer
             {/* Model Card Fields */}
             <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Model Card Info</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border rounded-xl bg-card">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 border rounded-xl bg-card">
                     <div className="space-y-2">
                         <Label>Primary Field</Label>
                         <Select
@@ -169,6 +169,8 @@ export function PhasePreferences({ config, onUpdateConfig, onNext }: PhasePrefer
                                 <SelectItem value="fileSize">File Size</SelectItem>
                                 <SelectItem value="category">Category</SelectItem>
                                 <SelectItem value="designer">Designer</SelectItem>
+                                <SelectItem value="layerHeight">Layer Height</SelectItem>
+                                <SelectItem value="nozzle">Nozzle Size</SelectItem>
                                 <SelectItem value="price">Price</SelectItem>
                             </SelectContent>
                         </Select>
@@ -188,6 +190,29 @@ export function PhasePreferences({ config, onUpdateConfig, onNext }: PhasePrefer
                                 <SelectItem value="fileSize">File Size</SelectItem>
                                 <SelectItem value="category">Category</SelectItem>
                                 <SelectItem value="designer">Designer</SelectItem>
+                                <SelectItem value="layerHeight">Layer Height</SelectItem>
+                                <SelectItem value="nozzle">Nozzle Size</SelectItem>
+                                <SelectItem value="price">Price</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Tertiary Field</Label>
+                        <Select
+                            value={config.settings.modelCardTertiary || 'none'}
+                            onValueChange={(val) => updateSetting('modelCardTertiary', val)}
+                        >
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                <SelectItem value="printTime">Print Time</SelectItem>
+                                <SelectItem value="filamentUsed">Filament Used</SelectItem>
+                                <SelectItem value="fileSize">File Size</SelectItem>
+                                <SelectItem value="category">Category</SelectItem>
+                                <SelectItem value="designer">Designer</SelectItem>
+                                <SelectItem value="layerHeight">Layer Height</SelectItem>
+                                <SelectItem value="nozzle">Nozzle Size</SelectItem>
                                 <SelectItem value="price">Price</SelectItem>
                             </SelectContent>
                         </Select>

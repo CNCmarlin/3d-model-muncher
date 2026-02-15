@@ -52,14 +52,24 @@
         scene.background = null;
 
         // 2. Setup Lights 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        // 2. Setup Lights (Matched to SharedModelScene.tsx for better definition)
+
+        // 2.1 Global Ambience (Raised from 0.4 to 1.5)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
         scene.add(ambientLight);
 
-        const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
+        // 2.2 Sky/Ground Fill (Crucial for 3MF definition)
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2.0);
+        scene.add(hemiLight);
+
+        // 2.3 Main Key Light (Raised from 1.0 to 2.5)
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.5);
         dirLight1.position.set(5, 5, 5);
+        dirLight1.castShadow = true; // Enabled shadows for depth
         scene.add(dirLight1);
 
-        const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+        // 2.4 Rim Light (Raised from 0.5 to 1.5)
+        const dirLight2 = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight2.position.set(-5, 3, -5);
         scene.add(dirLight2);
 
@@ -116,15 +126,19 @@
                     mesh.rotation.x = -Math.PI / 2; // <--- ADDED ROTATION HERE
 
                 } else {
-                    // 3MF Handling (UNCHANGED, but ensured color is correct)
                     mesh = geometry;
                     mesh.traverse((child) => {
                         if (child.isMesh) {
+                            // [FIX] Compute normals if missing (CRITICAL for 3MF to react to light)
+                            if (!child.geometry.attributes.normal) {
+                                child.geometry.computeVertexNormals();
+                            }
+
                             child.material = new THREE.MeshStandardMaterial({
                                 color: color,
                                 roughness: 0.5,
                                 metalness: 0.1,
-                                side: THREE.DoubleSide // Added for consistency
+                                side: THREE.DoubleSide
                             });
                         }
                     });
