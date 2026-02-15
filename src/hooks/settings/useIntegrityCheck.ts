@@ -1,7 +1,9 @@
+import { useConfig } from '@/context/ConfigContext';
+import { CorruptedFile, DuplicateGroup, HashCheckResult, Model } from "@/types/model";
+import { removeDuplicates } from "@/utils/clientUtils";
 import { createStandardModelIdentity } from "@/utils/modelFactory";
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { CorruptedFile, DuplicateGroup, HashCheckResult, Model } from "@/types/model";
 
 interface UseIntegrityCheckProps {
     models: Model[];
@@ -16,6 +18,7 @@ export function useIntegrityCheck({
     setSaveStatus,
     setStatusMessage
 }: UseIntegrityCheckProps) {
+    const { updateRunTimestamp } = useConfig();
     // State
     const [selectedFileTypes, setSelectedFileTypes] = useState<{ "3mf": boolean; "stl": boolean }>({ "3mf": true, "stl": true });
     const [hashCheckResult, setHashCheckResult] = useState<HashCheckResult | null>(null);
@@ -211,6 +214,7 @@ export function useIntegrityCheck({
             onModelsUpdate(allUpdatedModels);
             setSaveStatus('saved');
             setStatusMessage('Hash check complete.');
+            updateRunTimestamp('checkHashes');
 
         } catch (error) {
             setSaveStatus('error');
@@ -274,6 +278,7 @@ export function useIntegrityCheck({
 
             setSaveStatus('saved');
             setStatusMessage('Generation complete.');
+            updateRunTimestamp('generateHashes');
             setTimeout(() => { setSaveStatus('idle'); setStatusMessage(''); }, 3000);
         } catch (error) {
             setSaveStatus('error');

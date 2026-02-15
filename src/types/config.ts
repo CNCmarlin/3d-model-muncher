@@ -61,6 +61,7 @@ export interface AppConfig {
     gcodeStorageBehavior?: 'parse-only' | 'save-and-link';
     useDatabaseBackend?: boolean; // Phase 3: Dual-Running Feature Flag
     alwaysMoveFiles?: boolean; // If true, always move files on collection change without asking.
+    onboardingCompleted?: boolean;
   };
   filters: {
     defaultCategory: string;
@@ -70,4 +71,5 @@ export interface AppConfig {
   };
   integrations?: IntegrationSettings;
   lastModified: string;
+  lastRunTimestamps?: Record<string, string>; // key → ISO date string (e.g. "generateThumbnails" → "2026-02-14T...")
 }

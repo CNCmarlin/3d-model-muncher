@@ -124,7 +124,7 @@ export function BulkOperationsPanel({
                                     const found = categories.find(c => c.label === val || c.id === val);
                                     setCategory(found ? found.label : val);
                                 }}
-                                options={categories.map(c => ({ value: c.label, label: c.label }))}
+                                options={(categories || []).map(c => ({ value: c.label, label: c.label }))}
                                 placeholder="Select category"
                                 description={commonValues.category ? `Current: ${commonValues.category}` : undefined}
                             />

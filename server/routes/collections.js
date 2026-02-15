@@ -816,5 +816,93 @@ router.delete('/collections/:id/documents/:filename', async (req, res) => {
     }
 });
 
+// POST /api/collections/purge-covers-preview (dry run)
+router.post('/collections/purge-covers-preview', async (req, res) => {
+    try {
+        const coversDir = path.join(DATA_DIR, 'covers');
+        if (!fs.existsSync(coversDir)) {
+            return res.json({ success: true, files: [], totalCount: 0, totalSize: 0 });
+        }
+
+        const collections = loadCollections();
+        const files = [];
+        let totalSize = 0;
+
+        const entries = fs.readdirSync(coversDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith('.jpg')) continue;
+            const full = path.join(coversDir, entry.name);
+            try {
+                const stat = fs.statSync(full);
+                const collectionId = entry.name.replace('.jpg', '');
+                const collection = collections.find(c => c.id === collectionId);
+                files.push({
+                    path: `data/covers/${entry.name}`,
+                    name: entry.name,
+                    collectionName: collection ? collection.name : '(unknown collection)',
+                    collectionId,
+                    size: stat.size
+                });
+                totalSize += stat.size;
+            } catch { /* skip */ }
+        }
+
+        res.json({
+            success: true,
+            files,
+            totalCount: files.length,
+            totalSize
+        });
+    } catch (error) {
+        console.error('Purge covers preview error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/collections/purge-covers (execute deletion)
+router.post('/collections/purge-covers', async (req, res) => {
+    try {
+        const coversDir = path.join(DATA_DIR, 'covers');
+        if (!fs.existsSync(coversDir)) {
+            return res.json({ success: true, deleted: 0, collectionsUpdated: 0, errors: [] });
+        }
+
+        let deleted = 0;
+        const errors = [];
+
+        // Delete .jpg files from covers dir
+        const entries = fs.readdirSync(coversDir, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith('.jpg')) continue;
+            const full = path.join(coversDir, entry.name);
+            try {
+                fs.unlinkSync(full);
+                deleted++;
+            } catch (err) {
+                errors.push({ path: full, error: err.message });
+            }
+        }
+
+        // Clear coverImage from collections that reference data/covers/
+        let collectionsUpdated = 0;
+        await collectionQueue.add(async (cols) => {
+            const updated = cols.map(c => {
+                if (c.coverImage && c.coverImage.includes('/data/covers/')) {
+                    collectionsUpdated++;
+                    return { ...c, coverImage: null, lastModified: new Date().toISOString() };
+                }
+                return c;
+            });
+            return updated;
+        });
+
+        console.log(`🧹 Purged ${deleted} cover images, updated ${collectionsUpdated} collections.`);
+        res.json({ success: true, deleted, collectionsUpdated, errors });
+    } catch (error) {
+        console.error('Purge covers error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
 

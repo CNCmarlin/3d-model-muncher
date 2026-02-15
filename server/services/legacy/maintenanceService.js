@@ -3,6 +3,7 @@ const path = require('path');
 const { getAbsoluteModelsPath, protectModelFileWrite, safeWriteJson } = require('../../../server-utils/dataAccess');
 const { generateThumbnail } = require('../../../dist-backend/utils/thumbnailGenerator');
 const { ConfigManager } = require('../../../dist-backend/utils/configManager');
+const { extractEmbeddedThumbnail } = require('../../../server-utils/thumbnailExtraction');
 
 class MaintenanceServiceLegacy {
     constructor() {
@@ -39,7 +40,7 @@ class MaintenanceServiceLegacy {
     /**
      * Generate thumbnails for models
      */
-    async generateThumbnails({ modelIds, force = false, baseUrl }) {
+    async generateThumbnails({ modelIds, force = false, skipEmbedded = false, baseUrl }) {
         if (this.activeThumbnailJob) {
             this.activeThumbnailJob.abort();
         }
@@ -104,21 +105,64 @@ class MaintenanceServiceLegacy {
                 try {
                     const thumbName = path.basename(target.sourcePath) + '-thumb.png';
                     const thumbPath = path.join(path.dirname(target.sourcePath), thumbName);
-                    const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
-
                     if (fs.existsSync(thumbPath) && !force) {
                         skipped++;
                         continue;
                     }
 
-                    const modelColor = target.data.userDefined?.color || target.data.color || globalDefaultColor;
-                    await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir, signal);
+                    // [NEW] "Use Embedded" Logic (formerly skipEmbedded)
+                    let extractionSuccess = false;
+                    let finalThumbPath = thumbPath; // Default to standard -thumb.png
+
+                    if (skipEmbedded) {
+                        const isStl = target.sourcePath.toLowerCase().endsWith('.stl');
+                        // STLs don't have embedded thumbnails.
+
+                        if (!isStl) {
+                            const embeddedName = path.basename(target.sourcePath) + '-embedded-thumb.png';
+                            const embeddedPath = path.join(path.dirname(target.sourcePath), embeddedName);
+
+                            // Try to extract embedded thumbnail
+                            try {
+                                extractionSuccess = await extractEmbeddedThumbnail(target.sourcePath, embeddedPath);
+                                if (extractionSuccess) {
+                                    if (fs.existsSync(embeddedPath)) {
+                                        finalThumbPath = embeddedPath;
+                                    } else {
+                                        extractionSuccess = false;
+                                    }
+                                }
+                            } catch (err) {
+                                console.warn(`    -> Failed to extract embedded thumb for ${path.basename(target.sourcePath)}:`, err.message);
+                                extractionSuccess = false;
+                            }
+                        }
+                    }
+
+                    if (!extractionSuccess) {
+                        const modelColor = target.data.userDefined?.color || target.data.color || globalDefaultColor;
+                        await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir, signal);
+                        finalThumbPath = thumbPath;
+                    }
+
+                    const relativeThumbUrl = '/models/' + path.relative(modelsDir, finalThumbPath).replace(/\\/g, '/');
 
                     let json = target.data;
                     let changed = false;
                     if (!json.images) json.images = [];
                     if (!json.images.includes(relativeThumbUrl)) {
                         json.images.unshift(relativeThumbUrl);
+                        changed = true;
+                    }
+
+                    // If we extracted an embedded one, ensure it's set as the userDefined thumbnail to take precedence immediately
+                    if (extractionSuccess) {
+                        if (!json.userDefined) json.userDefined = {};
+                        // Find the index of our new image to set the pointer correctly (e.g. "parsed:0")
+                        // But finding the exact index in 'parsedImages' + 'images' hybrid in the frontend is tricky.
+                        // For the backend, 'images' is the source of truth for local images.
+                        json.userDefined.thumbnail = relativeThumbUrl;
+                        // Note: Frontend usually expects "parsed:X" or a URL. URL works too in most updated views.
                         changed = true;
                     }
 

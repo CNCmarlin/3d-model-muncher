@@ -52,11 +52,11 @@ class MaintenanceController {
     // POST /api/generate-thumbnails
     async generateThumbnails(req, res) {
         try {
-            const { modelIds, force = false } = req.body;
+            const { modelIds, force = false, skipEmbedded = false } = req.body;
             const port = process.env.PORT || 3001;
             const baseUrl = `http://127.0.0.1:${port}`;
 
-            const result = await maintenanceService.generateThumbnails({ modelIds, force, baseUrl });
+            const result = await maintenanceService.generateThumbnails({ modelIds, force, skipEmbedded, baseUrl });
             res.json(result);
         } catch (error) {
             console.error('General generation error:', error);

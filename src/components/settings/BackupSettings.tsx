@@ -1,13 +1,15 @@
-import { useBackups } from '@/hooks/settings/useBackups';
-import { useSettingsConfig } from '@/hooks/settings/useSettingsConfig';
-import { Model } from '@/types/model';
-import { Archive, Download, FileText, HardDrive, RefreshCw, RotateCcw, Save, Settings, Upload } from 'lucide-react';
-import { useRef } from 'react';
+import { LastRunLabel } from '@/components/common/LastRunLabel';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { useConfig } from '@/context/ConfigContext';
+import { useBackups } from '@/hooks/settings/useBackups';
+import { useSettingsConfig } from '@/hooks/settings/useSettingsConfig';
+import { Model } from '@/types/model';
+import { Archive, Download, FileText, HardDrive, RefreshCw, RotateCcw, Save, Settings, Upload } from 'lucide-react';
+import { useRef } from 'react';
 
 type BackupSettingsProps = ReturnType<typeof useBackups> & {
     models: Model[];
@@ -31,6 +33,7 @@ export function BackupSettings({
     configSettings
 }: BackupSettingsProps) {
     const configFileInputRef = useRef<HTMLInputElement>(null);
+    const { appConfig } = useConfig();
 
     return (
         <div className="space-y-6">
@@ -109,18 +112,26 @@ export function BackupSettings({
                                     Backup all model metadata files to a compressed archive
                                 </p>
                             </div>
-                            <Button
-                                onClick={handleCreateBackup}
-                                disabled={isCreatingBackup}
-                                className="gap-2 md:ml-4"
-                            >
-                                {isCreatingBackup ? (
-                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Archive className="h-4 w-4" />
+                            <div className="flex flex-col items-center gap-1 md:ml-4">
+                                <Button
+                                    onClick={handleCreateBackup}
+                                    disabled={isCreatingBackup}
+                                    className="gap-2"
+                                >
+                                    {isCreatingBackup ? (
+                                        <RefreshCw className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Archive className="h-4 w-4" />
+                                    )}
+                                    {isCreatingBackup ? 'Creating...' : 'Create Backup'}
+                                </Button>
+                                {appConfig?.lastRunTimestamps?.createBackup && (
+                                    <LastRunLabel
+                                        timestamp={appConfig.lastRunTimestamps.createBackup}
+                                        className="text-[10px]"
+                                    />
                                 )}
-                                {isCreatingBackup ? 'Creating...' : 'Create Backup'}
-                            </Button>
+                            </div>
                         </div>
 
                         {/* Backup Statistics */}

@@ -1,18 +1,20 @@
-import { LICENSES } from '@/constants/licenses';
-import { Category } from '@/types/category';
-import { AppConfig } from '@/types/config';
-import { Model } from '@/types/model';
-import { ConfigManager } from '@/utils/configManager';
-import { applyThemeColor } from '@/utils/themeUtils';
-import { Box, Download, Edit2, Save, X } from 'lucide-react';
-import { useRef, useState } from 'react';
-import { toast } from 'sonner';
+import { GenerateThumbnailsDialog } from '@/components/modals/GenerateThumbnailsDialog';
+import { LastRunLabel } from '@/components/shared/LastRunLabel';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { LICENSES } from '@/constants/licenses';
+import { Category } from '@/types/category';
+import { AppConfig } from '@/types/config';
+import { Model } from '@/types/model';
+import { ConfigManager } from '@/utils/configManager';
+import { applyThemeColor } from '@/utils/themeUtils';
+import { Box, Download, Edit2, Loader2, Save, Trash2, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 type GeneralSettingsProps = {
     localConfig: AppConfig;
@@ -37,6 +39,27 @@ export function GeneralSettings({
     const [unsavedDefaultModelColor, setUnsavedDefaultModelColor] = useState<string | null>(null);
     const colorInputRef = useRef<HTMLInputElement>(null);
     const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+    const [generationResults, setGenerationResults] = useState<{
+        success: boolean;
+        processed: number;
+        skipped: number;
+        errors: { id: string; error: string }[];
+        aborted?: boolean;
+    } | null>(null);
+    const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+
+    // Purge thumbnails state
+    const [isPurging, setIsPurging] = useState(false);
+    const [purgePreview, setPurgePreview] = useState<{
+        files: { path: string; name: string; size: number; hasOtherImages: boolean }[];
+        totalCount: number;
+        totalSize: number;
+        withOtherImages: number;
+        withoutOtherImages: number;
+    } | null>(null);
+    const [showPurgeDialog, setShowPurgeDialog] = useState(false);
+    const [isScanning, setIsScanning] = useState(false);
+    const [skipNoImages, setSkipNoImages] = useState(true); // default: protect models with no fallback
 
     // Model Directory State
     const [isEditingModelDir, setIsEditingModelDir] = useState(false);
@@ -84,25 +107,60 @@ export function GeneralSettings({
         }
     };
 
-    const handleGenerateThumbnails = async () => {
-        if (!window.confirm('This will verify thumbnails for all models and generate them from 3MF files if missing. Continue?')) {
-            return;
-        }
+    const handleGenerateThumbnails = () => {
+        setGenerationResults(null);
+        setShowGenerateDialog(true);
+    };
 
+    const handleStartGeneration = async (options: { force: boolean; skipEmbedded: boolean }) => {
         setIsGeneratingThumbnails(true);
-        toast.info('Starting thumbnail generation...');
+        setGenerationResults(null);
+        // Toast is optional now since we have UI feedback, but good for persistence context
+        // toast.info('Starting thumbnail generation...'); 
 
         try {
-            const resp = await fetch('/api/tools/generate-thumbnails', { method: 'POST' });
+            const resp = await fetch('/api/generate-thumbnails', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    force: options.force,
+                    skipEmbedded: options.skipEmbedded
+                })
+            });
             const data = await resp.json();
+
+            // Set results regardless of success/fail to show them in dialog
+            setGenerationResults(data);
+
             if (data.success) {
-                toast.success(`Thumbnail generation started: ${data.message}`);
+                toast.success(`Thumbnail generation finished: ${data.processed} processed, ${data.skipped} skipped.`);
+                // Save timestamp
+                const updatedConfig = {
+                    ...localConfig,
+                    lastRunTimestamps: {
+                        ...localConfig.lastRunTimestamps,
+                        generateThumbnails: new Date().toISOString()
+                    }
+                };
+                setLocalConfig(updatedConfig);
+                handleSaveConfig(updatedConfig);
             } else {
-                toast.error(`Failed to start: ${data.error}`);
-                setIsGeneratingThumbnails(false);
+                if (data.aborted) {
+                    toast.info('Generation cancelled.');
+                } else {
+                    toast.error(`Generation failed: ${data.error}`);
+                }
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error starting thumbnail generation:', error);
+            toast.error('Network error starting generation');
+            setGenerationResults({
+                success: false,
+                processed: 0,
+                skipped: 0,
+                errors: [{ id: 'system', error: error.message || 'Unknown network error' }]
+            });
+        } finally {
             setIsGeneratingThumbnails(false);
         }
     };
@@ -115,6 +173,71 @@ export function GeneralSettings({
         } catch (error) {
             console.error('Error cancelling:', error);
         }
+    };
+
+    const handlePurgePreview = async () => {
+        setShowPurgeDialog(true);
+        setIsScanning(true);
+        setPurgePreview(null);
+        try {
+            const resp = await fetch('/api/admin/purge-thumbnails-preview', { method: 'POST' });
+            const data = await resp.json();
+            if (data.success) {
+                setPurgePreview(data);
+            } else {
+                toast.error(`Preview failed: ${data.error}`);
+                setShowPurgeDialog(false);
+            }
+        } catch (error) {
+            console.error('Purge preview error:', error);
+            toast.error('Failed to scan for thumbnails');
+            setShowPurgeDialog(false);
+        } finally {
+            setIsScanning(false);
+        }
+    };
+
+    const handlePurgeConfirm = async () => {
+        setIsPurging(true);
+        try {
+            const resp = await fetch('/api/admin/purge-thumbnails', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ skipWithoutOtherImages: skipNoImages })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                const skippedMsg = data.skipped > 0 ? ` (${data.skipped} skipped — no fallback images)` : '';
+                toast.success(`Deleted ${data.deleted} thumbnails, cleaned ${data.munchiesCleaned} metadata files.${skippedMsg}`);
+                // Save timestamp
+                const updatedConfig = {
+                    ...localConfig,
+                    lastRunTimestamps: {
+                        ...localConfig.lastRunTimestamps,
+                        purgeThumbnails: new Date().toISOString()
+                    }
+                };
+                setLocalConfig(updatedConfig);
+                handleSaveConfig(updatedConfig);
+            } else {
+                toast.error(`Purge failed: ${data.error}`);
+            }
+        } catch (error) {
+            console.error('Purge error:', error);
+            toast.error('Failed to purge thumbnails');
+        } finally {
+            setIsPurging(false);
+            setShowPurgeDialog(false);
+            setPurgePreview(null);
+        }
+    };
+
+    const formatBytes = (bytes: number): string => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
     return (
@@ -271,8 +394,8 @@ export function GeneralSettings({
                                 <div className="flex items-center gap-2">
                                     <Label htmlFor="database-backend">Database Backend</Label>
                                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${localConfig.settings?.useDatabaseBackend
-                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                            : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                        : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
                                         }`}>
                                         {localConfig.settings?.useDatabaseBackend ? 'Database Mode' : 'Legacy Mode'}
                                     </span>
@@ -316,7 +439,7 @@ export function GeneralSettings({
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Categories</SelectItem>
-                                    {categories.map((category) => (
+                                    {(categories || []).map((category) => (
                                         <SelectItem key={category.id} value={category.id}>
                                             {category.label}
                                         </SelectItem>
@@ -500,6 +623,7 @@ export function GeneralSettings({
                                 <p className="text-xs text-muted-foreground">
                                     Create clean PNG snapshots for models that don't have them.
                                 </p>
+                                <LastRunLabel timestamp={localConfig.lastRunTimestamps?.generateThumbnails} />
                             </div>
 
                             {isGeneratingThumbnails ? (
@@ -523,6 +647,126 @@ export function GeneralSettings({
                                 </Button>
                             )}
                         </div>
+
+                        {/* Remove Generated Thumbnails */}
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border mt-2">
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium">Remove Generated Thumbnails</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Find and delete all auto-generated thumbnail files (*.stl-thumb.png, *.3mf-thumb.png).
+                                </p>
+                                <LastRunLabel timestamp={localConfig.lastRunTimestamps?.purgeThumbnails} />
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handlePurgePreview}
+                                className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                            >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Find & Delete
+                            </Button>
+                        </div>
+
+                        {/* Purge Confirmation Dialog */}
+                        {showPurgeDialog && (() => {
+                            // Show scanning spinner while waiting for preview
+                            if (isScanning || !purgePreview) {
+                                return (
+                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                                        <div className="bg-background border rounded-lg shadow-lg max-w-lg w-full mx-4 p-6 space-y-4">
+                                            <h3 className="text-lg font-semibold">Scanning Library...</h3>
+                                            <div className="flex flex-col items-center justify-center py-8 gap-3">
+                                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                                <p className="text-sm text-muted-foreground">Searching for generated thumbnails across your model library...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            const filteredFiles = skipNoImages
+                                ? purgePreview.files.filter(f => f.hasOtherImages)
+                                : purgePreview.files;
+                            const filteredSize = filteredFiles.reduce((sum, f) => sum + f.size, 0);
+                            const deleteCount = filteredFiles.length;
+
+                            return (
+                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                                    <div className="bg-background border rounded-lg shadow-lg max-w-lg w-full mx-4 p-6 space-y-4">
+                                        <h3 className="text-lg font-semibold">Confirm Thumbnail Removal</h3>
+                                        {purgePreview.totalCount === 0 ? (
+                                            <>
+                                                <p className="text-sm text-muted-foreground">No generated thumbnails found.</p>
+                                                <div className="flex justify-end">
+                                                    <Button variant="outline" onClick={() => setShowPurgeDialog(false)}>Close</Button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                                                    <p className="text-sm font-medium text-destructive">
+                                                        Found {purgePreview.totalCount} generated thumbnail{purgePreview.totalCount !== 1 ? 's' : ''} ({formatBytes(purgePreview.totalSize)}).
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        {purgePreview.withOtherImages} have embedded/extracted images • {purgePreview.withoutOtherImages} are the only image for their model.
+                                                    </p>
+                                                </div>
+
+                                                {/* Skip checkbox */}
+                                                <label className="flex items-center gap-2 p-2 rounded border bg-muted/30 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={skipNoImages}
+                                                        onChange={(e) => setSkipNoImages(e.target.checked)}
+                                                        className="w-4 h-4 rounded"
+                                                    />
+                                                    <div>
+                                                        <p className="text-sm font-medium">Skip models with no other images</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Protects {purgePreview.withoutOtherImages} model{purgePreview.withoutOtherImages !== 1 ? 's' : ''} that would lose their only image.
+                                                        </p>
+                                                    </div>
+                                                </label>
+
+                                                <div className="max-h-48 overflow-y-auto border rounded p-2 text-xs font-mono space-y-0.5">
+                                                    {purgePreview.files.map((f, i) => {
+                                                        const willSkip = skipNoImages && !f.hasOtherImages;
+                                                        return (
+                                                            <div key={i} className={`flex justify-between items-center ${willSkip ? 'opacity-40 line-through' : 'text-muted-foreground'}`}>
+                                                                <span className="truncate mr-2">{f.path}</span>
+                                                                <div className="flex items-center gap-1 flex-shrink-0">
+                                                                    {!f.hasOtherImages && (
+                                                                        <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                                                                            only image
+                                                                        </span>
+                                                                    )}
+                                                                    <span>{formatBytes(f.size)}</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                <div className="flex justify-between items-center">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Will delete: {deleteCount} file{deleteCount !== 1 ? 's' : ''} ({formatBytes(filteredSize)})
+                                                    </p>
+                                                    <div className="flex gap-2">
+                                                        <Button variant="outline" onClick={() => setShowPurgeDialog(false)} disabled={isPurging}>
+                                                            Cancel
+                                                        </Button>
+                                                        <Button variant="destructive" onClick={handlePurgeConfirm} disabled={isPurging || deleteCount === 0}>
+                                                            {isPurging ? 'Deleting...' : `Delete ${deleteCount} Files`}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </CardContent>
             </Card>
@@ -582,6 +826,17 @@ export function GeneralSettings({
             </Card>
 
             {/* Model Directory */}
+            {/* ... other cards ... */}
+
+            <GenerateThumbnailsDialog
+                isOpen={showGenerateDialog}
+                onClose={() => setShowGenerateDialog(false)}
+                onStart={handleStartGeneration}
+                onStop={handleCancelThumbnails}
+                isGenerating={isGeneratingThumbnails}
+                results={generationResults}
+            />
+
             <Card>
                 <CardHeader>
                     <CardTitle>Library Location</CardTitle>

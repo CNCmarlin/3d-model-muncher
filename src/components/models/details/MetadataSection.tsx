@@ -1,11 +1,11 @@
-import React from 'react';
-import { DollarSign } from 'lucide-react';
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Model } from "@/types/model";
 import { Category } from "@/types/category";
+import { Model } from "@/types/model";
+import { DollarSign } from 'lucide-react';
+import React from 'react';
 
 interface MetadataSectionProps {
     isEditing: boolean;
@@ -165,7 +165,7 @@ export const MetadataSection = ({
                     >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            {categories.map((category) => (
+                            {(categories || []).map((category) => (
                                 <SelectItem key={category.id} value={category.label}>{category.label}</SelectItem>
                             ))}
                         </SelectContent>

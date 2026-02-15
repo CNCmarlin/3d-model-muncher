@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
 import { Category } from "@/types/category";
 import { AppConfig } from "@/types/config";
 import { Model } from "@/types/model";
+import { useMemo, useState } from 'react';
 
 interface UseCategoryManagerProps {
     categories: Category[]; // Initial categories
@@ -34,7 +34,7 @@ export function useCategoryManager({
     setSaveStatus,
     setStatusMessage
 }: UseCategoryManagerProps) {
-    const [localCategories, setLocalCategories] = useState<Category[]>(categories);
+    const [localCategories, setLocalCategories] = useState<Category[]>(categories || []);
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
     // Dialog & Edit State
@@ -324,7 +324,7 @@ export function useCategoryManager({
 
     // Calculate unmapped categories
     const unmappedCategories = useMemo(() => {
-        const configuredLabels = new Set(localCategories.map(c => c.label.toLowerCase()));
+        const configuredLabels = new Set((localCategories || []).map(c => c.label.toLowerCase()));
         const counts: Record<string, number> = {};
         models.forEach(m => {
             const raw = (m.category ?? '').toString().trim();

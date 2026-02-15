@@ -14,6 +14,7 @@ try {
 }
 
 // --- Helpers ---
+const { hasEmbeddedThumbnail } = require('../../server-utils/thumbnailExtraction');
 
 function getModelsDirectory() {
     if (process.env.MODELS_PATH) return process.env.MODELS_PATH;
@@ -195,6 +196,10 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 proposal.originalFilePath = originalFilePath;
 
                 // --- 3. IDENTITY & PROPOSAL ---
+                // Ground truth: what the munchie FILENAME says the model should be.
+                // This is immutable and always correct, unlike data.filePath which may be corrupted.
+                const munchieBaseName = entry.name.replace(/(-stl)?-munchie\.json$/i, '');
+
                 // Determine the "Model Name" based on the file path or the metadata filename
                 // This is the anchor for all matching logic.
                 let modelFileName = data.filePath
@@ -209,9 +214,8 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 // We need to know if "cam_bed_bottom" exists before "cam_bed" claims "cam_bed_bottom.stl"
                 const folderBaseNames = folderMunchies.map(m => {
                     const fname = path.basename(m.path);
-                    const name = m.data.filePath
-                        ? path.basename(m.data.filePath, path.extname(m.data.filePath))
-                        : fname.replace(/(-stl)?-munchie\.json$/i, '');
+                    // Always derive from munchie filename — filePath may be corrupted
+                    const name = fname.replace(/(-stl)?-munchie\.json$/i, '');
                     return name;
                 }).filter(n => n);
 
@@ -227,13 +231,13 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                     ? path.basename(data.filePath, path.extname(data.filePath)).toLowerCase()
                     : null;
                 const isFilePathMismatch = data.filePath && data.filePath !== "" &&
-                    existingFileBaseName !== modelBaseName.toLowerCase() &&
-                    !existingFileBaseName.startsWith(modelBaseName.toLowerCase());
+                    existingFileBaseName !== munchieBaseName.toLowerCase() &&
+                    !existingFileBaseName.startsWith(munchieBaseName.toLowerCase());
 
                 if (!data.filePath || data.filePath === "" || isFilePathMismatch) {
                     if (isFilePathMismatch) {
                         proposal.deletions.push(
-                            `filePath MISMATCH: Was "${data.filePath}" but munchie "${entry.name}" expects "${modelBaseName}.*"`
+                            `filePath MISMATCH: Was "${data.filePath}" but munchie "${entry.name}" expects "${munchieBaseName}.*"`
                         );
                     }
 
@@ -246,9 +250,9 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                         // Fix for cam_bed-stl claiming cam_bed.3mf:
                         if (isExplicitStl && !low.endsWith('.stl')) return false;
 
-                        // Match: "MyFile.stl" or "MyFile_v2.stl" but NOT "MyFile_Readme.txt" (checked via extension)
+                        // Match using munchie-derived name (ground truth), not corrupted filePath
                         // AND MUST START WITH NAME
-                        return isModel && f.toLowerCase().startsWith(modelBaseName.toLowerCase());
+                        return isModel && f.toLowerCase().startsWith(munchieBaseName.toLowerCase());
                     });
 
                     if (foundModel) {
@@ -670,6 +674,244 @@ router.get('/library-check-backups', async (req, res) => {
     };
     scanForBackups(modelsDir);
     res.json({ hasBackups });
+});
+
+// POST /api/admin/purge-thumbnails-preview (dry run — list files that would be deleted)
+router.post('/purge-thumbnails-preview', async (req, res) => {
+    try {
+        const modelsDir = getAbsoluteModelsPath();
+        const THUMB_PATTERN = /\.(stl|3mf)-thumb\.png$/i;
+        const files = [];
+        let totalSize = 0;
+
+        // Helper: check if a thumbnail's model has other images (embedded from .3mf)
+        function checkForOtherImages(thumbFullPath) {
+            // Derive the munchie path from the thumbnail path
+            // e.g. "model.stl-thumb.png" -> model is "model.stl" -> munchie is "model-stl-munchie.json"
+            // e.g. "model.3mf-thumb.png" -> model is "model.3mf" -> munchie is "model-munchie.json"
+            const thumbName = path.basename(thumbFullPath); // e.g. "model.stl-thumb.png"
+            const dir = path.dirname(thumbFullPath);
+
+            // Strip "-thumb.png" to get the model filename
+            const modelFile = thumbName.replace(/-thumb\.png$/i, ''); // e.g. "model.stl"
+
+            // Derive munchie filename
+            let munchiePath;
+            if (/\.stl$/i.test(modelFile)) {
+                munchiePath = path.join(dir, modelFile.replace(/\.stl$/i, '-stl-munchie.json'));
+            } else if (/\.3mf$/i.test(modelFile)) {
+                munchiePath = path.join(dir, modelFile.replace(/\.3mf$/i, '-munchie.json'));
+            } else {
+                return false;
+            }
+
+            try {
+                // 1. Check sidecar JSON first (fastest)
+                if (fs.existsSync(munchiePath)) {
+                    const data = JSON.parse(fs.readFileSync(munchiePath, 'utf8'));
+
+                    // Check parsedImages for non-thumb entries (these are embedded from .3mf)
+                    const parsedNonThumb = (data.parsedImages || []).filter(img => !THUMB_PATTERN.test(img));
+                    if (parsedNonThumb.length > 0) return true;
+
+                    // Check images for non-thumb entries
+                    const imagesNonThumb = (data.images || []).filter(img => !THUMB_PATTERN.test(img));
+                    if (imagesNonThumb.length > 0) return true;
+                }
+
+                // 2. Deep Check: If it's a 3MF, does it HAVE an embedded thumbnail?
+                // If so, that counts as "other image" (the source image)
+                if (modelFile.toLowerCase().endsWith('.3mf')) {
+                    const modelPath = path.join(dir, modelFile);
+                    if (hasEmbeddedThumbnail(modelPath)) return true;
+                }
+
+                return false;
+            } catch {
+                return false;
+            }
+        }
+
+        function scan(dir) {
+            let entries = [];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    scan(full);
+                } else if (THUMB_PATTERN.test(entry.name)) {
+                    try {
+                        const stat = fs.statSync(full);
+                        const relPath = path.relative(modelsDir, full).replace(/\\/g, '/');
+                        const hasOtherImages = checkForOtherImages(full);
+                        files.push({
+                            path: relPath,
+                            absPath: full,
+                            name: entry.name,
+                            size: stat.size,
+                            hasOtherImages
+                        });
+                        totalSize += stat.size;
+                    } catch { /* skip unreadable files */ }
+                }
+            }
+        }
+        scan(modelsDir);
+
+        const withOtherImages = files.filter(f => f.hasOtherImages).length;
+        const withoutOtherImages = files.length - withOtherImages;
+
+        res.json({
+            success: true,
+            files: files.map(f => ({ path: f.path, name: f.name, size: f.size, hasOtherImages: f.hasOtherImages })),
+            totalCount: files.length,
+            totalSize,
+            withOtherImages,
+            withoutOtherImages
+        });
+    } catch (error) {
+        console.error('Purge preview error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/admin/purge-thumbnails (execute deletion)
+router.post('/purge-thumbnails', async (req, res) => {
+    try {
+        const { skipWithoutOtherImages = false } = req.body || {};
+        const modelsDir = getAbsoluteModelsPath();
+        const THUMB_PATTERN = /\.(stl|3mf)-thumb\.png$/i;
+        let deleted = 0;
+        let skipped = 0;
+        const errors = [];
+
+        // Helper: check if a thumbnail's model has other images
+        function checkForOtherImages(thumbFullPath) {
+            const thumbName = path.basename(thumbFullPath);
+            const dir = path.dirname(thumbFullPath);
+            const modelFile = thumbName.replace(/-thumb\.png$/i, '');
+            let munchiePath;
+            if (/\.stl$/i.test(modelFile)) {
+                munchiePath = path.join(dir, modelFile.replace(/\.stl$/i, '-stl-munchie.json'));
+            } else if (/\.3mf$/i.test(modelFile)) {
+                munchiePath = path.join(dir, modelFile.replace(/\.3mf$/i, '-munchie.json'));
+            } else {
+                return false;
+            }
+
+            try {
+                // 1. Check sidecar JSON first (fastest)
+                if (fs.existsSync(munchiePath)) {
+                    const data = JSON.parse(fs.readFileSync(munchiePath, 'utf8'));
+                    const parsedNonThumb = (data.parsedImages || []).filter(img => !THUMB_PATTERN.test(img));
+                    if (parsedNonThumb.length > 0) return true;
+                    const imagesNonThumb = (data.images || []).filter(img => !THUMB_PATTERN.test(img));
+                    if (imagesNonThumb.length > 0) return true;
+                }
+
+                // 2. Deep Check: If it's a 3MF, does it HAVE an embedded thumbnail?
+                if (modelFile.toLowerCase().endsWith('.3mf')) {
+                    const modelPath = path.join(dir, modelFile);
+                    if (hasEmbeddedThumbnail(modelPath)) return true;
+                }
+
+                return false;
+            } catch {
+                return false;
+            }
+        }
+
+        // Re-scan to get fresh list (don't trust client-provided paths)
+        const thumbFiles = [];
+        function scan(dir) {
+            let entries = [];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    scan(full);
+                } else if (THUMB_PATTERN.test(entry.name)) {
+                    try {
+                        const hasOtherImages = checkForOtherImages(full);
+                        if (!hasOtherImages && !skipWithoutOtherImages) {
+                            fs.unlinkSync(full);
+                            deleted++;
+                        } else {
+                            skipped++;
+                        }
+                    } catch (err) {
+                        errors.push({ file: full, error: err.message });
+                    }
+                }
+            }
+        }
+        scan(modelsDir);
+
+        // Clean thumbnail references from munchie files (only for actually deleted thumbs)
+        let munchiesCleaned = 0;
+        function cleanMunchies(dir) {
+            let entries = [];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    cleanMunchies(full);
+                } else if (entry.name.endsWith('-munchie.json') && !entry.name.endsWith('.bak')) {
+                    try {
+                        const raw = fs.readFileSync(full, 'utf8');
+                        const data = JSON.parse(raw);
+                        let changed = false;
+
+                        // Remove thumb refs from parsedImages (only if the actual thumb file is gone)
+                        if (Array.isArray(data.parsedImages)) {
+                            const before = data.parsedImages.length;
+                            data.parsedImages = data.parsedImages.filter(img => {
+                                if (!THUMB_PATTERN.test(img)) return true;
+                                // Check if the referenced thumb file still exists on disk
+                                const cleanRel = img.replace(/^\/models\//, '').replace(/^models\//, '');
+                                const absImgPath = path.join(modelsDir, cleanRel);
+                                return fs.existsSync(absImgPath);
+                            });
+                            if (data.parsedImages.length !== before) changed = true;
+                        }
+
+                        // Remove thumb refs from images
+                        if (Array.isArray(data.images)) {
+                            const before = data.images.length;
+                            data.images = data.images.filter(img => {
+                                if (!THUMB_PATTERN.test(img)) return true;
+                                const cleanRel = img.replace(/^\/models\//, '').replace(/^models\//, '');
+                                const absImgPath = path.join(modelsDir, cleanRel);
+                                return fs.existsSync(absImgPath);
+                            });
+                            if (data.images.length !== before) changed = true;
+                        }
+
+                        // Reset thumbnail pointer if it referenced a parsed image we removed
+                        if (changed && data.userDefined?.thumbnail?.startsWith('parsed:')) {
+                            const idx = parseInt(data.userDefined.thumbnail.split(':')[1], 10);
+                            if (isNaN(idx) || idx >= (data.parsedImages?.length || 0)) {
+                                data.userDefined.thumbnail = undefined;
+                                data.userDefined.imageOrder = [];
+                            }
+                        }
+
+                        if (changed) {
+                            fs.writeFileSync(full, JSON.stringify(data, null, 2));
+                            munchiesCleaned++;
+                        }
+                    } catch { /* skip */ }
+                }
+            }
+        }
+        cleanMunchies(modelsDir);
+
+        console.log(`🧹 Purged ${deleted} generated thumbnails (skipped ${skipped}), cleaned ${munchiesCleaned} munchie files.`);
+        res.json({ success: true, deleted, skipped, munchiesCleaned, errors });
+    } catch (error) {
+        console.error('Purge error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 // POST /api/admin/generate-thumbnails

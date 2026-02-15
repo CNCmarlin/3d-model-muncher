@@ -1,3 +1,4 @@
+import { useConfig } from '@/context/ConfigContext';
 import { useRef, useState } from 'react';
 
 interface UseBackupsProps {
@@ -9,6 +10,7 @@ export function useBackups({
     setSaveStatus,
     setStatusMessage
 }: UseBackupsProps) {
+    const { updateRunTimestamp } = useConfig();
     const [isCreatingBackup, setIsCreatingBackup] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
     const [backupHistory, setBackupHistory] = useState<Array<{
@@ -65,6 +67,7 @@ export function useBackups({
 
             setSaveStatus('saved');
             setStatusMessage(`Backup created successfully: ${filename}`);
+            updateRunTimestamp('createBackup');
         } catch (error) {
             setSaveStatus('error');
             setStatusMessage('Failed to create backup');

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, CloudDownload, AlertCircle, Info } from 'lucide-react';
+import { AlertCircle, CloudDownload, Info, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 interface ThingiverseImportDialogProps {
@@ -54,53 +54,53 @@ export function ThingiverseImportDialog({ isOpen, onClose, onImportComplete, def
 
     const loadData = async () => {
       try {
-          const [fRes, cRes, confRes] = await Promise.all([
-              fetch('/api/model-folders'),
-              fetch('/api/collections'),
-              fetch('/api/load-config')
-          ]);
-          
-          if (fRes.ok) {
-              const d = await fRes.json();
-              setFolders(Array.from(new Set(['imported', 'uploads', ...(d.folders || [])])));
-          }
-          if (cRes.ok) {
-              const d = await cRes.json();
-              setCollections(d.collections || []);
-          }
-          if (confRes.ok) {
-              const d = await confRes.json();
-              const cats = d.config?.categories?.map((c: any) => c.label) || [];
-              setCategories(Array.from(new Set(['Uncategorized', ...cats])));
-          }
+        const [fRes, cRes, confRes] = await Promise.all([
+          fetch('/api/model-folders'),
+          fetch('/api/collections'),
+          fetch('/api/load-config')
+        ]);
+
+        if (fRes.ok) {
+          const d = await fRes.json();
+          setFolders(Array.from(new Set(['imported', 'uploads', ...(d.folders || [])])));
+        }
+        if (cRes.ok) {
+          const d = await cRes.json();
+          setCollections(d.collections || []);
+        }
+        if (confRes.ok) {
+          const d = await confRes.json();
+          const cats = d.config?.categories?.map((c: any) => c.label) || [];
+          setCategories(Array.from(new Set(['Uncategorized', ...cats])));
+        }
       } catch (e) { console.error('Data load error', e); }
-  };
-  loadData();
-}, [isOpen, defaultFolder, defaultCollectionId]);
+    };
+    loadData();
+  }, [isOpen, defaultFolder, defaultCollectionId]);
 
-useEffect(() => {
-  // 1. If we already have a default from the view, use it
-  if (defaultCollectionId) {
-    setSelectedCollection(defaultCollectionId);
-  } 
-  // 2. If we are at root (no default) and have collections loaded
-  else if (collections.length > 0) {
-    const importedFolder = collections.find(
-      c => c.name.toLowerCase() === "imported"
-    );
-    if (importedFolder) {
-      setSelectedCollection(importedFolder.id);
+  useEffect(() => {
+    // 1. If we already have a default from the view, use it
+    if (defaultCollectionId) {
+      setSelectedCollection(defaultCollectionId);
     }
-  }
-}, [defaultCollectionId, collections]);
-
-
-    const handleImport = async () => {
-      const match = inputUrl.match(/thing:(\d+)/) || inputUrl.match(/\/thing:(\d+)/) || inputUrl.match(/\/thing\/(\d+)/) || inputUrl.match(/^(\d+)$/);
-      if (!match) {
-        setErrorMessage("Invalid URL. Please use the link from the 'Share' button (e.g., https://www.thingiverse.com/thing:12345).");
-        return;
+    // 2. If we are at root (no default) and have collections loaded
+    else if (collections.length > 0) {
+      const importedFolder = collections.find(
+        c => c.name.toLowerCase() === "imported"
+      );
+      if (importedFolder) {
+        setSelectedCollection(importedFolder.id);
       }
+    }
+  }, [defaultCollectionId, collections]);
+
+
+  const handleImport = async () => {
+    const match = inputUrl.match(/thing:(\d+)/) || inputUrl.match(/\/thing:(\d+)/) || inputUrl.match(/\/thing\/(\d+)/) || inputUrl.match(/^(\d+)$/);
+    if (!match) {
+      setErrorMessage("Invalid URL. Please use the link from the 'Share' button (e.g., https://www.thingiverse.com/thing:12345).");
+      return;
+    }
 
     const thingId = match[1];
     setIsLoading(true);
@@ -119,18 +119,18 @@ useEffect(() => {
         })
       });
 
-     // Capture API Quota
-     const limit = res.headers.get('X-RateLimit-Limit');
-     const remaining = res.headers.get('X-RateLimit-Remaining');
-     if (limit && remaining) setApiStatus({ limit, remaining });
+      // Capture API Quota
+      const limit = res.headers.get('X-RateLimit-Limit');
+      const remaining = res.headers.get('X-RateLimit-Remaining');
+      if (limit && remaining) setApiStatus({ limit, remaining });
 
-     const data = await res.json();
-     if (!data.success) throw new Error(data.error);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
 
-     toast.success(`Imported Thing #${thingId} with full gallery and docs.`);
-     if (onImportComplete) onImportComplete();
-     onClose();
-   } catch (err: any) {
+      toast.success(`Imported Thing #${thingId} with full gallery and docs.`);
+      if (onImportComplete) onImportComplete();
+      onClose();
+    } catch (err: any) {
       console.error("Import failed:", err);
       setErrorMessage(err.message || "Import failed. Check console.");
     } finally {
@@ -199,7 +199,7 @@ useEffect(() => {
               </div>
             </div>
           )}
-          
+
 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
@@ -225,7 +225,7 @@ useEffect(() => {
               <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isLoading}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {(categories || []).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

@@ -37,11 +37,11 @@ import { Category } from "@/types/category";
 import { Collection } from "@/types/collection";
 import { Model } from "@/types/model";
 
-import { useBulkEditForm } from "@/hooks/bulk/useBulkEditForm";
-import { useBulkOperations } from "@/hooks/bulk/useBulkOperations";
 import { BulkEditSection } from "@/components/bulk-edit/BulkEditSection";
 import { BulkRelatedFilesEditor } from "@/components/bulk-edit/BulkRelatedFilesEditor";
 import { BulkTagEditor } from "@/components/bulk-edit/BulkTagEditor";
+import { useBulkEditForm } from "@/hooks/bulk/useBulkEditForm";
+import { useBulkOperations } from "@/hooks/bulk/useBulkOperations";
 
 interface BulkEditDrawerProps {
   models: Model[];
@@ -210,7 +210,7 @@ export function BulkEditDrawer({
                   setCategory(found ? found.label : v);
                 }}>
                   <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>)}</SelectContent>
+                  <SelectContent>{(categories || []).map(c => <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>)}</SelectContent>
                 </Select>
                 {commonValues.category && <p className="text-xs text-muted-foreground">Current: {commonValues.category}</p>}
               </div>

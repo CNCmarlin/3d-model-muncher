@@ -1,9 +1,3 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Image as ImageIcon, Images, Loader2, Save, Star, Trash2, Upload, X } from "lucide-react";
-import React, { useEffect, useMemo, useState } from 'react';
-import { toast } from "sonner";
-import { Category } from "@/types/category";
-import { Collection } from "@/types/collection";
-import { Model } from "@/types/model";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,6 +7,12 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Category } from "@/types/category";
+import { Collection } from "@/types/collection";
+import { Model } from "@/types/model";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Image as ImageIcon, Images, Loader2, Save, Star, Trash2, Upload, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from 'react';
+import { toast } from "sonner";
 
 interface CollectionEditorDialogProps {
   collection: Collection | null;
@@ -709,7 +709,7 @@ export function CollectionEditorDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="--none--">(Uncategorized)</SelectItem>
-                  {categories.map(c => (
+                  {(categories || []).map(c => (
                     <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
                   ))}
                 </SelectContent>

@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, Bot } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import TagsInput from "@/components/common/TagsInput";
+import { LastRunLabel } from '@/components/shared/LastRunLabel';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Bot, Images as ImagesIcon, Loader2, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from 'sonner';
-import { Separator } from "@/components/ui/separator";
-import TagsInput from "@/components/common/TagsInput";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Images as ImagesIcon } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type ModelEntry = {
   id?: string;
@@ -47,20 +47,62 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
   const [selected, setSelected] = useState<ModelEntry | null>(null);
   const [isGeneratingCovers, setIsGeneratingCovers] = useState(false);
 
+  // Cover purge state
+  const [showCoverPurgeDialog, setShowCoverPurgeDialog] = useState(false);
+  const [isScanningCovers, setIsScanningCovers] = useState(false);
+  const [isPurgingCovers, setIsPurgingCovers] = useState(false);
+  const [coverPurgePreview, setCoverPurgePreview] = useState<{
+    files: { path: string; name: string; collectionName: string; size: number }[];
+    totalCount: number;
+    totalSize: number;
+  } | null>(null);
+  const [lastRunTimestamps, setLastRunTimestamps] = useState<Record<string, string>>({});
+
+  // Load timestamps from config on mount
+  useEffect(() => {
+    fetch('/api/load-config')
+      .then(r => r.json())
+      .then(config => {
+        if (config.lastRunTimestamps) {
+          setLastRunTimestamps(config.lastRunTimestamps);
+        }
+      })
+      .catch(() => { });
+  }, []);
+
+  const saveTimestamp = async (key: string) => {
+    const ts = new Date().toISOString();
+    const updated = { ...lastRunTimestamps, [key]: ts };
+    setLastRunTimestamps(updated);
+    try {
+      const resp = await fetch('/api/load-config');
+      const config = await resp.json();
+      await fetch('/api/save-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...config,
+          lastRunTimestamps: { ...config.lastRunTimestamps, ...updated }
+        })
+      });
+    } catch { /* best effort */ }
+  };
+
   const handleGenerateCovers = async () => {
     try {
       setIsGeneratingCovers(true);
       toast.info("Starting mosaic generation...");
-      
+
       const res = await fetch('/api/collections/generate-covers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}) // Empty body = Process All
       });
-      
+
       const data = await res.json();
       if (data.success) {
         toast.success(`Generated ${data.processed} covers (Skipped ${data.skipped})`);
+        await saveTimestamp('generateCovers');
       } else {
         toast.error("Failed: " + data.error);
       }
@@ -69,6 +111,55 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
     } finally {
       setIsGeneratingCovers(false);
     }
+  };
+
+  const handleCoverPurgePreview = async () => {
+    setShowCoverPurgeDialog(true);
+    setIsScanningCovers(true);
+    setCoverPurgePreview(null);
+    try {
+      const resp = await fetch('/api/collections/purge-covers-preview', { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        setCoverPurgePreview(data);
+      } else {
+        toast.error(`Preview failed: ${data.error}`);
+        setShowCoverPurgeDialog(false);
+      }
+    } catch {
+      toast.error('Failed to scan for cover images');
+      setShowCoverPurgeDialog(false);
+    } finally {
+      setIsScanningCovers(false);
+    }
+  };
+
+  const handleCoverPurgeConfirm = async () => {
+    setIsPurgingCovers(true);
+    try {
+      const resp = await fetch('/api/collections/purge-covers', { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        toast.success(`Deleted ${data.deleted} cover images, updated ${data.collectionsUpdated} collections.`);
+        await saveTimestamp('purgeCovers');
+      } else {
+        toast.error(`Purge failed: ${data.error}`);
+      }
+    } catch {
+      toast.error('Failed to purge covers');
+    } finally {
+      setIsPurgingCovers(false);
+      setShowCoverPurgeDialog(false);
+      setCoverPurgePreview(null);
+    }
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
   useEffect(() => {
@@ -239,18 +330,18 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
       try {
         // Try to fetch and resize the thumbnail so the mock flow also shows the "image sent" preview
         try {
-            // Only fetch/resize preview when the user asked to send the image
-            if (sendImage) {
-              const imgUrl = selected ? resolveModelThumbnail(selected as any) : "";
-              if (imgUrl) {
-                const imgRes = await fetch(imgUrl);
-                const imgBlob = await imgRes.blob();
-                const resizedDataUrl = await resizeImageBlobToDataUrl(imgBlob, 512, 512, imgBlob.type);
-                setResizedPreview(resizedDataUrl);
-              }
-            } else {
-              setResizedPreview(null);
+          // Only fetch/resize preview when the user asked to send the image
+          if (sendImage) {
+            const imgUrl = selected ? resolveModelThumbnail(selected as any) : "";
+            if (imgUrl) {
+              const imgRes = await fetch(imgUrl);
+              const imgBlob = await imgRes.blob();
+              const resizedDataUrl = await resizeImageBlobToDataUrl(imgBlob, 512, 512, imgBlob.type);
+              setResizedPreview(resizedDataUrl);
             }
+          } else {
+            setResizedPreview(null);
+          }
         } catch (e) {
           // non-fatal: ignore preview errors for mock
         }
@@ -263,7 +354,7 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
         setSuggestionCategory(sampleCategory);
         setSuggestionTags(sampleTags);
         setGeminiResult(sampleDescription);
-      } catch (e:any) {
+      } catch (e: any) {
         setGeminiError(e?.message ?? 'Mock suggestion failed');
       } finally {
         setGeminiLoading(false);
@@ -410,7 +501,7 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
 
         setSuggestionDescription(data.suggestion.description ?? "");
         setSuggestionCategory(data.suggestion.category ?? "");
-        setSuggestionTags(Array.isArray(data.suggestion.tags) ? data.suggestion.tags : (typeof data.suggestion.tags === 'string' && data.suggestion.tags ? data.suggestion.tags.split(',').map((s: string)=>s.trim()) : []));
+        setSuggestionTags(Array.isArray(data.suggestion.tags) ? data.suggestion.tags : (typeof data.suggestion.tags === 'string' && data.suggestion.tags ? data.suggestion.tags.split(',').map((s: string) => s.trim()) : []));
       } else {
         // try to populate suggestionDescription from text
         setSuggestionDescription(data.text ?? "");
@@ -542,18 +633,113 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4">
-            <Button 
-              onClick={handleGenerateCovers} 
-              disabled={isGeneratingCovers}
-              variant="outline"
-            >
-              {isGeneratingCovers && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isGeneratingCovers ? "Generating..." : "Generate All Covers"}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Requires 'sharp' library on server. Skips collections with &lt; 4 models.
-            </p>
+          <div className="space-y-3">
+            {/* Generate Covers */}
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Generate Mosaic Covers</p>
+                <p className="text-xs text-muted-foreground">
+                  Create 2×2 mosaic covers for collections with 4+ models. Requires 'sharp'.
+                </p>
+                <LastRunLabel timestamp={lastRunTimestamps.generateCovers} />
+              </div>
+              <Button
+                onClick={handleGenerateCovers}
+                disabled={isGeneratingCovers}
+                variant="outline"
+                size="sm"
+              >
+                {isGeneratingCovers && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isGeneratingCovers ? "Generating..." : "Generate All Covers"}
+              </Button>
+            </div>
+
+            {/* Remove Covers */}
+            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Remove Generated Covers</p>
+                <p className="text-xs text-muted-foreground">
+                  Find and delete all generated mosaic cover images from data/covers/.
+                </p>
+                <LastRunLabel timestamp={lastRunTimestamps.purgeCovers} />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCoverPurgePreview}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Find & Delete
+              </Button>
+            </div>
+
+            {/* Cover Purge Dialog */}
+            {showCoverPurgeDialog && (() => {
+              if (isScanningCovers || !coverPurgePreview) {
+                return (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-background border rounded-lg shadow-lg max-w-lg w-full mx-4 p-6 space-y-4">
+                      <h3 className="text-lg font-semibold">Scanning Covers...</h3>
+                      <div className="flex flex-col items-center justify-center py-8 gap-3">
+                        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">Searching for generated cover images...</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                  <div className="bg-background border rounded-lg shadow-lg max-w-lg w-full mx-4 p-6 space-y-4">
+                    <h3 className="text-lg font-semibold">Confirm Cover Removal</h3>
+                    {coverPurgePreview.totalCount === 0 ? (
+                      <>
+                        <p className="text-sm text-muted-foreground">No generated cover images found.</p>
+                        <div className="flex justify-end">
+                          <Button variant="outline" onClick={() => setShowCoverPurgeDialog(false)}>Close</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                          <p className="text-sm font-medium text-destructive">
+                            This will permanently delete {coverPurgePreview.totalCount} cover image{coverPurgePreview.totalCount !== 1 ? 's' : ''} ({formatBytes(coverPurgePreview.totalSize)}).
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Collection cover references will also be cleared.
+                          </p>
+                        </div>
+
+                        <div className="max-h-48 overflow-y-auto border rounded p-2 text-xs font-mono space-y-0.5">
+                          {coverPurgePreview.files.map((f, i) => (
+                            <div key={i} className="flex justify-between text-muted-foreground">
+                              <span className="truncate mr-2">{f.collectionName}</span>
+                              <span className="flex-shrink-0">{formatBytes(f.size)}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex justify-between items-center">
+                          <p className="text-xs text-muted-foreground">
+                            {coverPurgePreview.totalCount} file{coverPurgePreview.totalCount !== 1 ? 's' : ''} ({formatBytes(coverPurgePreview.totalSize)})
+                          </p>
+                          <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setShowCoverPurgeDialog(false)} disabled={isPurgingCovers}>
+                              Cancel
+                            </Button>
+                            <Button variant="destructive" onClick={handleCoverPurgeConfirm} disabled={isPurgingCovers}>
+                              {isPurgingCovers ? 'Deleting...' : `Delete ${coverPurgePreview.totalCount} Files`}
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </CardContent>
       </Card>
@@ -596,34 +782,34 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
             <div className="text-sm text-muted-foreground">No models found.</div>
           ) : (
             <>
-            {visibleModels.map((m) => (
-              <button
-                key={m.id ?? m.name}
-                onClick={() => setSelected(m)}
-                className="flex items-center gap-3 rounded border p-2 text-left hover:bg-muted"
-              >
-                <img
-                  src={resolveModelThumbnail(m as any) || "/images/placeholder.svg"}
-                  alt={m.name}
-                  className="h-12 w-12 object-cover rounded"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src = "/images/placeholder.svg";
-                  }}
-                />
-                <div className="overflow-hidden text-clip">
-                  <div className="font-medium">{m.name}</div>
-                  <div className="text-xs text-muted-foreground truncate w-72">{m.description}</div>
+              {visibleModels.map((m) => (
+                <button
+                  key={m.id ?? m.name}
+                  onClick={() => setSelected(m)}
+                  className="flex items-center gap-3 rounded border p-2 text-left hover:bg-muted"
+                >
+                  <img
+                    src={resolveModelThumbnail(m as any) || "/images/placeholder.svg"}
+                    alt={m.name}
+                    className="h-12 w-12 object-cover rounded"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = "/images/placeholder.svg";
+                    }}
+                  />
+                  <div className="overflow-hidden text-clip">
+                    <div className="font-medium">{m.name}</div>
+                    <div className="text-xs text-muted-foreground truncate w-72">{m.description}</div>
+                  </div>
+                </button>
+              ))}
+              {/* Show more / show less control when we have a limited preview */}
+              {filtered.length > INITIAL_LIMIT && (
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="text-sm text-muted-foreground">Showing {visibleModels.length} of {filtered.length} results</div>
+                  <div className="flex-1" />
+                  <Button size="sm" variant="ghost" onClick={() => setShowAll((s) => !s)}>{showAll ? 'Show less' : 'Show more'}</Button>
                 </div>
-              </button>
-            ))}
-            {/* Show more / show less control when we have a limited preview */}
-            {filtered.length > INITIAL_LIMIT && (
-              <div className="flex items-center gap-2 mt-2">
-                <div className="text-sm text-muted-foreground">Showing {visibleModels.length} of {filtered.length} results</div>
-                <div className="flex-1" />
-                <Button size="sm" variant="ghost" onClick={() => setShowAll((s) => !s)}>{showAll ? 'Show less' : 'Show more'}</Button>
-              </div>
-            )}
+              )}
             </>
           )}
         </div>
@@ -683,7 +869,7 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {categories.map(c => (
+                        {(categories || []).map(c => (
                           <SelectItem key={c} value={c}>{c}</SelectItem>
                         ))}
                       </SelectContent>
@@ -709,7 +895,7 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
 
                 {/* Generative AI suggestion area */}
                 <div className="mt-2">
-                  <Separator className="mb-4"/>
+                  <Separator className="mb-4" />
                   <h3>Generative AI</h3>
                   <p className="text-sm text-muted-foreground">Use AI to generate or improve model metadata. Select a provider, choose a prompt template, or provide a custom prompt.</p>
                   <div className="flex flex-col gap-2 mt-4">
@@ -745,44 +931,44 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="image_description">Create description from image</SelectItem>
-                                <SelectItem value="translate_description">Translate this description</SelectItem>
-                                <SelectItem value="rewrite_description">Rewrite description</SelectItem>
-                                <SelectItem value="other">Other</SelectItem>
+                              <SelectItem value="image_description">Create description from image</SelectItem>
+                              <SelectItem value="translate_description">Translate this description</SelectItem>
+                              <SelectItem value="rewrite_description">Rewrite description</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                       </div>
 
-                        {/* Show Other Prompt and related options only when user selects the 'Other' template */}
-                        {promptOption === 'other' && (
-                          <div className="mt-4">
-                            <label className="text-sm font-medium">Other Prompt</label>
-                            <div className="mt-1">
-                              <Input placeholder="Describe what you want Gemini to do" value={geminiPrompt} onChange={e=>setGeminiPrompt((e.target as HTMLInputElement).value)} className="flex-1 input-sm" />
+                      {/* Show Other Prompt and related options only when user selects the 'Other' template */}
+                      {promptOption === 'other' && (
+                        <div className="mt-4">
+                          <label className="text-sm font-medium">Other Prompt</label>
+                          <div className="mt-1">
+                            <Input placeholder="Describe what you want Gemini to do" value={geminiPrompt} onChange={e => setGeminiPrompt((e.target as HTMLInputElement).value)} className="flex-1 input-sm" />
+                          </div>
+
+                          <div className="mt-3">
+                            <div className="flex items-center gap-3">
+                              <Switch
+                                checked={sendImage}
+                                onCheckedChange={(checked: boolean) => setSendImage(checked)}
+                                id="send-image-switch"
+                              />
+                              <Label htmlFor="send-image-switch" className="text-sm text-foreground/90">Include image</Label>
                             </div>
 
-                            <div className="mt-3">
-                              <div className="flex items-center gap-3">
-                                <Switch
-                                  checked={sendImage}
-                                  onCheckedChange={(checked: boolean) => setSendImage(checked)}
-                                  id="send-image-switch"
-                                />
-                                <Label htmlFor="send-image-switch" className="text-sm text-foreground/90">Include image</Label>
-                              </div>
-
-                              <div className="mt-2 flex items-center gap-3">
-                                <Switch
-                                  checked={includeModelName}
-                                  onCheckedChange={(checked: boolean) => setIncludeModelName(checked)}
-                                  id="include-name-switch"
-                                />
-                                <Label htmlFor="include-name-switch" className="text-sm text-foreground/90">Include model name</Label>
-                              </div>
+                            <div className="mt-2 flex items-center gap-3">
+                              <Switch
+                                checked={includeModelName}
+                                onCheckedChange={(checked: boolean) => setIncludeModelName(checked)}
+                                id="include-name-switch"
+                              />
+                              <Label htmlFor="include-name-switch" className="text-sm text-foreground/90">Include model name</Label>
                             </div>
                           </div>
-                        )}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {geminiError && (
@@ -796,24 +982,24 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                     </Alert>
                   )}
 
-                  {(!geminiError && (suggestionDescription || suggestionCategory || suggestionTags.length>0 || geminiResult || geminiLoading)) && (
+                  {(!geminiError && (suggestionDescription || suggestionCategory || suggestionTags.length > 0 || geminiResult || geminiLoading)) && (
                     <div className="mt-3 p-3 rounded bg-muted text-sm">
                       <div className="flex items-center justify-between">
                         <div className="font-medium">Gemini Suggestion</div>
-                          <div className="flex items-center gap-3">
-                            {resizedPreview && (
-                              <div className="flex items-center gap-2">
-                                <img src={resizedPreview} alt="Resized preview" className="h-12 w-12 rounded object-cover border" />
-                                <div className="text-xs text-muted-foreground">Image sent</div>
-                              </div>
-                            )}
-                            {geminiLoading && (
-                          <svg className="animate-spin h-4 w-4 text-muted-foreground" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                          </svg>
-                            )}
-                          </div>
+                        <div className="flex items-center gap-3">
+                          {resizedPreview && (
+                            <div className="flex items-center gap-2">
+                              <img src={resizedPreview} alt="Resized preview" className="h-12 w-12 rounded object-cover border" />
+                              <div className="text-xs text-muted-foreground">Image sent</div>
+                            </div>
+                          )}
+                          {geminiLoading && (
+                            <svg className="animate-spin h-4 w-4 text-muted-foreground" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                            </svg>
+                          )}
+                        </div>
                       </div>
 
                       {geminiLoading ? (
@@ -828,14 +1014,14 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                         <>
                           {suggestionDescription ? <div className="mt-2 whitespace-pre-line">{suggestionDescription}</div> : geminiResult ? <div className="mt-2 whitespace-pre-line">{geminiResult}</div> : null}
                           {suggestionCategory && <div className="mt-2"><span className="font-medium">Category:</span> {suggestionCategory} </div>}
-                          {suggestionTags.length>0 && <div className="mt-2"><span className="font-medium">Tags:</span> {suggestionTags.join(', ')}</div>}
+                          {suggestionTags.length > 0 && <div className="mt-2"><span className="font-medium">Tags:</span> {suggestionTags.join(', ')}</div>}
                           <div className="flex gap-2 mt-3">
-                            <Button size="sm" variant="default" onClick={()=>{
-                              if(suggestionDescription) setEditDescription(suggestionDescription);
-                              if(suggestionCategory) setEditCategory(suggestionCategory);
-                              if(suggestionTags.length>0) setEditTags(suggestionTags);
+                            <Button size="sm" variant="default" onClick={() => {
+                              if (suggestionDescription) setEditDescription(suggestionDescription);
+                              if (suggestionCategory) setEditCategory(suggestionCategory);
+                              if (suggestionTags.length > 0) setEditTags(suggestionTags);
                             }}>Update Fields</Button>
-                            <Button size="sm" variant="ghost" onClick={()=>{ setSuggestionDescription(''); setSuggestionCategory(''); setSuggestionTags([]); setGeminiResult(''); }}>Clear</Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setSuggestionDescription(''); setSuggestionCategory(''); setSuggestionTags([]); setGeminiResult(''); }}>Clear</Button>
                           </div>
                         </>
                       )}
@@ -855,12 +1041,12 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                 </div>
 
                 <div className="flex gap-2 mt-3">
-                  <Button size="sm" variant="default" onClick={async ()=>{
-                    if(saving) return; // prevent duplicate saves while request is in-flight
+                  <Button size="sm" variant="default" onClick={async () => {
+                    if (saving) return; // prevent duplicate saves while request is in-flight
                     setSaving(true);
                     setGeminiError('');
                     const toastId = toast.loading('Saving updates...');
-                    try{
+                    try {
                       // Prefer id-based saves; no need to derive munchie path here
                       // no-op: prefer id-based saves; helper not needed in this handler
                       const toSave: any = {
@@ -877,17 +1063,18 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                         userDefined: toSave
                       };
 
-                      const r = await fetch('/api/save-model', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                      const r = await fetch('/api/save-model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                       const result = await r.json();
                       if (!result.success) throw new Error(result.error || 'Save failed');
                       setGeminiResult('Saved to munchie.json');
                       toast.success('Changes saved', { id: toastId });
-                    }catch(e:any){ setGeminiError(e?.message ?? 'Save error');
-                      try { toast.error(e?.message ?? 'Save error'); } catch {}
+                    } catch (e: any) {
+                      setGeminiError(e?.message ?? 'Save error');
+                      try { toast.error(e?.message ?? 'Save error'); } catch { }
                     }
-                    finally{ setSaving(false); }
+                    finally { setSaving(false); }
                   }} disabled={saving}>{saving ? 'Saving...' : 'Save User Data'}</Button>
-                  <Button size="sm" variant="ghost" onClick={()=>{ setEditDescription(''); setEditCategory(''); setEditTags([]); }}>Reset</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditDescription(''); setEditCategory(''); setEditTags([]); }}>Reset</Button>
                 </div>
               </div>
             </ScrollArea>

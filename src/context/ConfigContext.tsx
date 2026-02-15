@@ -12,6 +12,7 @@ interface ConfigContextType {
     isConfigLoading: boolean;
     updateConfig: (newConfig: AppConfig) => void;
     updateCategories: (newCategories: Category[]) => void;
+    updateRunTimestamp: (key: string) => void;
 
     // Release Notes State
     isReleaseNotesOpen: boolean;
@@ -76,9 +77,16 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
                     if (resp.ok) {
                         const data = await resp.json();
                         if (data && data.success && data.config) {
-                            config = data.config;
+                            let cleanConfig = data.config;
+                            // [FIX] Recursive unwrap to prevent nesting disaster
+                            while (cleanConfig && cleanConfig.success && cleanConfig.config) {
+                                console.warn('[ConfigContext] Detected nested config, unwrapping...');
+                                cleanConfig = cleanConfig.config;
+                            }
+
+                            config = cleanConfig;
                             // Sync to local
-                            try { ConfigManager.saveConfig(data.config); } catch (e) { console.warn(e); }
+                            try { ConfigManager.saveConfig(cleanConfig); } catch (e) { console.warn(e); }
                             console.log('[ConfigContext] Synced config from server:', config);
                         }
                     }
@@ -184,6 +192,31 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const updateRunTimestamp = (key: string) => {
+        if (!appConfig) return;
+
+        const now = new Date().toISOString();
+        const updatedTimestamps = { ...(appConfig.lastRunTimestamps || {}), [key]: now };
+
+        const updatedConfig = {
+            ...appConfig,
+            lastRunTimestamps: updatedTimestamps
+        };
+
+        // Optimistic update
+        setAppConfig(updatedConfig);
+
+        // Persist
+        ConfigManager.saveConfig(updatedConfig);
+
+        // Server Sync (Background)
+        fetch('/api/save-config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedConfig)
+        }).catch(err => console.warn('Background timestamp save failed:', err));
+    };
+
     return (
         <ConfigContext.Provider value={{
             appConfig,
@@ -191,6 +224,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
             isConfigLoading,
             updateConfig,
             updateCategories,
+            updateRunTimestamp,
             isReleaseNotesOpen,
             closeReleaseNotes,
             dontShowReleaseNotes,

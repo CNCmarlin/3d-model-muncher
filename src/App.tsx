@@ -1,14 +1,15 @@
 import { DemoPage } from "@/components/management/DemoPage";
+import { OnboardingPage } from "@/pages/Onboarding/OnboardingPage";
 import { useEffect, useMemo, useState } from "react";
 
 import { MigrationStatus } from "@/components/admin/MigrationStatus";
-import { FilterSidebar } from "@/components/layout/FilterSidebar";
-import { ModelHubView } from "@/components/models/ModelHubView";
-import { ModelHubView_DB } from "@/components/models/ModelHubView_DB";
-import { SettingsPage } from "@/components/management/SettingsPage";
 import { TagsProvider } from "@/components/common/TagsContext";
 import { ThemeProvider } from "@/components/common/ThemeProvider";
+import { FilterSidebar } from "@/components/layout/FilterSidebar";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { SettingsPage } from "@/components/management/SettingsPage";
+import { ModelHubView } from "@/components/models/ModelHubView";
+import { ModelHubView_DB } from "@/components/models/ModelHubView_DB";
 import { BulkEditView } from "@/components/views/BulkEditView"; // NEW IMPORT
 import { CollectionsView } from "@/components/views/CollectionsView";
 import { CollectionView } from "@/components/views/CollectionView";
@@ -26,9 +27,9 @@ import { useModelActions } from "@/hooks/useModelActions";
 import { useSelectionMode } from "@/hooks/useSelectionMode";
 import { Model } from "@/types/model";
 // Import package.json to read the last published version
-import { GlobalDialogs } from "@/components/shared/GlobalDialogs";
 import { LayoutSettingsProvider } from "@/components/layout/LayoutSettingsContext";
 import { PrinterStatusHub } from "@/components/layout/PrinterStatusHub";
+import { GlobalDialogs } from "@/components/shared/GlobalDialogs";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -83,6 +84,18 @@ function AppContent() {
   } = useNavigation();
 
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
+
+  // Onboarding Redirect Logic
+  useEffect(() => {
+    if (appConfig && !isConfigLoading) {
+      const isCompleted = appConfig.settings.onboardingCompleted;
+      if (!isCompleted && currentView !== 'onboarding') {
+        // Only redirect if we haven't completed onboarding
+        // console.log("Redirecting to onboarding...");
+        setCurrentView('onboarding');
+      }
+    }
+  }, [appConfig, isConfigLoading, currentView, setCurrentView]);
 
   // React Query Data Fetching (Database-First)
   // Legacy Hook: Only fetch if NOT using database backend (to avoid double fetch)
@@ -430,42 +443,45 @@ function AppContent() {
         )}
 
         {/* Sidebar */}
-        <aside className={`fixed xl:relative z-50 xl:z-0 h-full bg-sidebar border-r border-sidebar-border shadow-xl transition-all duration-300 ease-in-out flex flex-col ${isSidebarOpen ? 'w-80' : 'w-12'} visible opacity-100 translate-x-0`}>
-          <FilterSidebar
-            key={sidebarResetKey}
-            isOpen={isSidebarOpen}
-            onFilterChange={handleFilterChange}
-            onCategoryChosen={(label) => {
-              if (currentView === 'settings') setCurrentView('models');
-              setLastCategoryFilter(label || 'all');
-            }}
-            onClose={() => setIsSidebarOpen(false)}
-            onSettingsClick={handleSettingsClick}
-            categories={categories}
-            collections={collections}
-            onOpenCollection={navOpenCollection}
-            onBackToRoot={() => {
-              setActiveCollection(null);
-              setCurrentView('models');
-            }}
-            models={(currentView === 'collection-view' && activeCollection) ? collectionBaseModels : models}
-            currentFilters={lastFilters}
-            initialFilters={{
-              search: '',
-              category: appConfig?.filters?.defaultCategory || 'all',
-              printStatus: appConfig?.filters?.defaultPrintStatus || 'all',
-              license: appConfig?.filters?.defaultLicense || 'all',
-              fileType: 'all',
-              tags: [],
-              showHidden: currentView === 'collection-view',
-              showMissingImages: false,
-              sortBy: appConfig?.filters?.defaultSortBy || 'none',
-            }}
-          />
-        </aside>
+        {currentView !== 'onboarding' && (
+          <aside className={`fixed xl:relative z-50 xl:z-0 h-full bg-sidebar border-r border-sidebar-border shadow-xl transition-all duration-300 ease-in-out flex flex-col ${isSidebarOpen ? 'w-80' : 'w-12'} visible opacity-100 translate-x-0`}>
+            <FilterSidebar
+              key={sidebarResetKey}
+              isOpen={isSidebarOpen}
+              onFilterChange={handleFilterChange}
+              onCategoryChosen={(label) => {
+                if (currentView === 'settings') setCurrentView('models');
+                setLastCategoryFilter(label || 'all');
+              }}
+              onClose={() => setIsSidebarOpen(false)}
+              onSettingsClick={handleSettingsClick}
+              categories={categories}
+              collections={collections}
+              onOpenCollection={navOpenCollection}
+              onBackToRoot={() => {
+                setActiveCollection(null);
+                setCurrentView('models');
+              }}
+              models={(currentView === 'collection-view' && activeCollection) ? collectionBaseModels : models}
+              currentFilters={lastFilters}
+              initialFilters={{
+                search: '',
+                category: appConfig?.filters?.defaultCategory || 'all',
+                printStatus: appConfig?.filters?.defaultPrintStatus || 'all',
+                license: appConfig?.filters?.defaultLicense || 'all',
+                fileType: 'all',
+                tags: [],
+                showHidden: currentView === 'collection-view',
+                showMissingImages: false,
+                sortBy: appConfig?.filters?.defaultSortBy || 'none',
+              }}
+            />
+          </aside>
+        )}
 
         {/* Main Content */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden pl-12 xl:pl-0">
+        {/* Remove pl-12 (sidebar offset) if onboarding is active */}
+        <div className={`flex-1 flex flex-col min-w-0 overflow-hidden ${currentView !== 'onboarding' ? 'pl-12 xl:pl-0' : ''}`}>
           <header className="flex items-center justify-between gap-2 p-4 border-b bg-card shadow-sm shrink-0">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="sm" onClick={toggleSidebar} className="p-2 hover:bg-accent transition-colors">
@@ -745,6 +761,8 @@ function AppContent() {
                 </Button>
                 <MigrationStatus />
               </div>
+            ) : currentView === 'onboarding' ? (
+              <OnboardingPage />
             ) : (
               <DemoPage onBack={navHandleBack} />
             )}

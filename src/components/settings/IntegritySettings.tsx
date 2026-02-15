@@ -1,11 +1,5 @@
-import { useConfig } from '@/context/ConfigContext';
-import { useIntegrityCheck } from '@/hooks/settings/useIntegrityCheck';
-import { Model } from '@/types/model';
-import { getDisplayPath } from '@/utils/clientUtils';
-import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
-import { Activity, AlertTriangle, BarChart3, Box, Check, Clock, FileCheck, Files, FolderPlus, HeartPulse, Plus, RefreshCw, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
-import { useState } from 'react';
 import { ImageWithFallback } from '@/components/common/ImageWithFallback';
+import { LastRunLabel } from '@/components/common/LastRunLabel';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +10,13 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from "@/components/ui/separator";
+import { useConfig } from '@/context/ConfigContext';
+import { useIntegrityCheck } from '@/hooks/settings/useIntegrityCheck';
+import { Model } from '@/types/model';
+import { getDisplayPath } from '@/utils/clientUtils';
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
+import { Activity, AlertTriangle, BarChart3, Box, Check, Clock, FileCheck, Files, FolderPlus, HeartPulse, Plus, RefreshCw, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 
 type IntegritySettingsProps = ReturnType<typeof useIntegrityCheck> & {
     models: Model[];
@@ -131,24 +132,40 @@ export function IntegritySettings({
                         )}
 
                         <div className="flex flex-wrap gap-2">
-                            <Button
-                                onClick={() => handleRunHashCheck()}
-                                disabled={isHashChecking || isHealing || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
-                                className="gap-2"
-                            >
-                                {isHashChecking ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
-                                {isHashChecking ? 'Checking...' : 'Run Check'}
-                            </Button>
+                            <div className="flex flex-col items-center gap-1">
+                                <Button
+                                    onClick={() => handleRunHashCheck()}
+                                    disabled={isHashChecking || isHealing || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
+                                    className="gap-2"
+                                >
+                                    {isHashChecking ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
+                                    {isHashChecking ? 'Checking...' : 'Run Check'}
+                                </Button>
+                                {appConfig?.lastRunTimestamps?.checkHashes && (
+                                    <LastRunLabel
+                                        timestamp={appConfig.lastRunTimestamps.checkHashes}
+                                        className="text-[10px]"
+                                    />
+                                )}
+                            </div>
 
-                            <Button
-                                onClick={() => handleGenerateModelJson()}
-                                disabled={isGeneratingJson || isHealing || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
-                                className="gap-2"
-                                variant="secondary"
-                            >
-                                {isGeneratingJson ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Files className="h-4 w-4" />}
-                                {isGeneratingJson ? 'Generating...' : 'Generate'}
-                            </Button>
+                            <div className="flex flex-col items-center gap-1">
+                                <Button
+                                    onClick={() => handleGenerateModelJson()}
+                                    disabled={isGeneratingJson || isHealing || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
+                                    className="gap-2"
+                                    variant="secondary"
+                                >
+                                    {isGeneratingJson ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Files className="h-4 w-4" />}
+                                    {isGeneratingJson ? 'Generating...' : 'Generate'}
+                                </Button>
+                                {appConfig?.lastRunTimestamps?.generateHashes && (
+                                    <LastRunLabel
+                                        timestamp={appConfig.lastRunTimestamps.generateHashes}
+                                        className="text-[10px]"
+                                    />
+                                )}
+                            </div>
 
                             <Button
                                 onClick={() => handleRunHealPreview()}
