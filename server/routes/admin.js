@@ -220,7 +220,23 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 // --- 4. PATH HEALING (STRICT) ---
                 const isExplicitStl = entry.name.toLowerCase().includes('-stl-munchie.json');
 
-                if (!data.filePath || data.filePath === "") {
+                // MISMATCH DETECTION: Compare munchie filename to stored filePath.
+                // e.g. "cam_bed-stl-munchie.json" implies model should be "cam_bed.*"
+                // If filePath points to "c270_cam1.stl", that's a mismatch → corrupted.
+                const existingFileBaseName = data.filePath
+                    ? path.basename(data.filePath, path.extname(data.filePath)).toLowerCase()
+                    : null;
+                const isFilePathMismatch = data.filePath && data.filePath !== "" &&
+                    existingFileBaseName !== modelBaseName.toLowerCase() &&
+                    !existingFileBaseName.startsWith(modelBaseName.toLowerCase());
+
+                if (!data.filePath || data.filePath === "" || isFilePathMismatch) {
+                    if (isFilePathMismatch) {
+                        proposal.deletions.push(
+                            `filePath MISMATCH: Was "${data.filePath}" but munchie "${entry.name}" expects "${modelBaseName}.*"`
+                        );
+                    }
+
                     // STRICT RULE: Only recover if the file explicitly starts with the model name
                     // This prevents "Lagarto" from claiming "Articulated_Slug" just because it's there.
                     const foundModel = siblings.find(f => {
@@ -237,12 +253,33 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
 
                     if (foundModel) {
                         const newRelPath = path.join(path.relative(modelsDir, dir), foundModel).replace(/\\/g, '/');
-                        const prevStatus = data.filePath === "" ? "Empty String" : "Missing/Null";
+                        const prevStatus = isFilePathMismatch ? `Mismatch (was "${path.basename(data.filePath)}")` :
+                            (data.filePath === "" ? "Empty String" : "Missing/Null");
                         proposal.additions.push(`Recovered filePath: ${foundModel} (Matched '${modelBaseName}' - Was: ${prevStatus})`);
                         data.filePath = newRelPath;
                         data.modelUrl = `/models/${newRelPath}`;
                         modelFileName = foundModel; // Update our anchor
                         hasChanged = true;
+
+                        // Also clear stale parsedImages and thumbnail that reference the wrong model
+                        if (isFilePathMismatch) {
+                            const oldBaseName = existingFileBaseName;
+                            const staleImages = data.parsedImages.filter(img =>
+                                path.basename(img).toLowerCase().startsWith(oldBaseName) &&
+                                !path.basename(img).toLowerCase().startsWith(modelBaseName.toLowerCase())
+                            );
+                            if (staleImages.length > 0) {
+                                data.parsedImages = data.parsedImages.filter(img => !staleImages.includes(img));
+                                staleImages.forEach(img => {
+                                    proposal.deletions.push(`${path.basename(img)} (Stale - belonged to mismatched "${oldBaseName}")`);
+                                });
+                                // Reset thumbnail pointer since parsedImages changed
+                                if (data.userDefined) {
+                                    data.userDefined.thumbnail = undefined;
+                                    data.userDefined.imageOrder = [];
+                                }
+                            }
+                        }
                     }
                 }
 
