@@ -1,5 +1,9 @@
-import type { Tag } from '@/types/model_db';
 import { useQuery } from '@tanstack/react-query';
+
+export interface Tag {
+    id: number;
+    name: string;
+}
 
 /**
  * DATABASE-FIRST Tags Query Hook

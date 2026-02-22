@@ -13,7 +13,7 @@ interface PhaseWelcomeProps {
     onNext: () => void;
 }
 
-export function PhaseWelcome({ config, onUpdateConfig, onNext }: PhaseWelcomeProps) {
+export function PhaseWelcome({ config, onUpdateConfig }: PhaseWelcomeProps) {
     const [path, setPath] = useState(config.settings.modelDirectory || "");
 
     const handleSavePath = async () => {

@@ -28,6 +28,7 @@ interface BulkOperationsPanelProps {
     generateProgress: { current: number; total: number };
     modelsMissingImagesCount: number;
     onOpenCollectionCreator?: () => void;
+    onGenerateImages?: () => Promise<any>;
 }
 
 export function BulkOperationsPanel({

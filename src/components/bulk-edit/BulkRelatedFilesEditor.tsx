@@ -62,7 +62,7 @@ export function BulkRelatedFilesEditor({ form, models }: BulkRelatedFilesEditorP
                 <Label className="text-sm font-medium">Primary File</Label>
                 <p className="text-xs text-muted-foreground">Choose which included model should be considered the primary.</p>
                 <div className="flex flex-wrap gap-2 mt-2">
-                    {(editState.relatedIncluded || relatedIncludedIds || models.map(m => uniqueKeyForModel(m))).map((id) => {
+                    {(editState.relatedIncluded || relatedIncludedIds || models.map(m => uniqueKeyForModel(m))).map((id: string) => {
                         const m = models.find(x => uniqueKeyForModel(x) === id);
                         if (!m) return null;
                         const isPrimary = editState.relatedPrimary === id;

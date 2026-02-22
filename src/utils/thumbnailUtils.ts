@@ -34,7 +34,6 @@ export function resolveModelThumbnail(model: any): string {
       }
       return '';
     } else {
-      // treat as literal data URL or direct string
       return thumbnailDesc;
     }
   }

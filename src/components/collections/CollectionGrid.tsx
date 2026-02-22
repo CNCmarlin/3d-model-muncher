@@ -1,5 +1,4 @@
 import { CollectionCard } from '@/components/collections/CollectionCard';
-import CollectionEditDialog from '@/components/collections/CollectionEditDialog';
 import { CollectionEditorDialog } from '@/components/collections/CollectionEditorDialog';
 import { CollectionListRow } from '@/components/collections/CollectionListRow';
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
@@ -134,11 +133,9 @@ export default function CollectionGrid({
 
   // --- MODAL STATES ---
   const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false); // Used for Active Collection Edit
 
-  // [NEW] State for opening the Edit Drawer for the CURRENT collection
-  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
-
+  // Helper state for creation
   const [createCollectionMode, setCreateCollectionMode] = useState<'manual' | 'folder'>('manual');
   const [tempCollectionData, setTempCollectionData] = useState<Collection | null>(null);
 
@@ -151,7 +148,7 @@ export default function CollectionGrid({
   const [viewingFile, setViewingFile] = useState<{ name: string, content: string, type: string } | null>(null);
 
   // [UPDATED] Full Screen Gallery State
-  const [fullScreenIndex, setFullScreenIndex] = useState<number>(0); // Track index, not just URL
+  const [fullScreenIndex, setFullScreenIndex] = useState<number>(0);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
 
   // Helper to open full screen at a specific index
@@ -238,7 +235,7 @@ export default function CollectionGrid({
   // [NEW] Handler to open the Edit Drawer for the Active Collection
   const handleEditActiveCollection = () => {
     if (!activeCollection) return;
-    setIsEditDrawerOpen(true);
+    setIsEditorOpen(true);
   };
 
 
@@ -246,15 +243,17 @@ export default function CollectionGrid({
     setCreateCollectionMode(mode);
     // If selecting models for a manual group, pass them in
     if (selectedModelIds.length > 0 && mode === 'manual') {
+      // Create a skeleton collection
+      // We can cast to Collection because we're just pre-filling
       setTempCollectionData({
         id: '', name: '', modelIds: selectedModelIds,
-        tags: [], images: [], category: '', description: '',
-        created: new Date().toISOString(), lastModified: new Date().toISOString()
-      } as Collection);
+        tags: [], images: [], description: '',
+        parentId: activeCollection?.id || 'root'
+      } as unknown as Collection);
     } else {
       setTempCollectionData(null);
     }
-    setIsEditorOpen(true);
+    setIsCreateCollectionOpen(true);
   };
 
   const handleModelInteraction = (e: MouseEvent, model: Model, fallbackIndex: number) => {
@@ -795,46 +794,14 @@ export default function CollectionGrid({
       {/* --- DIALOGS --- */}
 
       {/* 1. Create New Collection Drawer */}
-      <CollectionEditDialog
+      <CollectionEditorDialog
         open={isCreateCollectionOpen}
         onOpenChange={setIsCreateCollectionOpen}
-        collection={null}
-        collections={collections}
-        categories={config?.categories || []}
-        removalCollection={activeCollection ?? null}
-        initialModelIds={selectedModelIds}
-        onSaved={() => {
-          setIsCreateCollectionOpen(false);
-          onCollectionChanged?.();
-          onDeselectAll?.();
-          if (isSelectionMode) onToggleSelectionMode?.();
-        }}
-      />
-
-      {/* 2. [NEW] Edit ACTIVE Collection Drawer */}
-      <CollectionEditDialog
-        open={isEditDrawerOpen}
-        onOpenChange={setIsEditDrawerOpen}
-        collection={activeCollection ?? null} // We pass the active collection here
-        collections={collections}
-        categories={config?.categories || []}
-        removalCollection={null}
-        initialModelIds={[]}
-        onSaved={() => {
-          setIsEditDrawerOpen(false);
-          onCollectionChanged?.();
-        }}
-      />
-
-      <CollectionEditorDialog
-        open={isEditorOpen}
-        onOpenChange={setIsEditorOpen}
         collection={tempCollectionData}
         collections={collections}
-        categories={config?.categories || []}
         models={models}
+        categories={config?.categories || []}
         initialMode={createCollectionMode}
-        defaultParentId={activeCollection?.id}
         onSave={async (colData) => {
           try {
             const response = await fetch('/api/collections', {
@@ -850,22 +817,53 @@ export default function CollectionGrid({
             return result.collection;
           } catch (e) {
             console.error(e);
+            toast.error("Failed to create collection");
             throw e;
           }
         }}
-        onDelete={async (id) => {
-          try {
-            const res = await fetch(`/api/collections/${id}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.error);
-            onCollectionChanged?.();
-            onDeselectAll?.();
-          } catch (e) {
-            console.error(e);
-            toast.error("Failed to delete collection");
-          }
-        }}
+        onDelete={async () => { }}
       />
+
+      {/* 2. Editor Drawer for Active Collection */}
+      {activeCollection && (
+        <CollectionEditorDialog
+          open={isEditorOpen}
+          onOpenChange={setIsEditorOpen}
+          collection={activeCollection}
+          collections={collections}
+          models={models}
+          categories={config?.categories || []}
+          onSave={async (colData) => {
+            try {
+              const response = await fetch(`/api/collections/${activeCollection.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(colData),
+              });
+              const result = await response.json();
+              if (!result.success) throw new Error(result.error);
+              onCollectionChanged?.();
+              return result.collection;
+            } catch (e) {
+              console.error(e);
+              toast.error("Failed to update collection");
+              throw e;
+            }
+          }}
+          onDelete={async (id) => {
+            try {
+              const res = await fetch(`/api/collections/${id}`, { method: 'DELETE' });
+              const data = await res.json();
+              if (!data.success) throw new Error(data.error);
+              onCollectionChanged?.();
+              onDeselectAll?.();
+            } catch (e) {
+              console.error(e);
+              toast.error("Failed to delete collection");
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

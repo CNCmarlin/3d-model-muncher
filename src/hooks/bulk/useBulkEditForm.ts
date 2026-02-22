@@ -57,10 +57,9 @@ interface UseBulkEditFormProps {
     models: Model[];
     selectedTargetIds: string[]; // WE NEED THIS NOW TO APPLY EDITS
     isOpen: boolean;
-    pendingBulkCollectionId: string | null;
 }
 
-export function useBulkEditForm({ models, selectedTargetIds, isOpen, pendingBulkCollectionId }: UseBulkEditFormProps) {
+export function useBulkEditForm({ models, selectedTargetIds, isOpen }: UseBulkEditFormProps) {
     // MAIN STATE: Map of modelId -> Pending Edits
     const [stagedEdits, setStagedEdits] = useState<Record<string, BulkEditState>>({});
 
@@ -254,6 +253,22 @@ export function useBulkEditForm({ models, selectedTargetIds, isOpen, pendingBulk
         setRelatedPrimary: (val: string) => updateStaged('relatedPrimary', val),
         setRelatedHideOthers: (val: boolean) => updateStaged('relatedHideOthers', val),
         setRelatedClearAll: (val: boolean) => updateStaged('relatedClearAll', val),
+        toggleRelatedInclude: (id: string) => {
+            setStagedEdits(prev => {
+                const next = { ...prev };
+                selectedTargetIds.forEach(targetId => {
+                    const current = next[targetId] || {};
+                    const included = current.relatedIncluded || [];
+                    next[targetId] = {
+                        ...current,
+                        relatedIncluded: included.includes(id)
+                            ? included.filter(x => x !== id)
+                            : [...included, id]
+                    };
+                });
+                return next;
+            });
+        },
 
         // Remove specific edit constraint
         removeEdit: (ids: string[], field: keyof BulkEditState, value?: any) => {
@@ -369,6 +384,7 @@ export function useBulkEditForm({ models, selectedTargetIds, isOpen, pendingBulk
         stagedEdits,
         setStagedEdits,
         editState, // Computed "View" of the state for the UI inputs
+        relatedIncludedIds: editState.relatedIncluded,
         fieldSelection,
         setFieldSelection,
         handleFieldToggle,

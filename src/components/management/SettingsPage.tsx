@@ -61,7 +61,7 @@ export function SettingsPage({
   settingsAction,
   onActionHandled
 }: SettingsPageProps) {
-  const { setCurrentView } = useNavigation();
+  useNavigation();
   const [selectedTab, setSelectedTab] = React.useState(initialTab || 'general');
 
   React.useEffect(() => {

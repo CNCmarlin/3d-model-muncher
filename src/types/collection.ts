@@ -10,28 +10,20 @@ export interface Collection {
   id: string;
   name: string;
   description?: string;
-  modelIds: string[]; // The "Master List" of all models in this project
+  modelIds: string[];
   childCollectionIds?: string[];
   parentId?: string | null;
+  path?: string;
 
   // Visuals
   coverModelId?: string;
   coverImage?: string;
-  images?: string[]; // Gallery images
+  images?: string[];
   documents?: string[];
 
-  // Metadata
+  // Organization
   category?: string;
   tags?: string[];
-  created?: string;
-  lastModified?: string;
-
-  // [NEW] Project Features
   type?: 'standard' | 'project';
-  buildPlates?: BuildPlate[];
-
-  // [DB Mode] Aggregation counts
-  _count?: {
-    models: number;
-  };
+  buildPlates?: any[];
 }

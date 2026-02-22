@@ -1,8 +1,8 @@
+import { useBulkEditModels } from '@/hooks/mutations/useBulkEditModels';
 import { Model } from '@/types/model';
 import { RendererPool } from '@/utils/rendererPool';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { useBulkEditModels } from '@/hooks/mutations/useBulkEditModels';
 import { useBulkEditForm } from './useBulkEditForm';
 
 // Separate helper for saving a single model file interaction

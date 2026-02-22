@@ -12,7 +12,7 @@ interface PhaseVisualsProps {
     onNext: () => void;
 }
 
-export function PhaseVisuals({ onNext }: PhaseVisualsProps) {
+export function PhaseVisuals({ }: PhaseVisualsProps) {
     const thumbnails = useThumbnails();
     const covers = useCovers();
 

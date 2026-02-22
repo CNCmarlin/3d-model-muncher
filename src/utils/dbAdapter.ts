@@ -1,5 +1,6 @@
+import type { Collection as DbCollection } from '@/types/collection_db';
 import type { Model as LegacyModel } from '@/types/model';
-import type { Collection as DbCollection, Model as DbModel } from '@/types/model_db';
+import type { Model as DbModel } from '@/types/model_db';
 
 /**
  * DATABASE API ADAPTER
@@ -130,10 +131,10 @@ export function adaptDbCollectionToLegacy(dbCollection: DbCollection): any {
         path: dbCollection.path,
         pathHash: dbCollection.pathHash,
         description: dbCollection.description,
-        coverImage: dbCollection.coverImagePath
-            ? (dbCollection.coverImagePath.startsWith('/') || dbCollection.coverImagePath.startsWith('http')
-                ? dbCollection.coverImagePath
-                : `/models/${dbCollection.coverImagePath}`)
+        coverImage: dbCollection.coverImage
+            ? (dbCollection.coverImage.startsWith('/') || dbCollection.coverImage.startsWith('http')
+                ? dbCollection.coverImage
+                : `/models/${dbCollection.coverImage}`)
             : undefined,
         modelIds: dbCollection.modelIds,
         createdAt: dbCollection.createdAt,

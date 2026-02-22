@@ -1,11 +1,11 @@
-import { Category } from '@/types/category';
-import { Collection } from '@/types/collection';
-import { Model } from '@/types/model';
-import { SortKey, sortCollections } from '@/utils/sortUtils';
 import { CollectionCard } from '@/components/collections/CollectionCard';
 import { CollectionListRow } from '@/components/collections/CollectionListRow';
 import { LayoutControls } from '@/components/layout/LayoutControls';
 import { useLayoutSettings } from '@/components/layout/LayoutSettingsContext';
+import { Category } from '@/types/category';
+import { Collection } from '@/types/collection';
+import { Model } from '@/types/model';
+import { SortKey, sortCollections } from '@/utils/sortUtils';
 
 interface CollectionsViewProps {
     collections: Collection[];
@@ -60,9 +60,11 @@ export function CollectionsView({
                                         collection={c}
                                         categories={categories}
                                         collections={collections}
+                                        models={models}
                                         onOpen={() => onOpenCollection(c)}
                                         onChanged={onRefresh}
-                                        fallbackImage={fallback} />
+                                        fallbackImage={fallback}
+                                    />
                                 );
                             })}
                         </div>
@@ -74,6 +76,7 @@ export function CollectionsView({
                                     collection={c}
                                     categories={categories}
                                     collections={collections}
+                                    models={models}
                                     onOpen={() => onOpenCollection(c)}
                                     onChanged={onRefresh}
                                 />

@@ -291,5 +291,6 @@ function refreshProjectInCollection(projectDir, modelsDir, collectionsPath) {
 
 module.exports = {
   scanDirectory: generateCollections,
-  refreshProjectInCollection // Export this!
+  generateCollections, // Export explicitly
+  refreshProjectInCollection
 };

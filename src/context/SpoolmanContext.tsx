@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
 interface Spool {
   id: number;
@@ -18,7 +18,7 @@ interface SpoolmanContextType {
   getSpoolById: (id: string | number) => Spool | undefined;
 }
 
-const SpoolmanContext = createContext<SpoolmanContextType | undefined>(undefined);
+export const SpoolmanContext = createContext<SpoolmanContextType | undefined>(undefined);
 
 export const SpoolmanProvider = ({ children }: { children: ReactNode }) => {
   const [spools, setSpools] = useState<Spool[]>([]);

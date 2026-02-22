@@ -1,16 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useUpdateModel } from "@/hooks/mutations/useUpdateModel";
 import { Model } from "@/types/model";
 import { Check, Edit2, History, Plus, Send, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
 interface NotesSectionProps {
   currentModel: Model;
+  onSave: (notes: string) => void;
 }
 
-export const NotesSection_DB = ({ currentModel }: NotesSectionProps) => {
-  const updateModel = useUpdateModel();
+export const NotesSection_DB = ({ currentModel, onSave }: NotesSectionProps) => {
   const [newEntry, setNewEntry] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -28,9 +27,8 @@ export const NotesSection_DB = ({ currentModel }: NotesSectionProps) => {
     const formattedEntry = `[${timestamp}]\n${newEntry}`;
     const entries = getLogEntries();
 
-    // Add to the list and save via mutation
-    const updatedNotes = [...entries, formattedEntry].join('\n---\n');
-    updateModel.mutate({ id: currentModel.id, data: { notes: updatedNotes } });
+    // Add to the list and save
+    onSave([...entries, formattedEntry].join('\n---\n'));
     setNewEntry("");
   };
 
@@ -42,7 +40,7 @@ export const NotesSection_DB = ({ currentModel }: NotesSectionProps) => {
   const handleSaveEdit = (index: number) => {
     const entries = getLogEntries();
     entries[index] = editValue;
-    updateModel.mutate({ id: currentModel.id, data: { notes: entries.join('\n---\n') } });
+    onSave(entries.join('\n---\n'));
     setEditingIndex(null);
   };
 
@@ -50,13 +48,13 @@ export const NotesSection_DB = ({ currentModel }: NotesSectionProps) => {
     if (window.confirm("Delete this note?")) {
       const entries = getLogEntries();
       const updated = entries.filter((_, i) => i !== index);
-      updateModel.mutate({ id: currentModel.id, data: { notes: updated.join('\n---\n') } });
+      onSave(updated.join('\n---\n'));
     }
   };
 
   const handleClearLog = () => {
     if (window.confirm("Are you sure you want to delete the entire notes history?")) {
-      updateModel.mutate({ id: currentModel.id, data: { notes: "" } });
+      onSave("");
     }
   };
 

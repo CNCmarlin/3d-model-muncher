@@ -29,9 +29,15 @@ model Collection {
   updatedAt DateTime @updatedAt @map("updated_at")
   
   coverImagePath String? @map("cover_image_path")
+  
+  // Legacy Parity Fields (Phase 3B)
+  metadata  String?  @map("metadata_json") // Stores buildPlates, description, images array
+  type      String   @default("folder") // "folder" or "project"
+  category  String?  // e.g. "Auto-Imported"
 
   // Relations
-  models    Model[]
+  models    Model[] // Primary strict ownership (Physical Folder)
+  modelLinks ModelCollection[] // Virtual/Symbolic links
 
   @@map("collections")
 }
@@ -57,6 +63,8 @@ model Model {
   isPrinted       Boolean  @default(false) @map("is_printed")
   isFavorite      Boolean  @default(false) @map("is_favorite")
   isDeleted       Boolean  @default(false) @map("is_deleted")
+  isHidden        Boolean  @default(false) @map("is_hidden")
+  isComponent     Boolean  @default(false) @map("is_component") // For Reference/Related files
   
   // Navigation / Disk Linkage
   pathHash        String?  @unique @map("path_hash")
@@ -69,9 +77,27 @@ model Model {
   // Relations
   files           ModelFile[]
   tags            ModelTag[]
+  collections     ModelCollection[] // Many-to-Many links (Virtual/Symbolic)
 
   @@index([collectionId]) // Index for filtering by collection
   @@map("models")
+}
+
+// ---------------------------------------------------------
+// 4. Model Collections (Many-to-Many Join Table)
+// ---------------------------------------------------------
+model ModelCollection {
+  modelId       String     @map("model_id")
+  model         Model      @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  
+  collectionId  String     @map("collection_id")
+  collection    Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  
+  order         Int        @default(0)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  @@id([modelId, collectionId])
+  @@map("model_collections")
 }
 
 // ---------------------------------------------------------

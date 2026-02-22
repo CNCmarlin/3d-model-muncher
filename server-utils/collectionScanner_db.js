@@ -1,8 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const prisma = require('./db');
 
 /**
  * DATABASE VERSION: Collection Scanner
@@ -182,19 +180,51 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
     try {
         await prisma.$transaction(async (tx) => {
             // 1. Delete all existing collections
+            // TODO: Should we only delete manual ones? Or sync strategy?
+            // Current logic: Full overwrite (simplest for scanner parity)
             await tx.collection.deleteMany({});
 
-            // 2. Create new collections
+            // 2. Pre-fetch valid Model IDs to avoid Foreign Key errors
+            const allFileModelIds = new Set();
+            collections.forEach(c => c.modelIds.forEach(id => allFileModelIds.add(id)));
+
+            const existingModels = await tx.model.findMany({
+                where: { id: { in: Array.from(allFileModelIds) } },
+                select: { id: true }
+            });
+            const validModelIds = new Set(existingModels.map(m => m.id));
+
+            // 3. Create new collections
             for (const col of collections) {
+                // Filter models that actually exist in DB
+                const linkedModelIds = col.modelIds.filter(id => validModelIds.has(id));
+
+                if (linkedModelIds.length < col.modelIds.length) {
+                    // Log warning for ghost files (IDs in JSON but not in DB)
+                    // console.warn(`[DB Scanner] Skipped ${col.modelIds.length - linkedModelIds.length} missing models in collection "${col.name}"`);
+                }
+
                 await tx.collection.create({
                     data: {
                         id: col.id,
                         name: col.name,
                         parentId: col.parentId,
-                        path: col.path,
-                        modelIds: col.modelIds, // Store as JSON array
-                        coverImage: null,
-                        description: null
+                        pathHash: col.path ? Buffer.from(col.path).toString('base64') : null,
+
+                        // Relation: Connect existing models
+                        models: {
+                            connect: linkedModelIds.map(id => ({ id }))
+                        },
+
+                        // New Fields (Phase 3B Parity)
+                        metadata: JSON.stringify({
+                            description: null, // Scanned collections typically don't have descriptions yet
+                            images: [],
+                            buildPlates: [],
+                            // legacyPath: col.path // Optional: store original path
+                        }),
+                        type: 'folder', // Default for scanned folders
+                        category: null  // Default
                     }
                 });
             }

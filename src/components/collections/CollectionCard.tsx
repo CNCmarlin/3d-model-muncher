@@ -1,15 +1,12 @@
-import CollectionEditDialog from "@/components/collections/CollectionEditDialog";
+import { CollectionEditorDialog } from "@/components/collections/CollectionEditorDialog";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { getLabel } from "@/constants/labels";
 import { useDialog } from "@/hooks/useDialog";
 import type { Category } from "@/types/category";
 import type { Collection } from "@/types/collection";
-import { ConfigManager } from "@/utils/configManager";
 import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -22,9 +19,11 @@ export interface CollectionCardProps {
   onChanged?: () => void; // called after edit save
   onDeleted?: (id: string) => void;
   fallbackImage?: string;
+  // Make models optional for now since it wasn't in the original props, but dialog needs it
+  models?: any[];
 }
 
-export function CollectionCard({ collection, categories, collections, onOpen, onChanged, onDeleted, fallbackImage }: CollectionCardProps) {
+export function CollectionCard({ collection, categories, collections, onOpen, onChanged, onDeleted, fallbackImage, models = [] }: CollectionCardProps) {
   const editDialog = useDialog(false);
   const deleteDialog = useDialog(false);
   const [deletePhysicalFiles, setDeletePhysicalFiles] = useState(false);
@@ -33,7 +32,7 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
   if (fallbackImage) console.log(`[CardRender] '${collection.name}' received fallback:`, fallbackImage);
 
   const coverSrc = collection.coverImage
-    ? `${collection.coverImage}?t=${new Date(collection.lastModified || '').getTime()}` // Cache busting
+    ? collection.coverImage
     : (collection.images && collection.images.length > 0)
       ? collection.images[0]
       : fallbackImage || null;
@@ -70,7 +69,8 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
   };
 
   // Runtime guard
-  const modelCount = collection?._count?.models ?? (collection?.modelIds ? collection.modelIds.length : 0);
+  // Runtime guard
+  const modelCount = collection?.modelIds ? collection.modelIds.length : 0;
 
   const collectionId = collection?.id;
 
@@ -93,9 +93,7 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
           ) : (
             <Folder className="w-14 h-14 text-primary/80" />
           )}
-          <div className="absolute top-2 left-2 z-10">
-            <Badge variant="secondary" className="px-1.5 py-0 h-5 text-[10px]">Collection</Badge>
-          </div>
+
           <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -127,25 +125,8 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
           <p className="text-sm text-muted-foreground line-clamp-5 leading-snug">{collection.description}</p>
         )}
         <div className="text-muted-foreground space-y-0.5 mt-1 text-xs">
-          {/* Metadata Rows Logic - Simplified for brevity in replace tool, but keeping structure */}
-          {(() => {
-            const effectiveCfg = ConfigManager.loadConfig();
-            const primary = effectiveCfg?.settings?.modelCardPrimary || 'printTime';
-            const secondary = effectiveCfg?.settings?.modelCardSecondary || 'filamentUsed';
-            const fieldValue = (key: string): string => {
-              switch (key) {
-                case 'category': return collection?.category || '';
-                default: return '';
-              }
-            };
-            const labelForKey = (key: string) => getLabel(key) + ':';
-            const rows: Array<{ label: string; value: string }> = [];
-            if (primary && primary !== 'none') { const v = fieldValue(primary); if (v) rows.push({ label: labelForKey(primary), value: v }); }
-            if (secondary && secondary !== 'none' && secondary !== primary) { const v = fieldValue(secondary); if (v) rows.push({ label: labelForKey(secondary), value: v }); }
-            return rows.map((r, i) => (
-              <div className="flex justify-between" key={i}><span>{r.label}</span><span>{r.value}</span></div>
-            ));
-          })()}
+          {/* Legacy Card has simpler metadata or none */}
+          <span>{collection.modelIds?.length || 0} items</span>
         </div>
       </CardContent>
       <CardFooter className="p-2 pt-0 mt-auto">
@@ -156,13 +137,20 @@ export function CollectionCard({ collection, categories, collections, onOpen, on
       </CardFooter>
 
       <div onClick={(e) => e.stopPropagation()}>
-        <CollectionEditDialog
+        <CollectionEditorDialog
           open={editDialog.isOpen}
           onOpenChange={editDialog.setIsOpen}
           collection={collection ?? null}
           collections={collections}
+          models={models}
           categories={categories}
-          onSaved={handleSaved}
+          onSave={async (c) => {
+            // Adapt to promise interface if needed, legacy might expect void
+            handleSaved(c);
+          }}
+          onDelete={async (_id) => {
+            await confirmDelete();
+          }}
         />
       </div>
 

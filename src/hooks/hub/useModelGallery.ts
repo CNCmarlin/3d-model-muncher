@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
 import { Model } from '@/types/model';
 import { normalizeModelPath } from '@/utils/downloadUtils';
 import { getUserImageData, resolveImageOrderToUrls } from '@/utils/galleryUtils';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface UseModelGalleryProps {
     model: Model | null;
@@ -38,6 +38,7 @@ export function useModelGallery({
         const src = editedModel || model;
         if (!src) return [];
 
+        // 2. Fallback to Legacy/Parsed
         const parsedImages = Array.isArray(src.parsedImages) ? src.parsedImages : [];
         const userImages = Array.isArray((src as any).userDefined?.images)
             ? (src as any).userDefined.images.map((u: any) => getUserImageData(u))

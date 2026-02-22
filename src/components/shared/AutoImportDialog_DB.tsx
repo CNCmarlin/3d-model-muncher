@@ -1,0 +1,238 @@
+import { ConfirmDialog_DB } from "@/components/shared/ConfirmDialog_DB";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDialog_db } from "@/hooks/useDialog_db";
+import { AlertTriangle, CheckCircle2, FolderOpen, GitFork, Layers, Loader2, Package, Tags } from "lucide-react";
+import { useEffect, useState } from 'react';
+import { toast } from "sonner";
+
+interface AutoImportDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onImportComplete?: () => void;
+}
+
+export function AutoImportDialog_DB({ open, onOpenChange, onImportComplete }: AutoImportDialogProps) {
+  const [folders, setFolders] = useState<string[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string>("(Root)");
+  const [strategy, setStrategy] = useState<"smart" | "strict" | "top-level">("smart");
+  const [clearPrevious, setClearPrevious] = useState(false);
+  const [autoTag, setAutoTag] = useState(false);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<{ count: number; message: string } | null>(null);
+
+  // Refactored to use generic hook
+  const confirmDialog = useDialog_db(false);
+
+  useEffect(() => {
+    if (open) {
+      setResult(null);
+      setClearPrevious(false);
+      setAutoTag(false);
+      setSelectedFolder("(Root)");
+      fetch('/api/model-folders')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.folders)) setFolders(data.folders);
+        })
+        .catch(err => console.error("Failed to load folders", err));
+    }
+  }, [open]);
+
+  const handleStartClick = () => {
+    if (clearPrevious) {
+      confirmDialog.open();
+    } else {
+      runImport();
+    }
+  };
+
+  const runImport = async () => {
+    confirmDialog.close();
+    setIsLoading(true);
+    try {
+      // TRIGGER THE SCAN
+      // Note: We send 'targetPath' as expected by the backend
+      const response = await fetch('/api/collections/auto-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetPath: selectedFolder === '(Root)' ? '' : selectedFolder,
+          strategy: strategy,
+          clearPrevious: clearPrevious,
+          autoTag: autoTag
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setResult({ count: data.count, message: data.message });
+        toast.success(`Success! Processed ${data.count} collections.`);
+        if (onImportComplete) onImportComplete();
+      } else {
+        toast.error(data.error || "Import failed");
+      }
+    } catch (error) {
+      console.error("AutoImport error:", error);
+      toast.error("Network error occurred");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Auto-Import Collections</DialogTitle>
+            <DialogDescription>
+              Scan your folder structure to automatically generate collections.
+            </DialogDescription>
+          </DialogHeader>
+
+          {!result ? (
+            <div className="grid gap-6 py-4">
+              <div className="grid gap-2">
+                <Label>Target Directory</Label>
+                <Select value={selectedFolder} onValueChange={setSelectedFolder}>
+                  <SelectTrigger><SelectValue placeholder="Select folder..." /></SelectTrigger>
+                  <SelectContent className="max-h-[200px]">
+                    <SelectItem value="(Root)">/ (Entire Library)</SelectItem>
+                    {folders.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-3">
+                <Label className="text-base">Organization Strategy</Label>
+                <RadioGroup value={strategy} onValueChange={(v) => setStrategy(v as any)} className="grid gap-3">
+
+                  {/* Option 1: Smart Grouping */}
+                  <div className={`flex items-start space-x-3 border p-3 rounded-md cursor-pointer transition-colors ${strategy === 'smart' ? 'bg-accent/50 border-primary' : 'hover:bg-accent/20'}`} onClick={() => setStrategy('smart')}>
+                    <RadioGroupItem value="smart" id="smart" className="mt-1" />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-4 w-4 text-blue-500" />
+                        <Label htmlFor="smart" className="cursor-pointer font-medium text-base">Smart Grouping (Flattened)</Label>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Ignores intermediate folders. Creates a collection for any folder that <strong>directly contains</strong> models.
+                      </p>
+                      <div className="text-xs bg-muted p-2 rounded text-foreground/80 mt-2 font-mono">
+                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> Collection: <strong>"SportsCar"</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Option 2: Strict Mirroring */}
+                  <div className={`flex items-start space-x-3 border p-3 rounded-md cursor-pointer transition-colors ${strategy === 'strict' ? 'bg-accent/50 border-primary' : 'hover:bg-accent/20'}`} onClick={() => setStrategy('strict')}>
+                    <RadioGroupItem value="strict" id="strict" className="mt-1" />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <GitFork className="h-4 w-4 text-purple-500" />
+                        <Label htmlFor="strict" className="cursor-pointer font-medium text-base">Strict Mirroring (Nested)</Label>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Recreates your exact folder hierarchy. Empty folders are preserved if they contain other collections.
+                      </p>
+                      <div className="text-xs bg-muted p-2 rounded text-foreground/80 mt-2 font-mono">
+                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> <br />
+                        Collection: <strong>"3D Prints"</strong> → <strong>"Cars"</strong> → <strong>"SportsCar"</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Option 3: Top-Level */}
+                  <div className={`flex items-start space-x-3 border p-3 rounded-md cursor-pointer transition-colors ${strategy === 'top-level' ? 'bg-accent/50 border-primary' : 'hover:bg-accent/20'}`} onClick={() => setStrategy('top-level')}>
+                    <RadioGroupItem value="top-level" id="top-level" className="mt-1" />
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Package className="h-4 w-4 text-orange-500" />
+                        <Label htmlFor="top-level" className="cursor-pointer font-medium text-base">Top-Level Aggregation</Label>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Creates one collection per top-level folder, aggregating <strong>everything</strong> inside it.
+                      </p>
+                      <div className="text-xs bg-muted p-2 rounded text-foreground/80 mt-2 font-mono">
+                        3D Prints/Cars/SportsCar/file.stl <span className="text-muted-foreground">→</span> Collection: <strong>"3D Prints"</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                </RadioGroup>
+              </div>
+
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-start space-x-2">
+                  <Checkbox id="autoTag" checked={autoTag} onCheckedChange={(c) => setAutoTag(!!c)} />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="autoTag" className="text-sm font-medium flex items-center gap-2">
+                      <Tags className="h-3 w-3" /> Auto-Tag Models
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically add the <b>folder name</b> as a tag to all models found within it.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start space-x-2">
+                  <Checkbox id="clearPrevious" checked={clearPrevious} onCheckedChange={(c) => setClearPrevious(!!c)} />
+                  <div className="grid gap-1.5 leading-none">
+                    <Label htmlFor="clearPrevious" className="text-sm font-medium text-destructive">Clean Re-Import (Reset)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Check this to <b>delete all existing auto-imported collections</b> before scanning.
+                      <br /><span className="font-semibold text-orange-600">Warning: Manual edits to auto-collections will be lost.</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 flex flex-col items-center text-center space-y-2">
+              <CheckCircle2 className="h-10 w-10 text-green-500" />
+              <h3 className="font-medium">Import Complete</h3>
+              <p className="text-sm text-muted-foreground">{result.message}</p>
+            </div>
+          )}
+
+          <DialogFooter>
+            {!result ? (
+              <Button onClick={handleStartClick} disabled={isLoading} variant={clearPrevious ? "destructive" : "default"}>
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FolderOpen className="mr-2 h-4 w-4" />}
+                {clearPrevious ? "Reset & Import" : "Start Import"}
+              </Button>
+            ) : (
+              <Button onClick={() => onOpenChange(false)}>Done</Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog_DB
+        open={confirmDialog.isOpen}
+        onOpenChange={confirmDialog.setIsOpen}
+        title={
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            Confirm Reset?
+          </div>
+        }
+        description={
+          <>
+            This action is <b>not reversible</b>. It will delete all collections marked as "Auto-Imported" and rebuild them from scratch.
+            <br /><br />
+            If you manually added items to these collections, those links will be lost.
+          </>
+        }
+        confirmLabel="Yes, Wipe & Rebuild"
+        variant="destructive"
+        onConfirm={runImport}
+      />
+    </>
+  );
+}

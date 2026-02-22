@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
 import { ConfigManager } from "@/utils/configManager";
+import { createContext, useContext, useEffect, useState } from "react";
 
 const UI_PREFS_KEY = '3d-model-muncher-ui-prefs';
 
@@ -39,7 +39,7 @@ const initialState: ThemeProviderState = {
   setTheme: () => null,
 };
 
-const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
+export const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 export function ThemeProvider({
   children,

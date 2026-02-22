@@ -1,0 +1,43 @@
+﻿src/components/admin/MigrationStatus.tsx(35,12): error TS6133: 'validationErrors' is declared but its value is never read.
+src/components/admin/MigrationStatus_DB.tsx(35,12): error TS6133: 'validationErrors' is declared but its value is never read.
+src/components/management/SettingsPage.tsx(64,9): error TS6133: 'setCurrentView' is declared but its value is never read.
+src/components/management/SettingsPage_DB.tsx(64,9): error TS6133: 'setCurrentView' is declared but its value is never read.
+src/components/models/details/RelatedFilesSection.tsx(257,19): error TS6133: 'refreshedModel' is declared but its value is never read.
+src/components/models/details/RelatedFilesSection_DB.tsx(257,19): error TS6133: 'refreshedModel' is declared but its value is never read.
+src/components/settings/IntegrationsSettings.tsx(46,30): error TS6133: 'setActivePrinterIndex' is declared but its value is never read.
+src/components/settings/IntegrationsSettings.tsx(158,9): error TS6133: 'currentPrinterConfig' is declared but its value is never read.
+src/components/settings/IntegrationsSettings.tsx(165,9): error TS6133: 'handlePrinterUpdate' is declared but its value is never read.
+src/components/settings/IntegrationsSettings_DB.tsx(46,30): error TS6133: 'setActivePrinterIndex' is declared but its value is never read.
+src/components/settings/IntegrationsSettings_DB.tsx(158,9): error TS6133: 'currentPrinterConfig' is declared but its value is never read.
+src/components/settings/IntegrationsSettings_DB.tsx(165,9): error TS6133: 'handlePrinterUpdate' is declared but its value is never read.
+src/hooks/hub/useModelGallery_db.ts(164,19): error TS6133: 'rawPath' is declared but its value is never read.
+src/hooks/mutations/useCreateCollection.ts(14,19): error TS6133: 'err' is declared but its value is never read.
+src/hooks/mutations/useCreateCollection_db.ts(14,19): error TS6133: 'err' is declared but its value is never read.
+src/hooks/mutations/useDeleteModel.ts(24,19): error TS6133: 'err' is declared but its value is never read.
+src/hooks/mutations/useDeleteModel.ts(24,24): error TS6133: 'id' is declared but its value is never read.
+src/hooks/mutations/useDeleteModel_db.ts(24,19): error TS6133: 'err' is declared but its value is never read.
+src/hooks/mutations/useDeleteModel_db.ts(24,24): error TS6133: 'id' is declared but its value is never read.
+src/hooks/queries/useModels.ts(28,26): error TS6133: 'id' is declared but its value is never read.
+src/hooks/queries/useModels_db.ts(28,26): error TS6133: 'id' is declared but its value is never read.
+src/hooks/useCollectionMutations.ts(92,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useCollectionMutations.ts(128,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useCollectionMutations_db.ts(92,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useCollectionMutations_db.ts(128,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useModelMutations_DB.ts(61,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useModelMutations_DB.ts(101,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useModelMutations_DB.ts(143,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useModelMutations_Legacy.ts(19,11): error TS6196: 'BulkUpdateInput' is declared but never used.
+src/hooks/useModelMutations_Legacy.ts(63,24): error TS6133: 'variables' is declared but its value is never read.
+src/hooks/useModelMutations_Legacy.ts(101,24): error TS6133: 'variables' is declared but its value is never read.
+src/utils/ProjectService_db.ts(34,18): error TS6133: 'getMunchieFileName' is declared but its value is never read.
+src/utils/ProjectService_db.ts(68,49): error TS2552: Cannot find name 'ProjectService'. Did you mean 'ProjectService_db'?
+src/utils/ProjectService_db.ts(134,28): error TS2552: Cannot find name 'ProjectService'. Did you mean 'ProjectService_db'?
+src/utils/ProjectService_db.ts(311,30): error TS2552: Cannot find name 'ProjectService'. Did you mean 'ProjectService_db'?
+src/utils/threeMFToJson.ts(282,11): error TS6133: 'success1' is declared but its value is never read.
+src/utils/threeMFToJson.ts(283,11): error TS6133: 'success2' is declared but its value is never read.
+src/utils/threeMFToJson.ts(284,11): error TS6133: 'success3' is declared but its value is never read.
+src/utils/threeMFToJson.ts(285,11): error TS6133: 'success4' is declared but its value is never read.
+src/utils/threeMFToJson_db.ts(282,11): error TS6133: 'success1' is declared but its value is never read.
+src/utils/threeMFToJson_db.ts(283,11): error TS6133: 'success2' is declared but its value is never read.
+src/utils/threeMFToJson_db.ts(284,11): error TS6133: 'success3' is declared but its value is never read.
+src/utils/threeMFToJson_db.ts(285,11): error TS6133: 'success4' is declared but its value is never read.

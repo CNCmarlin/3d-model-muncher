@@ -1,6 +1,6 @@
-import { createContext, ReactNode, useContext, useState } from 'react';
 import { Collection } from '@/types/collection';
 import { ViewType } from '@/types/view';
+import { createContext, ReactNode, useContext, useState } from 'react';
 
 // Settings Action Type
 export interface SettingsAction {
@@ -36,7 +36,7 @@ interface NavigationContextType {
     getViewTitle: () => string;
 }
 
-const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
+export const NavigationContext = createContext<NavigationContextType | undefined>(undefined);
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
     const [currentView, setCurrentView] = useState<ViewType>('models');

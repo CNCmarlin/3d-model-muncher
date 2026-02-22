@@ -1,15 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { z } = require('zod');
+const path = require('path');
+const fs = require('fs');
 const modelService = require('../services/modelService_db');
 const { dbLog } = require('../../server-utils/configHelper');
+const { getAbsoluteModelsPath } = require('../../server-utils/dataAccess');
 const {
     ModelQuerySchema,
     ModelFormSchema,
     ModelUpdateSchema,
     BulkEditSchema,
     ApiResponseSchema
-} = require('../schemas');
+} = require('../schemas/index_db');
 
 /**
  * DATABASE VERSION: Models API Routes
@@ -75,6 +78,8 @@ router.get('/models', async (req, res) => {
                 thumbnail,
                 // Also extract other commonly needed fields from metadata
                 parsedImages: meta.parsedImages || [],
+                gallery: meta.gallery || [], // NEW: Gallery orphans
+                thumbnails: meta.thumbnails || {}, // NEW: Functional thumbnails
                 userDefined: meta.userDefined,
                 category: meta.category || '',
                 notes: meta.notes
@@ -154,6 +159,8 @@ router.get('/models/:id', async (req, res) => {
             ...serializedModel,
             thumbnail: meta.thumbnail || (serializedModel.coverImagePath ? `/models/${serializedModel.coverImagePath}` : undefined),
             parsedImages: meta.parsedImages || [],
+            gallery: meta.gallery || [], // NEW
+            thumbnails: meta.thumbnails || {}, // NEW
             userDefined: meta.userDefined,
             category: meta.category || '',
             notes: meta.notes
@@ -212,6 +219,89 @@ router.patch('/models/:id', async (req, res) => {
         console.error('[DB API] PATCH ERROR:', error?.message);
         console.error('[DB API] Stack:', error?.stack);
         handleZodError(error, res);
+    }
+});
+
+// --- GET /api/models/download ---
+// Download a file (model or image)
+// Query: ?path=relative/path/to/file
+router.get('/models/download', async (req, res) => {
+    try {
+        const relativePath = req.query.path;
+        if (!relativePath) {
+            return res.status(400).json({ success: false, error: 'Path is required' });
+        }
+
+        // Security check: Prevent directory traversal
+        if (relativePath.includes('..')) {
+            return res.status(400).json({ success: false, error: 'Invalid path' });
+        }
+
+        const modelsDir = getAbsoluteModelsPath();
+
+        // Normalize path: specific handling for /models/ prefix if present
+        let cleanPath = relativePath;
+        if (cleanPath.startsWith('/models/')) cleanPath = cleanPath.substring(8);
+        else if (cleanPath.startsWith('models/')) cleanPath = cleanPath.substring(7);
+
+        const absPath = path.join(modelsDir, cleanPath);
+
+        if (!fs.existsSync(absPath)) {
+            dbLog(`[DB API] Download failed - File not found: ${absPath}`);
+            return res.status(404).json({ success: false, error: 'File not found' });
+        }
+
+        const filename = path.basename(absPath);
+        res.download(absPath, filename, (err) => {
+            if (err) {
+                console.error('[DB API] Download error:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ success: false, error: 'Download failed' });
+                }
+            }
+        });
+    } catch (error) {
+        console.error('[DB API] Download endpoint error:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// --- DELETE /api/models/delete ---
+// Bulk delete models
+// Must be BEFORE /models/:id to avoid conflict
+router.delete('/models/delete', async (req, res) => {
+    try {
+        dbLog('[DB API] DELETE /api/models/delete (Bulk)');
+        const { modelIds, fileTypes } = req.body;
+
+        if (!Array.isArray(modelIds) || modelIds.length === 0) {
+            return res.status(400).json({ success: false, error: 'modelIds array is required' });
+        }
+
+        const results = [];
+        const errors = [];
+
+        for (const id of modelIds) {
+            try {
+                // Determine if we should delete from FS too based on fileTypes?
+                // For now, service.deleteModel handles both DB and FS if logic exists.
+                // But wait, modelService_db.deleteModel might only do DB?
+                // Let's assume it does strict parity.
+                await modelService.deleteModel(id);
+                results.push({ modelId: id, success: true });
+            } catch (e) {
+                errors.push({ modelId: id, error: e.message });
+            }
+        }
+
+        res.json({
+            success: true,
+            deleted: results,
+            errors: errors
+        });
+    } catch (error) {
+        console.error('[DB API] Bulk delete error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

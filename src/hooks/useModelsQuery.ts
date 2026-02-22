@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
 import { useConfig } from '@/context/ConfigContext';
 import type { Model as LegacyModel } from '@/types/model';
 import type { Model as DbModel } from '@/types/model_db';
 import { adaptDbModelsToLegacy } from '@/utils/dbAdapter';
+import { useQuery } from '@tanstack/react-query';
 
 /**
  * DATABASE-FIRST Models Query Hook
@@ -41,7 +41,7 @@ export function useModelsQuery(options: UseModelsQueryOptions = {}) {
 
             // Detect if we got database models or legacy models
             const isDatabase = data.length > 0 && 'collectionId' in data[0];
-            const useDatabaseBackend = appConfig?.useDatabaseBackend ?? false;
+            const useDatabaseBackend = appConfig?.settings?.useDatabaseBackend ?? false;
 
             // CRITICAL: Apply adapter ONLY in legacy mode
             // Database mode returns database types directly

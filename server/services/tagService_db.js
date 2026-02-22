@@ -1,7 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const { TagSchema, BulkAssignSchema } = require('../schemas');
-
-const prisma = new PrismaClient();
+const prisma = require('../../server-utils/db');
+const { TagSchema, BulkAssignSchema } = require('../schemas/index_db');
 
 /**
  * DATABASE VERSION: Tag Service

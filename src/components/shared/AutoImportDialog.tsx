@@ -1,7 +1,3 @@
-import { AlertTriangle, CheckCircle2, FolderOpen, GitFork, Layers, Loader2, Package, Tags } from "lucide-react";
-import { useEffect, useState } from 'react';
-import { toast } from "sonner";
-import { useDialog } from "@/hooks/useDialog";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,6 +5,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDialog } from "@/hooks/useDialog";
+import { AlertTriangle, CheckCircle2, FolderOpen, GitFork, Layers, Loader2, Package, Tags } from "lucide-react";
+import { useEffect, useState } from 'react';
+import { toast } from "sonner";
 
 interface AutoImportDialogProps {
   open: boolean;
@@ -56,18 +56,13 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
     confirmDialog.close();
     setIsLoading(true);
     try {
-      // 1. PERSIST THE SETTING: Tell the server to save this strategy to config.json
-      await fetch('/api/collections/auto-import/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanStrategy: strategy })
-      });
-      // 2. TRIGGER THE SCAN
+      // TRIGGER THE SCAN
+      // Note: We send 'targetPath' as expected by the backend
       const response = await fetch('/api/collections/auto-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          targetFolder: selectedFolder === '(Root)' ? '' : selectedFolder,
+          targetPath: selectedFolder === '(Root)' ? '' : selectedFolder,
           strategy: strategy,
           clearPrevious: clearPrevious,
           autoTag: autoTag
@@ -82,6 +77,7 @@ export function AutoImportDialog({ open, onOpenChange, onImportComplete }: AutoI
         toast.error(data.error || "Import failed");
       }
     } catch (error) {
+      console.error("AutoImport error:", error);
       toast.error("Network error occurred");
     } finally {
       setIsLoading(false);

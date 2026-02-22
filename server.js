@@ -198,16 +198,16 @@ app.use('/models', (req, res, next) => {
 });
 
 // --- Mount Routes ---
-app.use('/api', require('./server/routes/system'));
+app.use('/api', routeSelector.getSystemRoutes());
 
 // Phase 3: Load appropriate collection routes based on mode
 const collectionsRouter = routeSelector.getCollectionRoutes();
 app.use('/api', collectionsRouter); // Database routes have /collections prefix, legacy routes will be updated
 
-app.use('/api', require('./server/routes/imports'));
-app.use('/api/admin', require('./server/routes/admin'));
-app.use('/api', require('./server/routes/config')); // New Config Router
-app.use('/api', require('./server/routes/integrations')); // New Integrations Router
+app.use('/api', routeSelector.getImportRoutes());
+app.use('/api/admin', routeSelector.getAdminRoutes());
+app.use('/api', routeSelector.getConfigRoutes()); // New Config Router
+app.use('/api', routeSelector.getIntegrationRoutes()); // New Integrations Router
 app.use('/api', modelsRouter); // Models Router
 
 // Tags Router (extracts from munchie files in legacy, from DB in database mode)

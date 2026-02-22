@@ -1,3 +1,5 @@
+import { BulkOperationsPanel } from "@/components/bulk-edit/BulkOperationsPanel";
+import { BulkTargetGrid } from "@/components/bulk-edit/BulkTargetGrid";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -14,13 +16,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useBulkEditForm } from "@/hooks/bulk/useBulkEditForm";
 import { useBulkOperations } from "@/hooks/bulk/useBulkOperations";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Category } from "@/types/category";
 import { Collection } from "@/types/collection";
 import { Model } from "@/types/model";
 import { Layers, Library, RefreshCw, Save, Users } from "lucide-react";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { BulkOperationsPanel } from "@/components/bulk-edit/BulkOperationsPanel";
-import { BulkTargetGrid } from "@/components/bulk-edit/BulkTargetGrid";
 
 interface BulkEditDialogProps {
     isOpen: boolean;
@@ -56,7 +56,7 @@ export function BulkEditDialog({
     const isDesktop = useMediaQuery("(min-width: 768px)");
 
     // Form State
-    const form = useBulkEditForm({ models, isOpen, pendingBulkCollectionId });
+    const form = useBulkEditForm({ models, isOpen, selectedTargetIds: models.map(m => m.id) });
     const { fieldSelection } = form;
 
     // Operations Logic

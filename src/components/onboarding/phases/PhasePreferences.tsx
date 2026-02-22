@@ -12,7 +12,7 @@ interface PhasePreferencesProps {
     onNext: () => void;
 }
 
-export function PhasePreferences({ config, onUpdateConfig, onNext }: PhasePreferencesProps) {
+export function PhasePreferences({ config, onUpdateConfig }: PhasePreferencesProps) {
     // Local state for immediate feedback before saving
     const [primaryColor, setPrimaryColor] = useState(config.settings.primaryColor || "#7c3aed");
     const [defaultModelColor, setDefaultModelColor] = useState(config.settings.defaultModelColor || "#aaaaaa");

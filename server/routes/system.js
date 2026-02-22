@@ -44,6 +44,28 @@ router.get('/health', (req, res) => {
     });
 });
 
+// --- System Utilities ---
+
+// List folders in models directory (used by Auto-Import)
+router.get('/model-folders', (req, res) => {
+    try {
+        const root = getAbsoluteModelsPath();
+        if (!fs.existsSync(root)) return res.json([]);
+
+        // Read directories
+        const items = fs.readdirSync(root, { withFileTypes: true });
+        const folders = items
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name)
+            .filter(name => !name.startsWith('.') && name !== 'uploads'); // Exclude hidden & uploads
+
+        res.json(folders);
+    } catch (e) {
+        console.error('[System] Error listing folders:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // --- Printer Routes ---
 
 router.post('/printer/config', (req, res) => {

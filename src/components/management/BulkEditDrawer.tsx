@@ -63,18 +63,19 @@ export function BulkEditDrawer({
   models,
   isOpen,
   onClose,
-  onBulkUpdate,
   onRefresh,
   onBulkSaved,
   onClearSelections,
   categories,
-  modelDirectory,
   collectionsList,
   pendingBulkCollectionId,
-  onBulkEditComplete,
 }: BulkEditDrawerProps) {
 
-  const form = useBulkEditForm({ models, isOpen, pendingBulkCollectionId });
+  const form = useBulkEditForm({
+    models,
+    selectedTargetIds: models.map(m => m.id),
+    isOpen
+  });
   const {
     editState, fieldSelection, handleFieldToggle, commonValues,
     setCategory, setLicense, setDesigner, setPrintStatus, setHidden,
@@ -92,13 +93,10 @@ export function BulkEditDrawer({
   } = useBulkOperations({
     models,
     form,
-    onBulkUpdate,
     onRefresh,
     onBulkSaved,
-    onBulkEditComplete,
     onClose,
     onClearSelections,
-    modelDirectory,
     pendingBulkCollectionId // Pass the prop
   });
 

@@ -1,4 +1,5 @@
 import type { License } from '@/constants/licenses';
+import type { Collection } from './collection_db';
 
 /**
  * DATABASE-FIRST Model Type
@@ -11,7 +12,7 @@ import type { License } from '@/constants/licenses';
  * - Metadata stored as JSON, not flattened
  */
 
-export interface ModelFile {
+export interface ModelFile_db {
     id: string;
     modelId: string;
     fileName: string;
@@ -23,34 +24,20 @@ export interface ModelFile {
     updatedAt: Date;
 }
 
-export interface Tag {
+export interface Tag_db {
     id: number;
     name: string;
     createdAt: Date;
     updatedAt: Date;
 }
 
-export interface ModelTag {
+export interface ModelTag_db {
     modelId: string;
     tagId: number;
-    tag?: Tag; // Populated when included
+    tag?: Tag_db; // Populated when included
 }
 
-export interface Collection {
-    id: string;
-    name: string;
-    parentId: string | null;
-    path: string | null;
-    pathHash: string | null;
-    description: string | null;
-    coverImage: string | null;
-    coverImagePath: string | null; // DB field
-    modelIds: string[]; // JSON array
-    createdAt: Date;
-    updatedAt: Date;
-}
-
-export interface Model {
+export interface StrictModel_db {
     // Core Identity
     id: string;
     collectionId: string; // Single FK - model belongs to ONE collection
@@ -81,8 +68,8 @@ export interface Model {
     updatedAt: Date;
 
     // Relations (populated when included in query)
-    files?: ModelFile[]; // All associated files
-    tags?: ModelTag[]; // Many-to-many via join table
+    files?: ModelFile_db[]; // All associated files
+    tags?: ModelTag_db[]; // Many-to-many via join table
     collection?: Collection; // Parent collection
 
     // Extended Metadata (JSON blob for flexibility)
@@ -103,10 +90,35 @@ export interface Model {
     };
 }
 
+export type Model_db = StrictModel_db & {
+    // Legacy Overrides (Phase 1 Migration Bridge)
+    filePath?: string;
+    modelUrl?: string;
+    thumbnail?: string;
+    images?: string[];
+    parsedImages?: string[];
+    gallery?: string[];
+    thumbnails?: Record<string, string[]>;
+    userDefined?: Record<string, any>;
+    category?: string;
+    collections?: string[];
+    hidden?: boolean;
+    related_files?: string[];
+    price?: number;
+    excludedCollections?: string[];
+    filamentUsed?: string;
+    fileSize?: string;
+    printSettings?: Record<string, any>;
+    gcodeData?: Record<string, any>;
+};
+
+// Ensure any rogue legacy imports still work during transition
+export type Model = Model_db;
+
 /**
  * Query Parameters for GET /api/models
  */
-export interface ModelQueryParams {
+export interface ModelQueryParams_db {
     search?: string;
     tags?: string[];
     collectionId?: string;
@@ -125,7 +137,7 @@ export interface ModelQueryParams {
 /**
  * Form data for creating/updating models
  */
-export interface ModelFormData {
+export interface ModelFormData_db {
     name: string;
     description?: string;
     license?: string;
@@ -143,7 +155,7 @@ export interface ModelFormData {
 /**
  * Bulk edit operations
  */
-export interface BulkEditData {
+export interface BulkEditData_db {
     modelIds: string[];
     updates: {
         isPrinted?: boolean;
