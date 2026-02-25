@@ -299,9 +299,6 @@ export function ModelHubView_DB({
     editLogic.setEditedModel((prev: any) => {
       if (!prev) return prev;
       const next = { ...prev, ...updates } as any;
-      if ((updates as any).printSettings) {
-        next.printSettings = { ...((prev as any).printSettings || {}), ...((updates as any).printSettings) };
-      }
       if (updates.metadata?.userDefined) {
         next.metadata = { ...(prev.metadata || {}), userDefined: { ...((prev.metadata as any)?.userDefined || {}), ...(updates.metadata.userDefined) } };
       }

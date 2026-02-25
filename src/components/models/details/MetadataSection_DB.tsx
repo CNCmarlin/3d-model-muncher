@@ -28,17 +28,6 @@ export const MetadataSection_DB = ({
 }: MetadataSectionProps) => {
     if (!isEditing || !editedModel) return null;
 
-    const printSettings = (editedModel as any).printSettings || {};
-
-    const updatePrintSetting = (field: string, value: string) => {
-        onLocalUpdate({
-            printSettings: {
-                ...printSettings,
-                [field]: value
-            }
-        });
-    };
-
     return (
         <div className="space-y-6 pb-10">
             {/* 0. General Area (Moved from Print Settings) */}
@@ -111,12 +100,12 @@ export const MetadataSection_DB = ({
             <div className="space-y-4">
                 <h3 className="font-black text-sm uppercase tracking-[0.2em] text-muted-foreground/50">PRINT SETTINGS (EDIT)</h3>
 
-                {/* Printer Input */}
+                {/* Printer Input — flat Prisma column */}
                 <div className="space-y-2">
                     <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Printer</Label>
                     <Input
-                        value={printSettings.printer || ""}
-                        onChange={(e) => updatePrintSetting('printer', e.target.value)}
+                        value={editedModel.printer || ""}
+                        onChange={(e) => onLocalUpdate({ printer: e.target.value } as any)}
                         className="text-xs font-bold h-8"
                         placeholder="Default Printer"
                     />
@@ -184,15 +173,15 @@ export const MetadataSection_DB = ({
 
             <Separator />
 
-            {/* 3. Detailed Slicer Settings */}
+            {/* 3. Detailed Slicer Settings — flat Prisma columns */}
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     {/* Material */}
                     <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Material</Label>
                         <Input
-                            value={printSettings.material || ""}
-                            onChange={(e) => updatePrintSetting('material', e.target.value)}
+                            value={editedModel.material || ""}
+                            onChange={(e) => onLocalUpdate({ material: e.target.value } as any)}
                             className="h-8 text-xs font-bold uppercase"
                             placeholder="PLA"
                         />
@@ -202,8 +191,8 @@ export const MetadataSection_DB = ({
                     <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Layer Height (mm)</Label>
                         <Input
-                            value={printSettings.layerHeight || ""}
-                            onChange={(e) => updatePrintSetting('layerHeight', e.target.value)}
+                            value={editedModel.layerHeight || ""}
+                            onChange={(e) => onLocalUpdate({ layerHeight: e.target.value } as any)}
                             className="h-8 text-xs font-bold tabular-nums"
                             placeholder="0.2"
                         />
@@ -213,8 +202,8 @@ export const MetadataSection_DB = ({
                     <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Infill (%)</Label>
                         <Input
-                            value={printSettings.infill || ""}
-                            onChange={(e) => updatePrintSetting('infill', e.target.value)}
+                            value={editedModel.infill || ""}
+                            onChange={(e) => onLocalUpdate({ infill: e.target.value } as any)}
                             className="h-8 text-xs font-bold tabular-nums"
                             placeholder="15%"
                         />
@@ -224,8 +213,8 @@ export const MetadataSection_DB = ({
                     <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Nozzle (mm)</Label>
                         <Input
-                            value={printSettings.nozzle || ""}
-                            onChange={(e) => updatePrintSetting('nozzle', e.target.value)}
+                            value={editedModel.nozzle || ""}
+                            onChange={(e) => onLocalUpdate({ nozzle: e.target.value } as any)}
                             className="h-8 text-xs font-bold tabular-nums"
                             placeholder="0.4"
                         />

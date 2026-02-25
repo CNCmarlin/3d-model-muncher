@@ -165,16 +165,15 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
             tags: srcModel.tags || [],
             description: initialDescription,
             parsedImages: parsedImages,
-            // CRITICAL FIX: Copy metadata fields so they're available for editing
+            // CRITICAL FIX: Copy flat Prisma columns so they're available for editing
             category: srcModel.category || '',
             notes: srcModel.notes || '',
-            printSettings: srcModel.printSettings || {
-                layerHeight: '',
-                infill: '',
-                nozzle: '',
-                printer: '',
-                material: ''
-            },
+            // Flat print setting columns (DB-first, no virtual printSettings object)
+            layerHeight: srcModel.layerHeight || '',
+            infill: srcModel.infill || '',
+            nozzle: srcModel.nozzle || '',
+            printer: srcModel.printer || '',
+            material: srcModel.material || '',
             price: srcModel.price ?? 0,
             printTime: srcModel.printTime ?? 0,
             filamentUsage: srcModel.filamentUsage ?? 0,
