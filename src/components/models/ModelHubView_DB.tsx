@@ -315,11 +315,11 @@ export function ModelHubView_DB({
 
   // Derive display stuff
   const safePrintSettings = {
-    layerHeight: (activeModel as any).printSettings?.layerHeight || (activeModel.metadata as any)?.userDefined?.printSettings?.layerHeight || 'Unknown',
-    infill: (activeModel as any).printSettings?.infill || (activeModel.metadata as any)?.userDefined?.printSettings?.infill || 'Unknown',
-    nozzle: (activeModel as any).printSettings?.nozzle || (activeModel.metadata as any)?.userDefined?.printSettings?.nozzle || 'Unknown',
-    printer: (activeModel as any).printSettings?.printer || 'Unknown',
-    material: (activeModel as any).printSettings?.material || (activeModel.metadata as any)?.userDefined?.printSettings?.material || 'Unknown'
+    layerHeight: activeModel.layerHeight || 'Unknown',
+    infill: activeModel.infill || 'Unknown',
+    nozzle: activeModel.nozzle || 'Unknown',
+    printer: activeModel.printer || 'Unknown',
+    material: activeModel.material || 'Unknown'
   };
 
   const canHavePrintSettings = (() => {

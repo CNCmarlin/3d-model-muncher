@@ -104,6 +104,8 @@ const ModelUpdateSchema = z.object({
     isPrinted: BooleanSchema.optional(),
     isFavorite: BooleanSchema.optional(),
     isDeleted: BooleanSchema.optional(),
+    isHidden: BooleanSchema.optional(),
+    isComponent: BooleanSchema.optional(),
     tags: StringArraySchema.optional(),
     // Fields stored in metadata JSON
     category: OptionalStringSchema,
