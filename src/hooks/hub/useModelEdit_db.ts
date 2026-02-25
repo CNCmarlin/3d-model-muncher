@@ -233,27 +233,21 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
 
         const updates: any = {};
 
-        // Fields accepted by ModelUpdateSchema (server/schemas/model_db.js)
-        const ALLOWED_UPDATE_FIELDS = new Set([
-            'name', 'description', 'license', 'designer', 'source', 'notes',
-            'printTime', 'filamentUsage', 'isPrinted', 'isFavorite', 'isDeleted', 'isHidden', 'isComponent',
-            'category', 'price', 'filePath',
-            'layerHeight', 'infill', 'nozzle', 'printer', 'material', 'fileSize',
-            'gcodeFilePath', 'gcodePrintTime', 'gcodeTotalWeight', 'gcodeFilaments',
-            'gcodeData', 'printSettings', 'tags',
-            'metadata', 'userDefined', 'related_files',
-        ]);
-
-        // Dynamically sync fields instead of using a hardcoded allowlist
+        // Denylist: exclude relation arrays, virtual objects, and internal state.
+        // Everything else flows through — Zod .strip() silently drops unknown fields.
         const excludedKeys = new Set([
-            'id', 'createdAt', 'updatedAt', 'collection', 'images', 'thumbnail',
-            'parsedImages', 'files', 'relatedFiles', // exclude internal or non-editable relation arrays
-            '_count'
+            'id', 'createdAt', 'updatedAt',
+            // Relation arrays (Prisma includes, not direct columns)
+            'collection', 'files', 'relatedFiles', 'images',
+            // Virtual / computed fields (not DB columns)
+            'thumbnail', 'parsedImages', 'gallery', 'thumbnails',
+            'collections', 'excludedCollections',
+            'filamentUsed',   // legacy alias (DB uses filamentUsage)
+            '_count',
         ]);
 
         Object.keys(edited).forEach(key => {
             if (excludedKeys.has(key)) return;
-            if (!ALLOWED_UPDATE_FIELDS.has(key)) return; // Skip fields not in Zod schema
 
             const newVal = (edited as any)[key];
             const oldVal = (original as any)[key];
