@@ -24,7 +24,7 @@ import {
     FolderOpen,
     Paperclip, Plus,
     Star,
-    X
+    Trash2
 } from 'lucide-react';
 import React from 'react';
 
@@ -309,7 +309,132 @@ export const RelatedFilesSection_DB = ({
     // Strict Database First: Map over true DB objects
     const filesToEdit = currentModel.relatedFiles || [];
 
+    // Categorize files for edit mode grouping
+    const categorizeForEdit = (files: { id: string, path: string }[]) => {
+        const groups = {
+            models: [] as { id: string, path: string, idx: number }[],
+            docs: [] as { id: string, path: string, idx: number }[],
+            gcode: [] as { id: string, path: string, idx: number }[],
+        };
+        files.forEach((rf, idx) => {
+            const ext = rf.path.split('.').pop()?.toLowerCase() || '';
+            if (['stl', '3mf', 'obj', 'step'].includes(ext)) {
+                groups.models.push({ ...rf, idx });
+            } else if (['gcode', 'bgcode'].includes(ext)) {
+                groups.gcode.push({ ...rf, idx });
+            } else {
+                groups.docs.push({ ...rf, idx });
+            }
+        });
+        return groups;
+    };
+
     if (isEditing) {
+        const editGroups = categorizeForEdit(filesToEdit);
+
+        const renderFileRow = (rf: { id: string, path: string, idx: number }) => (
+            <div key={`related-edit-${rf.id}`} className="flex items-center gap-2 group">
+                <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                        <Button
+                            size="icon" variant="ghost"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the file from the server's disk and remove it from the 3D Model Muncher database.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                        await deleteRelatedFile.mutateAsync({ id: currentModel.id, relatedFileId: rf.id });
+                                        toast?.success?.("File permanently deleted.");
+                                    } catch (error: any) {
+                                        toast?.error?.(error.message || "Failed to delete file.");
+                                    }
+                                }}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                                Permanently Delete
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
+
+                <Input
+                    defaultValue={rf.path}
+                    className="h-9 font-mono text-xs bg-background/50 border-border/40 focus-visible:ring-primary/20"
+                    onBlur={async (e) => {
+                        const newPath = e.target.value;
+                        if (newPath === rf.path) return;
+                        if (!newPath.trim()) {
+                            toast?.error?.("Path cannot be empty. Use the delete button instead.");
+                            e.target.value = rf.path;
+                            return;
+                        }
+                        try {
+                            await updateRelatedFile.mutateAsync({ id: currentModel.id, relatedFileId: rf.id, path: newPath });
+                            toast?.success?.("Path updated.");
+                        } catch (err: any) {
+                            toast?.error?.(err.message || "Failed to update path.");
+                            e.target.value = rf.path;
+                        }
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.currentTarget.blur();
+                        }
+                    }}
+                />
+
+                <Button
+                    size="sm" variant="outline" className="h-9 min-w-[40px] px-2"
+                    title="Verify file exists on disk"
+                    onClick={async (e) => {
+                        e.stopPropagation();
+                        setRelatedVerifyStatus(prev => ({ ...prev, [rf.idx]: { loading: true } }));
+                        try {
+                            const resp = await fetch('/api/verify-file', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ path: rf.path })
+                            });
+                            const j = await resp.json();
+                            const exists = !!(j && j.success && j.exists);
+                            setRelatedVerifyStatus(prev => ({ ...prev, [rf.idx]: { loading: false, ok: exists } }));
+                            if (exists) {
+                                toast?.success?.(`✓ File verified: ${rf.path.split('/').pop()}`);
+                            } else {
+                                toast?.error?.(`✗ File not found: ${rf.path.split('/').pop()}`);
+                            }
+                        } catch (err) {
+                            setRelatedVerifyStatus(prev => ({ ...prev, [rf.idx]: { loading: false, ok: false } }));
+                            toast?.error?.("Verification failed — server unreachable.");
+                        }
+                    }}
+                >
+                    {relatedVerifyStatus[rf.idx]?.loading ? '...' : relatedVerifyStatus[rf.idx]?.ok ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Ban className="h-4 w-4 text-destructive" />}
+                </Button>
+            </div>
+        );
+
+        const sectionHeader = (icon: React.ReactNode, label: string, count: number) => (
+            <div className="flex items-center gap-2 pt-2 pb-1">
+                {icon}
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">{label}</span>
+                <span className="text-[9px] font-mono text-muted-foreground/30">({count})</span>
+            </div>
+        );
+
         return (
             <div className="space-y-4 rounded-xl border border-dashed border-primary/20 p-6 bg-primary/5">
                 <div className="flex items-center justify-between border-b border-primary/10 pb-4">
@@ -321,121 +446,64 @@ export const RelatedFilesSection_DB = ({
                     </div>
                 </div>
 
-                <div className="space-y-3">
-                    {filesToEdit.map((rf, idx) => (
-                        <div key={`related-edit-${rf.id}`} className="flex items-center gap-2 group">
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button
-                                        size="icon" variant="ghost"
-                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                    >
-                                        <X className="h-4 w-4" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action cannot be undone. This will permanently delete the file from the server's disk and remove it from the 3D Model Muncher database.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction
-                                            onClick={async (e) => {
-                                                e.stopPropagation();
-                                                try {
-                                                    await deleteRelatedFile.mutateAsync({ id: currentModel.id, relatedFileId: rf.id });
-                                                    toast?.success?.("File permanently deleted.");
-                                                } catch (error: any) {
-                                                    toast?.error?.(error.message || "Failed to delete file.");
-                                                }
-                                            }}
-                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                        >
-                                            Permanently Delete
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
+                <div className="space-y-1">
+                    {/* Models Section */}
+                    {editGroups.models.length > 0 && (
+                        <>
+                            {sectionHeader(<Box className="h-3 w-3 text-muted-foreground/40" />, "Models", editGroups.models.length)}
+                            {editGroups.models.map(renderFileRow)}
+                        </>
+                    )}
 
-                            <Input
-                                defaultValue={rf.path}
-                                className="h-9 font-mono text-xs bg-background/50 border-border/40 focus-visible:ring-primary/20"
-                                onBlur={async (e) => {
-                                    const newPath = e.target.value;
-                                    if (newPath === rf.path) return; // No change
-                                    if (!newPath.trim()) {
-                                        toast?.error?.("Path cannot be empty. Use the delete button instead.");
-                                        e.target.value = rf.path; // Revert to original
-                                        return;
-                                    }
-                                    try {
-                                        await updateRelatedFile.mutateAsync({ id: currentModel.id, relatedFileId: rf.id, path: newPath });
-                                        toast?.success?.("Path updated.");
-                                    } catch (err: any) {
-                                        toast?.error?.(err.message || "Failed to update path.");
-                                        e.target.value = rf.path; // Revert
-                                    }
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.currentTarget.blur();
-                                    }
-                                }}
-                            />
+                    {/* Documents Section */}
+                    {editGroups.docs.length > 0 && (
+                        <>
+                            {sectionHeader(<Paperclip className="h-3 w-3 text-muted-foreground/40" />, "Documents", editGroups.docs.length)}
+                            {editGroups.docs.map(renderFileRow)}
+                        </>
+                    )}
 
-                            <Button
-                                size="sm" variant="outline" className="h-9 min-w-[40px] px-2"
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: true } }));
-                                    try {
-                                        const resp = await fetch('/api/verify-file', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ path: rf.path })
-                                        });
-                                        const j = await resp.json();
-                                        setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: !!(j && j.success && j.exists) } }));
-                                    } catch (err) {
-                                        setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: false } }));
-                                    }
-                                }}
-                            >
-                                {relatedVerifyStatus[idx]?.loading ? '...' : relatedVerifyStatus[idx]?.ok ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Ban className="h-4 w-4 text-destructive" />}
-                            </Button>
+                    {/* G-Code Section */}
+                    {editGroups.gcode.length > 0 && (
+                        <>
+                            {sectionHeader(<FileCode className="h-3 w-3 text-muted-foreground/40" />, "G-Code", editGroups.gcode.length)}
+                            {editGroups.gcode.map(renderFileRow)}
+                        </>
+                    )}
+
+                    {filesToEdit.length === 0 && (
+                        <div className="py-6 text-center opacity-30">
+                            <p className="text-[10px] font-mono uppercase tracking-widest">// No_Related_Files</p>
                         </div>
-                    ))}
+                    )}
+                </div>
 
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                        <Button
-                            variant="outline" size="sm" className="h-9 border-dashed text-[10px] font-black uppercase tracking-tighter"
-                            onClick={async () => {
-                                try {
-                                    await addRelatedFile.mutateAsync({ id: currentModel.id, path: `new/path/to/file-${Date.now()}.stl` });
-                                    toast?.success?.("New empty record created.");
-                                } catch (err: any) {
-                                    toast?.error?.(err.message || "Failed to create new record.");
-                                }
-                            }}
-                        >
-                            <Plus className="mr-2 h-3.5 w-3.5" /> Link_Entry
-                        </Button>
-                        <Button
-                            variant="outline" size="sm" className="h-9 border-dashed text-[10px] font-black uppercase tracking-tighter"
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            <Plus className="mr-2 h-3.5 w-3.5" /> Upload_File
-                        </Button>
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            className="hidden"
-                            onChange={handleTargetedUpload}
-                        />
-                    </div>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                    <Button
+                        variant="outline" size="sm" className="h-9 border-dashed text-[10px] font-black uppercase tracking-tighter"
+                        onClick={async () => {
+                            try {
+                                await addRelatedFile.mutateAsync({ id: currentModel.id, path: `new/path/to/file-${Date.now()}.stl` });
+                                toast?.success?.("New empty record created.");
+                            } catch (err: any) {
+                                toast?.error?.(err.message || "Failed to create new record.");
+                            }
+                        }}
+                    >
+                        <Plus className="mr-2 h-3.5 w-3.5" /> Link_Entry
+                    </Button>
+                    <Button
+                        variant="outline" size="sm" className="h-9 border-dashed text-[10px] font-black uppercase tracking-tighter"
+                        onClick={() => fileInputRef.current?.click()}
+                    >
+                        <Plus className="mr-2 h-3.5 w-3.5" /> Upload_File
+                    </Button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        onChange={handleTargetedUpload}
+                    />
                 </div>
             </div>
         );
