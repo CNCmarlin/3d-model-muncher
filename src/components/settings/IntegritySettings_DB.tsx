@@ -55,7 +55,6 @@ export function IntegritySettings_DB({
     handleRehash,
     selectedFileTypes,
     setSelectedFileTypes,
-    unhashedCount,
     models,
     onModelClick,
 }: IntegritySettingsProps) {
@@ -351,7 +350,7 @@ export function IntegritySettings_DB({
                                                 <DialogHeader>
                                                     <DialogTitle>Remove Duplicate Files</DialogTitle>
                                                     <DialogDescription>
-                                                        Choose which file to keep. All other copies will be removed from the database.
+                                                        Click <strong>Keep This</strong> next to the file you want to keep. All other copies will be removed from the database.
                                                         <strong className="text-destructive block mt-1">This action cannot be undone.</strong>
                                                     </DialogDescription>
                                                 </DialogHeader>
@@ -360,16 +359,19 @@ export function IntegritySettings_DB({
                                                         {group.models.map((model: Model) => (
                                                             <div
                                                                 key={`dup-dialog-${group.hash}-${model.id}`}
-                                                                className="flex items-center justify-between p-2 bg-muted rounded-md gap-2"
+                                                                className="flex items-center gap-2 p-2 bg-muted rounded-md"
                                                             >
-                                                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                                    <ModelThumbnail model={model} name={model.name} />
-                                                                    <span className="text-sm truncate">{getDisplayPath_db(model as any)}</span>
-                                                                </div>
+                                                                <ModelThumbnail model={model} name={model.name} />
+                                                                <span
+                                                                    className="text-sm flex-1 min-w-0 break-all"
+                                                                    title={getDisplayPath_db(model as any)}
+                                                                >
+                                                                    {getDisplayPath_db(model as any)}
+                                                                </span>
                                                                 <Button
-                                                                    variant="destructive"
+                                                                    variant="outline"
                                                                     size="sm"
-                                                                    className="shrink-0"
+                                                                    className="shrink-0 border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950"
                                                                     onClick={async () => {
                                                                         const success = await handleRemoveDuplicates(group, model.id);
                                                                         if (success) setOpenDuplicateGroupHash(null);
