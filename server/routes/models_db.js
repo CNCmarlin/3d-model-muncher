@@ -562,10 +562,12 @@ router.post('/hash-check', async (req, res) => {
         const prisma = require('../../server-utils/db');
         const modelsDir = getAbsoluteModelsPath();
 
-        // Query ModelFile records — these store the actual model file paths (.stl, .3mf)
+        // Query only PRIMARY ModelFile records — one per model.
+        // Without this filter, every component/variant file is checked separately (35k+ records).
         const modelFiles = await prisma.modelFile.findMany({
             where: {
                 filePath: { endsWith: ext },
+                isPrimary: true,
                 model: { isDeleted: false },
             },
             select: {
