@@ -135,6 +135,7 @@ model ModelFile {
   filename    String   // "head.stl"
   filePath    String   @map("file_path") // Relative path for streaming
   size        BigInt?  @map("size_bytes") // Access as BigInt in JS/TS
+  fileHash    String?  @map("file_hash") // SHA-256 content hash
   
   // Function
   isPrimary   Boolean  @default(false) @map("is_primary")

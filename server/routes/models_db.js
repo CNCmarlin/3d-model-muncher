@@ -574,8 +574,9 @@ router.post('/hash-check', async (req, res) => {
                 id: true,
                 filePath: true,
                 filename: true,
+                fileHash: true,
                 modelId: true,
-                model: { select: { id: true, name: true, pathHash: true } },
+                model: { select: { id: true, name: true } },
             }
         });
 
@@ -600,26 +601,30 @@ router.post('/hash-check', async (req, res) => {
             const baseName = mf.model?.name || path.basename(absPath, ext);
 
             let status, actualHash = null, details = null;
-            const storedHash = mf.model?.pathHash || null;
+            const storedHash = mf.fileHash || null;
 
             if (!fs.existsSync(absPath)) {
                 status = 'missing';
                 details = `File not found on disk: ${displayPath}`;
-            } else if (storedHash) {
+            } else {
                 try {
                     const fileBuffer = fs.readFileSync(absPath);
                     actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-                    status = (storedHash === actualHash) ? 'ok' : 'hash_mismatch';
-                    if (status === 'hash_mismatch') {
+
+                    if (!storedHash) {
+                        // File exists but never been hashed
+                        status = 'no_hash';
+                        details = 'File exists but has no stored hash. Run rehash to compute.';
+                    } else if (storedHash === actualHash) {
+                        status = 'ok';
+                    } else {
+                        status = 'hash_mismatch';
                         details = 'File hash differs from stored record — file may have been updated on disk.';
                     }
                 } catch (hashErr) {
                     status = 'error';
                     details = `Could not read file: ${hashErr.message}`;
                 }
-            } else {
-                // File exists but no stored hash — treat as verified (existence check only)
-                status = 'ok';
             }
 
             const result = {
@@ -629,6 +634,7 @@ router.post('/hash-check', async (req, res) => {
                 status,
                 details,
                 modelId: mf.modelId,
+                fileId: mf.id,
             };
 
             if (fileType === '3mf') result.threeMF = displayPath;
@@ -641,6 +647,70 @@ router.post('/hash-check', async (req, res) => {
     } catch (error) {
         console.error('[DB API] hash-check error:', error);
         return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/rehash — compute SHA-256 for all primary ModelFile records and store in fileHash
+router.post('/rehash', async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+        const modelsDir = getAbsoluteModelsPath();
+        const { fileType } = req.body; // '3mf', 'stl', or 'all'
+
+        const ext = fileType === 'all' ? undefined : `.${fileType}`;
+        const where = {
+            isPrimary: true,
+            model: { isDeleted: false },
+            ...(ext ? { filePath: { endsWith: ext } } : {}),
+        };
+
+        const modelFiles = await prisma.modelFile.findMany({
+            where,
+            select: { id: true, filePath: true, fileHash: true },
+        });
+
+        let updated = 0, skipped = 0, missing = 0, errors = 0;
+
+        for (const mf of modelFiles) {
+            if (!mf.filePath) { skipped++; continue; }
+
+            let absPath;
+            if (path.isAbsolute(mf.filePath)) {
+                absPath = mf.filePath;
+            } else {
+                let cleanPath = mf.filePath;
+                if (cleanPath.startsWith('/models/')) cleanPath = cleanPath.substring(8);
+                else if (cleanPath.startsWith('models/')) cleanPath = cleanPath.substring(7);
+                absPath = path.join(modelsDir, cleanPath);
+            }
+
+            if (!fs.existsSync(absPath)) {
+                missing++;
+                continue;
+            }
+
+            try {
+                const fileBuffer = fs.readFileSync(absPath);
+                const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+                if (mf.fileHash !== hash) {
+                    await prisma.modelFile.update({
+                        where: { id: mf.id },
+                        data: { fileHash: hash },
+                    });
+                    updated++;
+                } else {
+                    skipped++;
+                }
+            } catch (err) {
+                errors++;
+            }
+        }
+
+        res.json({ success: true, total: modelFiles.length, updated, skipped, missing, errors });
+    } catch (error) {
+        console.error('[DB API] rehash error:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

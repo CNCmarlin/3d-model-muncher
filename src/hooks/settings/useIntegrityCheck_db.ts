@@ -25,9 +25,11 @@ export function useIntegrityCheck_db({
     const [selectedFileTypes, setSelectedFileTypes] = useState<{ "3mf": boolean; "stl": boolean }>({ "3mf": true, "stl": true });
     const [hashCheckResult, setHashCheckResult] = useState<HashCheckResult | null>(null);
     const [isHashChecking, setIsHashChecking] = useState(false);
+    const [isRehashing, setIsRehashing] = useState(false);
     const [hashCheckProgress, setHashCheckProgress] = useState(0);
     const [corruptedModels, setCorruptedModels] = useState<Record<string, Model>>({});
     const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
+    const [unhashedCount, setUnhashedCount] = useState(0);
 
     // Load corrupted model data from DB when hash check results change
     useEffect(() => {
@@ -87,8 +89,7 @@ export function useIntegrityCheck_db({
         setHashCheckProgress(0);
 
         try {
-            let allVerified = 0;
-            let allCorrupted = 0;
+            let allVerified = 0, allCorrupted = 0, allUnhashed = 0;
             const allCorruptedFiles: CorruptedFile[] = [];
             const allDuplicateGroups: DuplicateGroup[] = [];
             const allHashToModels: Record<string, Model[]> = {};
@@ -141,6 +142,8 @@ export function useIntegrityCheck_db({
 
                     if (r.status === 'ok') {
                         allVerified++;
+                    } else if (r.status === 'no_hash') {
+                        allUnhashed++;
                     } else {
                         allCorrupted++;
                         const displayPath = r.threeMF ? `/models/${r.threeMF}` : r.stl ? `/models/${r.stl}` : '';
@@ -171,14 +174,16 @@ export function useIntegrityCheck_db({
             }
 
             setDuplicateGroups(allDuplicateGroups);
+            setUnhashedCount(allUnhashed);
             setHashCheckResult({
                 verified: allVerified,
                 corrupted: allCorrupted,
+                unhashed: allUnhashed,
                 duplicateGroups: allDuplicateGroups,
                 corruptedFiles: allCorruptedFiles,
                 corruptedFileDetails: allCorruptedFiles,
                 lastCheck: new Date().toISOString()
-            });
+            } as any);
 
             onModelsUpdate(allUpdatedModels as any);
             setSaveStatus('saved');
@@ -239,20 +244,53 @@ export function useIntegrityCheck_db({
         }
     };
 
+    // --- Rehash (compute + store sha256 for all primary files) ---
+    const handleRehash = async () => {
+        setIsRehashing(true);
+        setSaveStatus('saving');
+        setStatusMessage('Computing file hashes...');
+
+        try {
+            const resp = await fetch('/api/rehash', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileType: 'all' }),
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+
+            setStatusMessage(`Rehash complete: ${data.updated} updated, ${data.skipped} unchanged, ${data.missing} missing`);
+            setSaveStatus('saved');
+
+            // Re-run hash check to refresh stats
+            setTimeout(() => {
+                handleRunHashCheck();
+            }, 500);
+        } catch (error: any) {
+            setSaveStatus('error');
+            setStatusMessage(error.message || 'Rehash failed');
+        } finally {
+            setIsRehashing(false);
+        }
+    };
+
     return {
         // State
         hashCheckResult,
         setHashCheckResult,
         isHashChecking,
+        isRehashing,
         hashCheckProgress,
         corruptedModels,
         duplicateGroups,
         setDuplicateGroups,
         selectedFileTypes,
         setSelectedFileTypes,
+        unhashedCount,
 
         // Actions
         handleRunHashCheck,
         handleRemoveDuplicates,
+        handleRehash,
     };
 }

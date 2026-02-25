@@ -18,7 +18,7 @@ import { useIntegrityCheck_db } from '@/hooks/settings/useIntegrityCheck_db';
 import { Model } from '@/types/model_db';
 import { getDisplayPath_db } from '@/utils/clientUtils_db';
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils_db";
-import { AlertTriangle, Box, ChevronDown, FileCheck, Files, FolderSync, Ghost, HardDrive, Link2, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertTriangle, Box, ChevronDown, FileCheck, Files, FolderSync, Ghost, HardDrive, Hash, Link2, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 type IntegritySettingsProps = ReturnType<typeof useIntegrityCheck_db> & {
@@ -47,12 +47,15 @@ const ModelThumbnail = ({ name, model }: { name: string; model?: any }) => {
 export function IntegritySettings_DB({
     hashCheckResult,
     isHashChecking,
+    isRehashing,
     hashCheckProgress,
     corruptedModels,
     handleRunHashCheck,
     handleRemoveDuplicates,
+    handleRehash,
     selectedFileTypes,
     setSelectedFileTypes,
+    unhashedCount,
     models,
     onModelClick,
 }: IntegritySettingsProps) {
@@ -224,11 +227,17 @@ export function IntegritySettings_DB({
 
                 {/* Summary stats */}
                 {hashCheckResult && (
-                    <div className="flex flex-wrap gap-4">
+                    <div className="flex flex-wrap gap-4 items-center">
                         <div className="flex items-center gap-2">
                             <FileCheck className="h-4 w-4 text-green-600" />
                             <span className="text-sm">{hashCheckResult.verified} verified</span>
                         </div>
+                        {(hashCheckResult as any).unhashed > 0 && (
+                            <div className="flex items-center gap-2">
+                                <Hash className="h-4 w-4 text-amber-500" />
+                                <span className="text-sm text-amber-600">{(hashCheckResult as any).unhashed} unhashed</span>
+                            </div>
+                        )}
                         {hashCheckResult.corrupted > 0 && (
                             <div className="flex items-center gap-2">
                                 <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -242,6 +251,42 @@ export function IntegritySettings_DB({
                             </div>
                         )}
                     </div>
+                )}
+
+                {/* Rehash button — shown when unhashed files exist */}
+                {hashCheckResult && ((hashCheckResult as any).unhashed > 0 || hashCheckResult.corrupted > 0) && (
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={isRehashing}
+                                className="gap-2"
+                            >
+                                {isRehashing
+                                    ? <RefreshCw className="h-4 w-4 animate-spin" />
+                                    : <Hash className="h-4 w-4" />
+                                }
+                                {isRehashing ? 'Rehashing…' : `Rehash All (${((hashCheckResult as any).unhashed || 0) + hashCheckResult.corrupted})`}
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Compute / update file hashes?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This will read every primary model file from disk, compute its SHA-256 hash, and store it in the database.
+                                    Files with mismatched hashes will be updated to match the current file on disk.
+                                    <strong className="block mt-1">This may take a few minutes for large libraries.</strong>
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleRehash}>
+                                    Rehash All Files
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                 )}
 
                 {/* Missing / mismatched files */}
