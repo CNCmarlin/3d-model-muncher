@@ -901,6 +901,76 @@ router.post('/resync-purge-model-ghosts', async (req, res) => {
     }
 });
 
+// POST /api/admin/resync-link-orphans
+// Links orphaned files to their parent models as ModelRelatedFile records.
+// Matches orphan directory to Model's collection directory structure.
+router.post('/resync-link-orphans', async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+        const modelsDir = getAbsoluteModelsPath();
+        const { paths } = req.body; // Array of relative file paths (from orphan scan)
+
+        if (!paths || !Array.isArray(paths) || paths.length === 0) {
+            return res.status(400).json({ success: false, error: 'No paths provided' });
+        }
+
+        // Get all ModelFile records to find which model lives in which directory
+        const allModelFiles = await prisma.modelFile.findMany({
+            select: { filePath: true, modelId: true },
+        });
+
+        // Build a directory → modelId map
+        // Each ModelFile.filePath like "CollectionA/ModelFolder/model.3mf"
+        // We extract the directory part and map it to the modelId
+        const dirToModelId = new Map();
+        for (const mf of allModelFiles) {
+            if (!mf.filePath) continue;
+            const dir = mf.filePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+            if (dir && !dirToModelId.has(dir)) {
+                dirToModelId.set(dir, mf.modelId);
+            }
+        }
+
+        let linked = 0;
+        let skipped = 0;
+        const errors = [];
+
+        for (const orphanPath of paths) {
+            const normalizedPath = orphanPath.replace(/\\/g, '/');
+            const dir = normalizedPath.split('/').slice(0, -1).join('/');
+            const modelId = dirToModelId.get(dir);
+
+            if (!modelId) {
+                skipped++;
+                continue;
+            }
+
+            // Check if this related file already exists
+            const existing = await prisma.modelRelatedFile.findFirst({
+                where: { modelId, path: normalizedPath },
+            });
+            if (existing) {
+                skipped++;
+                continue;
+            }
+
+            try {
+                await prisma.modelRelatedFile.create({
+                    data: { modelId, path: normalizedPath },
+                });
+                linked++;
+            } catch (e) {
+                errors.push({ path: orphanPath, error: e.message });
+            }
+        }
+
+        res.json({ success: true, linked, skipped, errors: errors.length > 0 ? errors : undefined });
+    } catch (err) {
+        console.error('Link Orphans Error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // POST /api/admin/purge-thumbnails-preview (dry run — list files that would be deleted)
 router.post('/purge-thumbnails-preview', async (req, res) => {
     try {

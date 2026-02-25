@@ -572,7 +572,6 @@ router.post('/hash-check', async (req, res) => {
                 id: true,
                 filePath: true,
                 filename: true,
-                hash: true,
                 modelId: true,
                 model: { select: { id: true, name: true, pathHash: true } },
             }
@@ -599,7 +598,7 @@ router.post('/hash-check', async (req, res) => {
             const baseName = mf.model?.name || path.basename(absPath, ext);
 
             let status, actualHash = null, details = null;
-            const storedHash = mf.hash || mf.model?.pathHash || null;
+            const storedHash = mf.model?.pathHash || null;
 
             if (!fs.existsSync(absPath)) {
                 status = 'missing';

@@ -18,7 +18,7 @@ import { useIntegrityCheck_db } from '@/hooks/settings/useIntegrityCheck_db';
 import { Model } from '@/types/model_db';
 import { getDisplayPath_db } from '@/utils/clientUtils_db';
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils_db";
-import { AlertTriangle, Box, ChevronDown, FileCheck, Files, FolderSync, Ghost, HardDrive, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertTriangle, Box, ChevronDown, FileCheck, Files, FolderSync, Ghost, HardDrive, Link2, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 type IntegritySettingsProps = ReturnType<typeof useIntegrityCheck_db> & {
@@ -124,6 +124,27 @@ export function IntegritySettings_DB({
             await handleResync();
         } catch (err: any) {
             setResyncError(err.message || 'Purge failed');
+        } finally {
+            setIsPurging(false);
+        }
+    }, [resyncResult, handleResync]);
+
+    const handleLinkOrphans = useCallback(async () => {
+        if (!resyncResult?.orphans.length) return;
+        setIsPurging(true);
+        try {
+            const paths = resyncResult.orphans.map(o => o.path);
+            const resp = await fetch('/api/admin/resync-link-orphans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths }),
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+            // Re-run scan to refresh results (linked files won't show as orphans anymore)
+            await handleResync();
+        } catch (err: any) {
+            setResyncError(err.message || 'Link failed');
         } finally {
             setIsPurging(false);
         }
@@ -426,9 +447,34 @@ export function IntegritySettings_DB({
                                     </button>
                                     {expandedSection === 'orphans' && (
                                         <div className="border-t">
-                                            <p className="px-4 pt-3 pb-2 text-xs text-muted-foreground">
-                                                These files exist on disk but have no database record. They may be non-primary model formats (.step, .obj, .gcode) or manually added files.
-                                            </p>
+                                            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                                <p className="text-xs text-muted-foreground">
+                                                    These files exist on disk but have no database record. They may be non-primary model formats (.step, .obj, .gcode) or manually added files.
+                                                </p>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="outline" size="sm" disabled={isPurging} className="gap-1.5 shrink-0">
+                                                            <Link2 className="h-3.5 w-3.5" />
+                                                            Link All ({resyncResult.orphans.length})
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Link {resyncResult.orphans.length} orphaned files?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This will match each orphaned file to the model in its directory and add it as a Related File.
+                                                                Files in directories without a matching model will be skipped.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction onClick={handleLinkOrphans}>
+                                                                Link to Related Files
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </div>
                                             <div className="h-[300px]">
                                                 <ScrollArea className="h-full">
                                                     <div className="px-4 pb-4 space-y-1">
