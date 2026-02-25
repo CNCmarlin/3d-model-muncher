@@ -86,7 +86,7 @@ function parseFileSize(sizeStr: string | undefined | null): number {
 /**
  * Format bytes to human readable file size
  */
-function formatFileSize(bytes: number): string {
+export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
 
   const k = 1024;

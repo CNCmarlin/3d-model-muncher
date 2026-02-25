@@ -48,7 +48,7 @@ export function useModelActions_db({
             },
             {
                 onSuccess: () => {
-                    console.log("Model saved successfully!");
+                    // Model update confirmed by React Query cache invalidation
                 },
                 onError: (error: unknown) => {
                     console.error('Failed to persist model change:', error);

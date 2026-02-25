@@ -3,8 +3,8 @@ import { CollectionListRow_DB } from '@/components/collections/CollectionListRow
 import { LayoutControls_DB } from '@/components/layout/LayoutControls_DB';
 import { useLayoutSettings } from '@/components/layout/LayoutSettingsContext_DB';
 import { Category } from '@/types/category';
-import { Collection } from '@/types/collection';
-import { Model } from '@/types/model';
+import { Collection } from '@/types/collection_db';
+import { Model } from '@/types/model_db';
 import { SortKey, sortCollections } from '@/utils/sortUtils';
 
 interface CollectionsViewProps {

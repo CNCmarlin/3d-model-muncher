@@ -18,16 +18,15 @@ class ThreeJSManagerClass {
     }
 
     this.activeInstances.add(id);
-    console.log(`ThreeJS: Registered instance ${id}. Active instances: ${this.activeInstances.size}`);
     return true;
   }
 
   unregister(id: string): void {
     const wasActive = this.activeInstances.has(id);
     this.activeInstances.delete(id);
-    
+
     if (wasActive) {
-      console.log(`ThreeJS: Unregistered instance ${id}. Active instances: ${this.activeInstances.size}`);
+      // instance removed — WebGL cleanup scheduled below
     }
 
     // Schedule cleanup of WebGL contexts after a delay

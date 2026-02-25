@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
 import { useNavigation } from "@/context/NavigationContext";
 import { Collection } from "@/types/collection";
 import { Model } from "@/types/model";
 import { applyFiltersToModels, FilterState } from "@/utils/filterUtils";
 import { SortKey, sortModels } from "@/utils/sortUtils";
+import { useEffect, useMemo, useState } from "react";
 
 interface UseFilteredModelsProps {
     models: Model[];
@@ -143,15 +143,6 @@ export function useFilteredModels({
 
         const filtered = applyFiltersToModels(base, effectiveFilters);
         const sorted = sortModels(filtered, currentSortBy);
-
-        // DEBUG
-        console.log('[useFilteredModels] Debug:', {
-            activeCollectionId: activeCollection?.id,
-            baseModelsLength: base.length,
-            filteredLength: filtered.length,
-            sortedLength: sorted.length,
-            isSelectionMode
-        });
 
         setFilteredModels(sorted);
 

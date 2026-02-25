@@ -1,4 +1,4 @@
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 
 const API_BASE = '/api/models';
 

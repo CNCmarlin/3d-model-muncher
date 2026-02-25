@@ -1,5 +1,5 @@
 import { useModelMutations_DB } from '@/hooks/useModelMutations_DB';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import { buildImageOrderFromModel, getUserImageData, resolveImageOrderToUrls } from '@/utils/galleryUtils';
 import { compressImageFile } from '@/utils/imageUtils';
 import { useEffect, useRef, useState } from 'react';
@@ -153,13 +153,7 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
         }
         setRestoreOriginalDescription(false);
 
-        // DEBUG: Check what's in srcModel
-        console.log('[useModelEdit] startEditing called');
-        console.log('[useModelEdit] srcModel.category:', srcModel.category);
-        console.log('[useModelEdit] srcModel.printSettings:', srcModel.printSettings);
-        console.log('[useModelEdit] srcModel.notes:', srcModel.notes);
 
-        // Images Logic
         const { images: legacyImages, ...srcModelWithoutImages } = srcModel;
         const parsedImages = Array.isArray(srcModel.parsedImages)
             ? srcModel.parsedImages
@@ -182,16 +176,14 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
                 material: ''
             },
             price: srcModel.price ?? 0,
+            printTime: srcModel.printTime ?? 0,
+            filamentUsage: srcModel.filamentUsage ?? 0,
             hidden: srcModel.hidden ?? false,
             designer: srcModel.designer ?? '',
             license: srcModel.license ?? '',
             isPrinted: srcModel.isPrinted ?? false,
             related_files: srcModel.related_files || []
         } as Model;
-
-        // DEBUG: Check what's in nextModel
-        console.log('[useModelEdit] nextModel.category:', nextModel.category);
-        console.log('[useModelEdit] nextModel.printSettings:', nextModel.printSettings);
 
         // Count logic for Gallery
         const parsedImgs = parsedImages;
@@ -213,7 +205,7 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
         parsedImagesSnapshotRef.current = parsedImgs.slice();
 
         // Initialize inlineCombined using shared util
-        const resolvedFromOrder = resolveImageOrderToUrls(srcModel as Model);
+        const resolvedFromOrder = resolveImageOrderToUrls(srcModel as any);
         if (resolvedFromOrder && resolvedFromOrder.length > 0) {
             setInlineCombined(resolvedFromOrder);
         } else {
@@ -236,26 +228,26 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
     const saveModelToFile = async (edited: Model, original: Model) => {
         if (!edited.id) return { success: false, error: "Missing model ID" };
 
-        // DEBUG: What's actually in edited when save is clicked?
-        console.log('[useModelEdit] saveModelToFile called');
-        console.log('[useModelEdit] edited.category:', edited.category);
-        console.log('[useModelEdit] edited.printSettings:', edited.printSettings);
-        console.log('[useModelEdit] edited.notes:', edited.notes);
-
         const { invalid } = validateAndNormalizeRelatedFiles(edited.related_files as any);
         if (invalid.length > 0) return { success: false, error: 'validation_failed', invalid } as any;
 
-        // Build updates object with only changed fields
         const updates: any = {};
-        const keysToSync = [
-            'name', 'description', 'notes', 'category', 'license', 'tags', 'price',
-            'isPrinted', 'hidden', 'printSettings', 'designer',
-            'printTime', 'filamentUsed', 'userDefined', 'related_files'
-        ];
 
-        keysToSync.forEach(key => {
+        // Dynamically sync fields instead of using a hardcoded allowlist
+        const excludedKeys = new Set([
+            'id', 'createdAt', 'updatedAt', 'collection', 'images', 'thumbnail',
+            'parsedImages', 'files', // exclude internal or non-editable relation arrays
+            '_count'
+        ]);
+
+        Object.keys(edited).forEach(key => {
+            if (excludedKeys.has(key)) return;
+
             const newVal = (edited as any)[key];
             const oldVal = (original as any)[key];
+
+            if (newVal === undefined) return; // Never send literal undefined
+
             if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
                 updates[key] = newVal;
             }
@@ -281,7 +273,7 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
         // Image Order Enforcement
         try {
             const udObj = edited.userDefined && typeof edited.userDefined === 'object' ? { ...(edited.userDefined as any) } : {};
-            let imageOrderFinal = Array.isArray(udObj.imageOrder) ? udObj.imageOrder : buildImageOrderFromModel(edited);
+            let imageOrderFinal = Array.isArray(udObj.imageOrder) ? udObj.imageOrder : buildImageOrderFromModel(edited as any);
 
             if (Array.isArray(imageOrderFinal) && imageOrderFinal.length > 0) {
                 if (!updates.userDefined) updates.userDefined = {};
@@ -312,7 +304,10 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
         try {
             const result = await saveModelToFile(editedModel, model);
             if (result && result.success) {
-                const finalModelToUpdate = result.refreshedModel || editedModel;
+                const finalModelToUpdate = {
+                    ...(result.refreshedModel || editedModel),
+                    _skipMutation: true
+                };
                 onModelUpdate(finalModelToUpdate);
                 setIsEditing(false);
                 setEditedModel(null);
@@ -337,7 +332,7 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
         existingUserImages.push(dataUrl);
         udObj.images = existingUserImages;
 
-        const currentOrder: string[] = Array.isArray(udObj.imageOrder) ? udObj.imageOrder.slice() : buildImageOrderFromModel(editedModel);
+        const currentOrder: string[] = Array.isArray(udObj.imageOrder) ? udObj.imageOrder.slice() : buildImageOrderFromModel(editedModel as any);
         const newUserIndex = existingUserImages.length - 1;
         currentOrder.push(`user:${newUserIndex}`);
         udObj.imageOrder = currentOrder;
@@ -345,8 +340,8 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
         const nextModel = { ...(editedModel as any), userDefined: udObj } as Model;
         setEditedModel(nextModel);
 
-        const resolved = resolveImageOrderToUrls(nextModel) || [];
-        setInlineCombined(resolved);
+        const resultUrls = resolveImageOrderToUrls(editedModel as any);
+        setInlineCombined(resultUrls);
         // Note: Caller (useModelGallery/ModelHubView) should typically update selectedImageIndex if they wish
 
         setSelectedImageIndexes([]);
@@ -409,7 +404,7 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
 
                 const existingUserImages = Array.isArray(udObj.images) ? (udObj.images as any[]).slice() : [];
                 const updatedUserImages = existingUserImages.concat(newDataUrls);
-                const currentOrder = Array.isArray(udObj.imageOrder) ? (udObj.imageOrder as any[]).slice() : buildImageOrderFromModel(prev as Model);
+                const currentOrder = Array.isArray(udObj.imageOrder) ? (udObj.imageOrder as any[]).slice() : buildImageOrderFromModel(prev as any);
                 const newUserDescriptors = newDataUrls.map((_, index) => `user:${existingUserImages.length + index}`);
                 const updatedOrder = currentOrder.concat(newUserDescriptors);
 
@@ -474,7 +469,7 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
 
         const currentDescriptors = Array.isArray((editedModel as any).userDefined?.imageOrder)
             ? (editedModel as any).userDefined.imageOrder.slice()
-            : buildImageOrderFromModel(editedModel);
+            : buildImageOrderFromModel(editedModel as any);
 
         if (sourceIndex < 0 || sourceIndex >= currentDescriptors.length || targetIndex < 0 || targetIndex >= currentDescriptors.length) {
             setDragOverIndex(null);
@@ -503,9 +498,8 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
 
         const tempUdObj2 = (editedModel as any).userDefined && typeof (editedModel as any).userDefined === 'object' ? { ...(editedModel as any).userDefined } : {};
         tempUdObj2.imageOrder = currentDescriptors;
-        const tempModelForResolve = { ...editedModel, userDefined: tempUdObj2 } as Model;
-        const resolved = resolveImageOrderToUrls(tempModelForResolve) || [];
-        setInlineCombined(resolved);
+        const resultUrls = resolveImageOrderToUrls({ ...editedModel, userDefined: tempUdObj2 } as any);
+        setInlineCombined(resultUrls);
 
         setSelectedImageIndexes([]);
         setDragOverIndex(null);
@@ -527,7 +521,7 @@ export function useModelEdit_db({ model, onModelUpdate }: UseModelEditProps_db) 
         if (!isEditing || !editedModel) return;
         const currentOrder = Array.isArray((editedModel as any).userDefined?.imageOrder)
             ? (editedModel as any).userDefined.imageOrder.slice()
-            : buildImageOrderFromModel(editedModel);
+            : buildImageOrderFromModel(editedModel as any);
 
         if (imageIndex < 0 || imageIndex >= currentOrder.length) return;
         const selectedDescriptor = currentOrder[imageIndex];

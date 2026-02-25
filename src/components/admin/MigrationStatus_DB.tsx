@@ -1,5 +1,6 @@
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -9,57 +10,240 @@ import {
     SheetHeader,
     SheetTitle,
 } from "@/components/ui/sheet";
-import { Database, FileText, Folder, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Info, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
-interface MigrationStats {
-    models: number;
-    files: number; // Unique Files
-    totalFileRecords?: number; // Raw DB records including duplicates
-    collections: number;
+// --- Types ---
+
+
+
+interface FieldStats {
+    withTags: number;
+    withDescription: number;
+    withPrintTime: number;
+    withFilament: number;
+    hidden: number;
+    favorites: number;
+    projectRoots: number;
+    projectParts: number;
+    // Batch 1
+    withCategory: number;
+    withModelUrl: number;
+    withPrice: number;
+    // Batch 2
+    withPrintSettings: number;
+    withFileSize: number;
+    // Batch 3
+    withGcode: number;
+    // Batch 4
+    withFilesIdentity: number;
+    // Batch 5
+    withGallery: number;
+    withThumbnails: number;
 }
 
-interface MigrationError {
-    file: string;
-    error: string;
-    id?: string;
+interface DeltaEntry {
+    name: string;
+    id: string;
+    legacy: boolean;
+    dest: boolean;
 }
+
+interface RolledUpTransformation {
+    message: string;
+    count: number;
+    examples: string[];
+}
+
+interface FieldBatches {
+    [batchKey: string]: string[];
+}
+
+interface DryRunStats {
+    summary: {
+        totalModels: number;
+        totalCollections: number;
+        totalFiles: number;
+        legacy: FieldStats;
+        dryRun: FieldStats;
+        current: FieldStats;
+    };
+    deltas: Record<keyof FieldStats, DeltaEntry[]>;
+    actions: {
+        models: { created: number; updated: number; skipped: number };
+        collections: { created: number; updated: number; skipped: number };
+        files: { created: number; skipped: number };
+    };
+    critical: Array<{ file: string; message: string; error?: string }>;
+    warnings: Array<{ file: string; message: string }>;
+    transformations: RolledUpTransformation[];
+    meta?: {
+        fieldBatches: FieldBatches;
+    };
+}
+
+interface CachedDryRun {
+    ts: number;
+    stats: DryRunStats;
+}
+
+const CACHE_KEY = 'lastDryRunResult';
+
+// --- Utilities ---
+
+const BATCH_LABELS: Record<string, string> = {
+    core: 'Core Fields',
+    batch1: '🆕 Promoted Fields (Batch 1)',
+    batch2: '🆕 Promoted Fields (Batch 2)',
+    batch3: '🆕 Promoted Fields (Batch 3)',
+    batch4: '🆕 Promoted Fields (Batch 4)',
+    batch5: '🆕 Promoted Fields (Batch 5)',
+};
+
+const FIELD_LABELS: Record<string, string> = {
+    withTags: 'With Tags',
+    withDescription: 'With Description',
+    withPrintTime: 'With Print Time',
+    withFilament: 'With Filament Data',
+    hidden: 'Marked Hidden',
+    favorites: 'Marked Favorite',
+    projectRoots: 'Project Roots',
+    projectParts: 'Project Parts',
+    // Batch 1
+    withCategory: 'With Category',
+    withModelUrl: 'With Model URL',
+    withPrice: 'With Price',
+    // Batch 2
+    withPrintSettings: 'With Print Settings',
+    withFileSize: 'With File Size',
+    // Batch 3
+    withGcode: 'With G-code Analysis',
+    // Batch 4
+    withFilesIdentity: 'With Source/Notes/Links',
+    // Batch 5
+    withGallery: 'With Gallery Images',
+    withThumbnails: 'With File Thumbnails',
+};
+
+function getPercentColor(pct: number): string {
+    if (pct >= 100) return 'text-emerald-500';
+    if (pct >= 50) return 'text-amber-400';
+    return 'text-red-500';
+}
+
+function relativeTime(ts: number): string {
+    const diffMs = Date.now() - ts;
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    return hrs < 24 ? `${hrs}h ago` : `${Math.floor(hrs / 24)}d ago`;
+}
+
+function isDBEmpty(current: FieldStats): boolean {
+    return Object.values(current).every((v) => v === 0);
+}
+
+// --- Sub-components ---
+
+interface StatCardProps {
+    title: string;
+    borderColor: string;
+    stats: FieldStats;
+    totalModels: number;
+    fieldBatches: FieldBatches;
+}
+
+function StatCard({ title, borderColor, stats, totalModels, fieldBatches }: StatCardProps) {
+    return (
+        <Card className={`border-2 ${borderColor}`}>
+            <CardHeader className="pb-2 pt-4">
+                <CardTitle className="text-sm font-semibold">{title}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pb-4">
+                {Object.entries(fieldBatches).map(([batchKey, fields]) => (
+                    <div key={batchKey}>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+                            {BATCH_LABELS[batchKey] ?? batchKey}
+                        </div>
+                        <div className="space-y-1">
+                            {fields.map((key) => {
+                                const count = (stats as any)[key] ?? 0;
+                                const pct = totalModels > 0 ? Math.round((count / totalModels) * 100) : 0;
+                                return (
+                                    <div key={key} className="flex items-center justify-between text-sm">
+                                        <span className="text-muted-foreground">{FIELD_LABELS[key] ?? key}</span>
+                                        <div className="flex items-center gap-2 font-mono">
+                                            <span className="font-semibold">{count}</span>
+                                            <span className={`text-xs w-10 text-right ${getPercentColor(pct)}`}>{pct}%</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))}
+            </CardContent>
+        </Card>
+    );
+}
+
+// --- Main Component ---
 
 export const MigrationStatus_DB = () => {
-    const [dbStats, setDbStats] = useState<MigrationStats | null>(null);
-    const [legacyStats, setLegacyStats] = useState<any | null>(null);
-    const [loading, setLoading] = useState(false);
+
     const [wiping, setWiping] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [dryRunResults, setDryRunResults] = useState<any | null>(null);
+    const [dryRunResults, setDryRunResults] = useState<DryRunStats | null>(null);
+    const [cacheTs, setCacheTs] = useState<number | null>(null);
+    const [selectedDeltaKey, setSelectedDeltaKey] = useState<keyof FieldStats | null>(null);
 
-    // Drill Down State
-    const [selectedDeltaKey, setSelectedDeltaKey] = useState<string | null>(null);
-
-    const fetchStats = async () => {
-        setLoading(true);
-        setError(null);
+    // --- localStorage persistence ---
+    useEffect(() => {
         try {
-            const res = await fetch('/api/admin/migration-status');
-            if (!res.ok) throw new Error('Failed to fetch stats');
-            const data = await res.json();
-            if (data.success) {
-                setDbStats(data.db);
-                setLegacyStats(data.legacy);
+            console.log("📂 [MigrationStatus] Checking localStorage for cached dry run...");
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (raw) {
+                const cached: CachedDryRun = JSON.parse(raw);
+                console.log("✅ [MigrationStatus] Found cached result from:", new Date(cached.ts).toLocaleString());
+                setDryRunResults(cached.stats);
+                setCacheTs(cached.ts);
             } else {
-                throw new Error(data.error || 'Unknown error');
+                console.log("ℹ️ [MigrationStatus] No cached dry run found.");
             }
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
+        } catch (e) {
+            console.error("❌ [MigrationStatus] Failed to load dry run cache:", e);
+        }
+    }, []);
+
+    const saveDryRunToCache = (stats: DryRunStats) => {
+        try {
+            console.log("💾 [MigrationStatus] Saving fresh dry run results to cache...");
+            const payload: CachedDryRun = { ts: Date.now(), stats };
+            localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+            setCacheTs(payload.ts);
+        } catch (e) {
+            console.error("❌ [MigrationStatus] Failed to save cache:", e);
+        }
+    };
+
+    const clearDryRunCache = () => {
+        try {
+            console.log("🧹 [MigrationStatus] Clearing dry run cache...");
+            localStorage.removeItem(CACHE_KEY);
+            setCacheTs(null);
+        } catch (e) {
+            console.error("❌ [MigrationStatus] Failed to clear cache:", e);
         }
     };
 
     const handleWipeAndScan = async (isDryRun: boolean) => {
         setWiping(true);
-        setDryRunResults(null);
+        if (!isDryRun) {
+            setDryRunResults(null);
+            clearDryRunCache();
+        }
         try {
             const res = await fetch(`/api/system/wipe-and-scan?dryRun=${isDryRun}`, { method: 'POST' });
             if (!res.ok) throw new Error('Operation failed');
@@ -68,11 +252,9 @@ export const MigrationStatus_DB = () => {
             if (data.success) {
                 if (isDryRun) {
                     setDryRunResults(data.stats);
-                    toast.info(`Simulation Complete. Review the report below.`);
-                } else {
-                    toast.success(`Wipe & Scan Complete! Found ${data.stats.models.created} models.`);
-                    fetchStats(); // Refresh stats
-                    setDryRunResults(null);
+                    saveDryRunToCache(data.stats);
+                    setCacheTs(null); // freshly fetched, not from cache
+                    toast.info('Simulation complete. Review the report below.');
                 }
             } else {
                 throw new Error(data.error || 'Unknown error');
@@ -85,77 +267,113 @@ export const MigrationStatus_DB = () => {
         }
     };
 
-    // Helper to get drill down data
-    const getDrillDownData = () => {
+
+
+    const getDrillDownData = (): DeltaEntry[] => {
         if (!selectedDeltaKey || !dryRunResults?.deltas) return [];
-        return dryRunResults.deltas[selectedDeltaKey] || [];
+        return dryRunResults.deltas[selectedDeltaKey] ?? [];
+    };
+    const drillDownData = getDrillDownData();
+
+    // Derive field batches — prefer backend meta, fall back to hardcoded defaults
+    const fieldBatches: FieldBatches = dryRunResults?.meta?.fieldBatches ?? {
+        core: ['withTags', 'withDescription', 'withPrintTime', 'withFilament', 'hidden', 'favorites', 'projectRoots', 'projectParts'],
+        batch1: ['withCategory', 'withModelUrl', 'withPrice'],
+        batch2: ['withPrintSettings', 'withFileSize'],
+        batch3: ['withGcode'],
+        batch4: ['withFilesIdentity'],
+        batch5: ['withGallery', 'withThumbnails'],
     };
 
-    useEffect(() => {
-        fetchStats();
-    }, []);
 
-    const StatusRow = ({ label, legacy, db, dryRun, icon, subtext }: { label: string, legacy: number, db: number, dryRun?: number | null, icon: any, subtext?: string }) => {
-        const isMatch = legacy === db;
-        const hasDryRun = dryRun !== undefined && dryRun !== null;
+    const renderComparisonTable = (
+        tableTitle: string,
+        description: string,
+        leftLabel: string,
+        leftStats: FieldStats,
+        rightLabel: string,
+        rightStats: FieldStats,
+        deltaLabel: string,
+        /** positive delta = gain, negative = loss */
+        deltaIsLoss: (delta: number) => boolean,
+        enableDrillDown: boolean,
+    ) => (
+        <Card>
+            <CardHeader>
+                <CardTitle>{tableTitle}</CardTitle>
+                <p className="text-sm text-muted-foreground">{description}</p>
+            </CardHeader>
+            <CardContent className="p-0">
+                <div className="overflow-x-auto rounded-b-lg">
+                    <table className="w-full text-sm">
+                        <thead className="bg-muted text-muted-foreground">
+                            <tr>
+                                <th className="p-3 text-left font-medium">Field</th>
+                                <th className="p-3 text-right font-medium">{leftLabel}</th>
+                                <th className="p-3 text-right font-medium text-blue-400">{rightLabel}</th>
+                                <th className="p-3 text-right font-medium">{deltaLabel}</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                            {Object.entries(fieldBatches).map(([batchKey, fields]) => (
+                                <>
+                                    <tr key={`batch-header-${batchKey}`}>
+                                        <td colSpan={4} className="bg-muted/60 px-3 py-1.5">
+                                            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                {BATCH_LABELS[batchKey] ?? batchKey}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {fields.map((key) => {
+                                        const l = (leftStats as any)[key] ?? 0;
+                                        const r = (rightStats as any)[key] ?? 0;
+                                        const delta = r - l;
+                                        const hasDelta = delta !== 0;
+                                        const isLoss = deltaIsLoss(delta);
+                                        const isBatch1 = batchKey === 'batch1';
 
-        return (
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card text-card-foreground shadow-sm">
-                <div className="flex items-center gap-4">
-                    <div className="p-2 bg-muted rounded-full">
-                        {icon}
-                    </div>
-                    <div>
-                        <p className="font-medium">{label}</p>
-                        <p className="text-xs text-muted-foreground">
-                            {hasDryRun ? "Legacy → Dry Run → DB" : "Legacy vs DB"}
-                        </p>
-                    </div>
+                                        return (
+                                            <tr key={key} className={`hover:bg-muted/40 transition-colors ${isBatch1 ? 'bg-blue-950/10' : ''}`}>
+                                                <td className="p-2 font-medium">{FIELD_LABELS[key] ?? key}</td>
+                                                <td className="p-2 text-right font-mono text-muted-foreground">{l}</td>
+                                                <td className="p-2 text-right font-mono text-blue-400 font-bold">{r}</td>
+                                                <td className="p-2 text-right">
+                                                    {hasDelta ? (
+                                                        enableDrillDown ? (
+                                                            <button
+                                                                onClick={() => setSelectedDeltaKey(key as keyof FieldStats)}
+                                                                className={`font-mono font-bold hover:underline cursor-pointer ${isLoss ? 'text-red-500' : 'text-emerald-500'}`}
+                                                            >
+                                                                {delta > 0 ? '+' : ''}{delta}
+                                                            </button>
+                                                        ) : (
+                                                            <span className={`font-mono font-bold ${isLoss ? 'text-red-500' : 'text-emerald-500'}`}>
+                                                                {delta > 0 ? '+' : ''}{delta}
+                                                            </span>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-muted-foreground/40 font-mono">—</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
-
-                <div className="flex items-center gap-6">
-                    {/* Legacy */}
-                    <div className="text-right">
-                        <div className="text-2xl font-bold text-muted-foreground">{legacy}</div>
-                        <div className="text-xs text-muted-foreground">Legacy</div>
-                    </div>
-
-                    {/* Dry Run (Conditional) */}
-                    {hasDryRun && (
-                        <div className="text-right text-blue-500">
-                            <div className="text-2xl font-bold">{dryRun}</div>
-                            <div className="text-xs text-muted-foreground">Dry Run</div>
-                        </div>
-                    )}
-
-                    {/* Database */}
-                    <div className={`text-right ${!isMatch && !hasDryRun ? 'text-amber-500' : 'text-primary'}`}>
-                        <div className="text-2xl font-bold">{db}</div>
-                        <div className="text-xs text-muted-foreground">Database</div>
-                    </div>
-                </div>
-
-                {subtext && <div className="text-xs text-muted-foreground w-full mt-2 border-t pt-2">{subtext}</div>}
-            </div>
-        );
-    };
-
-    if (loading) return <div className="p-8 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" /></div>;
+            </CardContent>
+        </Card>
+    );
 
     return (
         <div className="space-y-6">
+            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Database Migration</h2>
-                    <p className="text-muted-foreground">
-                        Manage synchronization between Legacy JSON files and the new Database.
-                    </p>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={fetchStats} disabled={loading}>
-                        <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                        Refresh Stats
-                    </Button>
+                    <p className="text-muted-foreground">Synchronize Legacy JSON files with the new Database.</p>
                 </div>
             </div>
 
@@ -166,73 +384,33 @@ export const MigrationStatus_DB = () => {
                 </Alert>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 
-                <StatusRow
-                    label="Models"
-                    icon={<FileText className="h-5 w-5" />}
-                    legacy={legacyStats?.models || 0}
-                    db={dbStats?.models || 0}
-                    dryRun={
-                        (dryRunResults?.actions?.models?.created || 0) +
-                        (dryRunResults?.actions?.models?.updated || 0) +
-                        (dryRunResults?.actions?.models?.skipped || 0)
-                    }
-                />
-                <StatusRow
-                    label="Collections"
-                    icon={<Folder className="h-5 w-5" />}
-                    legacy={legacyStats?.collections || 0}
-                    db={dbStats?.collections || 0}
-                    dryRun={
-                        (dryRunResults?.actions?.collections?.created || 0) +
-                        (dryRunResults?.actions?.collections?.updated || 0) +
-                        (dryRunResults?.actions?.collections?.skipped || 0)
-                    }
-                />
-                <StatusRow
-                    label="Files & Assets"
-                    icon={<Database className="h-5 w-5" />}
-                    legacy={legacyStats?.totalFileRecords || legacyStats?.files || 0}
-                    db={dbStats?.totalFileRecords || dbStats?.files || 0}
-                    subtext="Total file records tracked in database"
-                    dryRun={
-                        (dryRunResults?.actions?.files?.created || 0) +
-                        (dryRunResults?.actions?.files?.updated || 0) +
-                        (dryRunResults?.actions?.files?.skipped || 0)
-                    }
-                />
-            </div>
 
+            {/* Action Buttons */}
             <Card>
                 <CardHeader>
                     <CardTitle>Migration Operations</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="flex flex-col gap-4 sm:flex-row">
-                        <Button
-                            onClick={() => handleWipeAndScan(true)}
-                            disabled={wiping}
-                            className="w-full sm:w-auto"
-                        >
+                <CardContent>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                        <Button onClick={() => handleWipeAndScan(true)} disabled={wiping} className="w-full sm:w-auto">
                             {wiping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                            Simulate Migration (Dry Run)
+                            Run Dry Run
                         </Button>
-
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button variant="destructive" disabled={wiping} className="w-full sm:w-auto">
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Wipe & Full Import
+                                    Execute Full Migration
                                 </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
                                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                        This will delete all current data in the database (Models, Collections, Tags) and re-import everything from the file system labels.
+                                        This will delete all current data in the database (Models, Collections, Tags) and re-import everything from the file system.
                                         <br /><br />
-                                        This action cannot be undone.
+                                        This action <strong>cannot be undone.</strong>
                                     </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -244,222 +422,240 @@ export const MigrationStatus_DB = () => {
                             </AlertDialogContent>
                         </AlertDialog>
                     </div>
-
-                    {dryRunResults && (
-                        <div className="mt-6 border rounded-lg p-4 bg-muted/50">
-                            <h3 className="font-semibold mb-2">Simulation Results</h3>
-                            <div className="text-sm space-y-2">
-                                <p>This is what would happen if you ran the migration now:</p>
-                                <ul className="list-disc list-inside space-y-1 ml-2">
-                                    <li>Create <strong>{dryRunResults.actions?.models.created}</strong> new models</li>
-                                    <li>Update <strong>{dryRunResults.actions?.models.updated}</strong> existing models</li>
-                                    <li>Create <strong>{dryRunResults.actions?.collections.created}</strong> collections</li>
-                                </ul>
-                            </div>
-
-                            <div className="mt-4 flex justify-end">
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                                            <RefreshCw className="mr-2 h-4 w-4" />
-                                            Execute Migration Plan
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Ready to migrate?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                                This will wipe the current database and import the data exactly as shown in the Dry Run report.
-                                                <br /><br />
-                                                <strong>{dryRunResults.summary?.totalModels}</strong> models will be imported.
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction
-                                                onClick={() => handleWipeAndScan(false)}
-                                                className="bg-emerald-600 hover:bg-emerald-700"
-                                            >
-                                                Yes, Execute Migration
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            </div>
-
-                            <div className="mt-4 pt-4 border-t">
-                                <h4 className="font-semibold mb-2">Detailed Report</h4>
-
-                                <div className="space-y-4">
-                                    {/* Summary Stats */}
-                                    <div className="grid grid-cols-3 gap-4 border-b pb-4">
-                                        <div>
-                                            <p className="font-semibold text-lg">{dryRunResults.summary?.totalModels ?? dryRunResults.models.created}</p>
-                                            <p className="text-muted-foreground text-xs uppercase tracking-wide">Total Models</p>
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-lg">{dryRunResults.summary?.totalCollections ?? dryRunResults.collections.created}</p>
-                                            <p className="text-muted-foreground text-xs uppercase tracking-wide">Collections</p>
-                                        </div>
-                                        <div>
-                                            <p className="font-semibold text-lg">{dryRunResults.summary?.totalFiles ?? dryRunResults.files?.created ?? 0}</p>
-                                            <p className="text-muted-foreground text-xs uppercase tracking-wide">Attachments Found</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Data Field Parity Comparison */}
-                                    {dryRunResults.summary?.legacy && (
-                                        <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded border">
-                                            <h4 className="font-semibold mb-3 flex items-center text-slate-700 dark:text-slate-300">
-                                                ⚖️ Data Field Parity (Source vs Target)
-                                            </h4>
-                                            <div className="overflow-hidden bg-white dark:bg-slate-950 rounded border">
-                                                <table className="w-full text-left text-sm">
-                                                    <thead className="bg-slate-100 dark:bg-slate-900 text-slate-500">
-                                                        <tr>
-                                                            <th className="p-2 font-medium">Field Schema</th>
-                                                            <th className="p-2 font-medium text-right">Legacy (JSON)</th>
-                                                            <th className="p-2 font-medium text-right text-blue-600">Dry Run</th>
-                                                            <th className="p-2 font-medium text-right">DB (Current)</th>
-                                                            <th className="p-2 font-medium text-right">Proj. Delta</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y">
-                                                        {[
-                                                            { label: 'Project Roots', key: 'projectRoots' },
-                                                            { label: 'Project Parts', key: 'projectParts' },
-                                                            { label: 'Has Description', key: 'withDescription' },
-                                                            { label: 'Has Tags', key: 'withTags' },
-                                                            { label: 'Has Print Time', key: 'withPrintTime' },
-                                                            { label: 'Has Filament Data', key: 'withFilament' },
-                                                            { label: 'Marked Hidden', key: 'hidden' },
-                                                            { label: 'Marked Favorite', key: 'favorites' },
-                                                        ].map((row) => {
-                                                            const legacy = Number(dryRunResults.summary.legacy[row.key] || 0);
-                                                            const dryRun = Number(dryRunResults.summary.dryRun?.[row.key] || 0);
-                                                            const current = Number(dryRunResults.summary.current?.[row.key] || 0);
-
-                                                            // Delta is Dry Run (Projected) - Legacy (Source)
-                                                            const delta = dryRun - legacy;
-                                                            const hasDelta = delta !== 0;
-                                                            const isNegative = delta < 0;
-
-                                                            return (
-                                                                <tr key={row.key} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
-                                                                    <td className="p-2 font-medium">{row.label}</td>
-                                                                    <td className="p-2 text-right font-mono text-slate-600 dark:text-slate-400">{legacy}</td>
-                                                                    <td className="p-2 text-right font-mono text-blue-600 dark:text-blue-400 font-bold">{dryRun}</td>
-                                                                    <td className="p-2 text-right font-mono text-slate-600 dark:text-slate-400">{current}</td>
-                                                                    <td className="p-2 text-right">
-                                                                        {hasDelta ? (
-                                                                            <button
-                                                                                onClick={() => setSelectedDeltaKey(row.key)}
-                                                                                className={`font-mono font-bold hover:underline cursor-pointer ${isNegative ? 'text-red-500' : 'text-emerald-500'}`}
-                                                                            >
-                                                                                {delta > 0 ? '+' : ''}{delta}
-                                                                            </button>
-                                                                        ) : (
-                                                                            <span className="text-slate-300 dark:text-slate-700 font-mono">-</span>
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* CRITICAL ERRORS */}
-                                    {dryRunResults.critical && dryRunResults.critical.length > 0 && (
-                                        <div className="bg-red-100 dark:bg-red-900/20 p-3 rounded border border-red-200">
-                                            <p className="font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center">
-                                                🚨 Critical Issues ({dryRunResults.critical.length})
-                                            </p>
-                                            <ul className="text-sm text-red-600 dark:text-red-300 list-disc list-inside max-h-60 overflow-y-auto">
-                                                {dryRunResults.critical.map((err: any, i: number) => (
-                                                    <li key={i}>
-                                                        <strong>{err.file}:</strong> {err.message}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {/* WARNINGS */}
-                                    {dryRunResults.warnings && dryRunResults.warnings.length > 0 && (
-                                        <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded border border-amber-200">
-                                            <p className="font-semibold text-amber-700 dark:text-amber-400 mb-2">
-                                                ⚠️ Warnings ({dryRunResults.warnings.length})
-                                            </p>
-                                            <ul className="text-sm text-amber-600 dark:text-amber-300 list-disc list-inside max-h-40 overflow-y-auto">
-                                                {dryRunResults.warnings.map((err: any, i: number) => (
-                                                    <li key={i}>
-                                                        <strong>{err.file}:</strong> {err.message}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-
-                                    {/* TRANSFORMATIONS */}
-                                    {dryRunResults.transformations && dryRunResults.transformations.length > 0 && (
-                                        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200">
-                                            <p className="font-semibold text-blue-700 dark:text-blue-400 mb-2">
-                                                ℹ️ Transformations & Fixes ({dryRunResults.transformations.length})
-                                            </p>
-                                            <ul className="text-sm text-blue-600 dark:text-blue-300 list-disc list-inside max-h-40 overflow-y-auto">
-                                                {dryRunResults.transformations.slice(0, 50).map((t: any, i: number) => (
-                                                    <li key={i}>
-                                                        <strong>{t.file}:</strong> {t.message}
-                                                    </li>
-                                                ))}
-                                                {dryRunResults.transformations.length > 50 && (
-                                                    <li className="italic">...and {dryRunResults.transformations.length - 50} more.</li>
-                                                )}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </CardContent>
             </Card>
 
+            {/* Dry Run report */}
+            {dryRunResults && (
+                <div className="space-y-6">
+                    {/* Cache Banner */}
+                    {cacheTs && (
+                        <Alert className="border-blue-800 bg-blue-950/30 text-blue-300">
+                            <Info className="h-4 w-4" />
+                            <AlertTitle className="text-blue-300">Showing cached dry run from {relativeTime(cacheTs)}</AlertTitle>
+                            <AlertDescription className="text-blue-400">
+                                Click <strong>Run Dry Run</strong> to refresh with current data.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-bold tracking-tight">Dry Run Report</h3>
+                        <Badge variant="secondary">Simulation Only</Badge>
+                    </div>
+
+                    {/* Summary Counts */}
+                    <div className="grid gap-4 md:grid-cols-3">
+                        {[
+                            {
+                                value: dryRunResults.summary?.totalModels ?? 0,
+                                label: 'Total Models',
+                                sub: `+${dryRunResults.actions.models.created} create · ${dryRunResults.actions.models.updated} update · ${dryRunResults.actions.models.skipped} skip`,
+                            },
+                            {
+                                value: dryRunResults.summary?.totalCollections ?? 0,
+                                label: 'Collections',
+                                sub: `+${dryRunResults.actions.collections.created} create`,
+                            },
+                            {
+                                value: dryRunResults.actions.files.created,
+                                label: 'File Records',
+                                sub: `${dryRunResults.actions.files.skipped} skipped`,
+                            },
+                        ].map(({ value, label, sub }) => (
+                            <div key={label} className="border rounded-lg p-4 bg-card text-center">
+                                <div className="text-3xl font-bold">{value}</div>
+                                <div className="text-sm text-muted-foreground mt-1">{label}</div>
+                                <div className="text-xs text-muted-foreground mt-1">{sub}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Summary Cards: Legacy / Dry Run / Current DB */}
+                    {dryRunResults.summary?.legacy && (
+                        <div className="grid gap-4 lg:grid-cols-3">
+                            <StatCard
+                                title="📂 Legacy (Source)"
+                                borderColor="border-slate-600"
+                                stats={dryRunResults.summary.legacy}
+                                totalModels={dryRunResults.summary.totalModels}
+                                fieldBatches={fieldBatches}
+                            />
+                            <StatCard
+                                title="🔮 Dry Run (Projected)"
+                                borderColor="border-blue-500"
+                                stats={dryRunResults.summary.dryRun}
+                                totalModels={dryRunResults.summary.totalModels}
+                                fieldBatches={fieldBatches}
+                            />
+                            <StatCard
+                                title="🗄️ Current DB"
+                                borderColor="border-violet-500"
+                                stats={dryRunResults.summary.current}
+                                totalModels={dryRunResults.summary.totalModels}
+                                fieldBatches={fieldBatches}
+                            />
+                        </div>
+                    )}
+
+                    {/* ② Empty DB Banner */}
+                    {dryRunResults.summary?.current && isDBEmpty(dryRunResults.summary.current) && (
+
+                        <Alert className="border-sky-800 bg-sky-950/30">
+                            <Info className="h-4 w-4 text-sky-400" />
+                            <AlertTitle className="text-sky-300">Current DB appears empty</AlertTitle>
+                            <AlertDescription className="text-sky-400">
+                                The <strong>Current DB</strong> column shows all zeros because no migration has been run yet. Run <strong>Execute Full Migration</strong> to populate it.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    {/* ① Table A — Migration Fidelity: Legacy → Dry Run */}
+                    {dryRunResults.summary?.legacy && renderComparisonTable(
+                        '⚖️ Migration Fidelity',
+                        'Compares what exists in the Legacy JSON files vs what will be written to the DB. Negative deltas mean data loss.',
+                        'Legacy',
+                        dryRunResults.summary.legacy,
+                        'Dry Run',
+                        dryRunResults.summary.dryRun,
+                        'Data Loss?',
+                        (delta) => delta < 0,
+                        true,
+                    )}
+
+                    {/* ① Table B — DB Parity: Dry Run → Current DB */}
+                    {dryRunResults.summary?.current && renderComparisonTable(
+                        '🗄️ DB Parity',
+                        'Compares the projected dry run values against what is currently in the DB. Negative deltas mean the DB is behind.',
+                        'Dry Run',
+                        dryRunResults.summary.dryRun,
+                        'Current DB',
+                        dryRunResults.summary.current,
+                        'DB Behind?',
+                        (delta) => delta > 0,
+                        false,
+                    )}
+
+                    {/* Issues Panel */}
+                    {(dryRunResults.critical.length > 0 || dryRunResults.warnings.length > 0 || dryRunResults.transformations.length > 0) && (
+                        <Card>
+                            <CardHeader><CardTitle>Issues</CardTitle></CardHeader>
+                            <CardContent className="space-y-4">
+                                {dryRunResults.critical.length > 0 && (
+                                    <div className="bg-red-950/30 border border-red-800 p-3 rounded-lg">
+                                        <p className="font-semibold text-red-400 mb-2">🚨 Critical ({dryRunResults.critical.length})</p>
+                                        <ul className="text-sm text-red-300 list-disc list-inside space-y-1 max-h-48 overflow-y-auto">
+                                            {dryRunResults.critical.map((err, i) => (
+                                                <li key={i}><strong>{err.file}:</strong> {err.message}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {dryRunResults.warnings.length > 0 && (
+                                    <div className="bg-amber-950/30 border border-amber-700 p-3 rounded-lg">
+                                        <p className="font-semibold text-amber-400 mb-2">⚠️ Warnings ({dryRunResults.warnings.length})</p>
+                                        <ul className="text-sm text-amber-300 list-disc list-inside space-y-1 max-h-40 overflow-y-auto">
+                                            {dryRunResults.warnings.map((w, i) => (
+                                                <li key={i}><strong>{w.file}:</strong> {w.message}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                                {/* ⑤ Rolled-up transformations */}
+                                {dryRunResults.transformations.length > 0 && (
+                                    <div className="bg-blue-950/30 border border-blue-800 p-3 rounded-lg">
+                                        <p className="font-semibold text-blue-400 mb-2">
+                                            ℹ️ Transformations ({dryRunResults.transformations.reduce((acc, t) => acc + (t.count ?? 1), 0)} models)
+                                        </p>
+                                        <ul className="text-sm text-blue-300 space-y-1.5 max-h-48 overflow-y-auto">
+                                            {dryRunResults.transformations.map((t, i) => (
+                                                <li key={i} className="flex items-start gap-2">
+                                                    <span className="font-mono bg-blue-900/40 text-blue-300 rounded px-1.5 py-0.5 text-xs shrink-0">
+                                                        ×{t.count ?? 1}
+                                                    </span>
+                                                    <span>
+                                                        {t.message}
+                                                        {t.examples && t.examples.length > 0 && (
+                                                            <span className="text-blue-400/70 ml-1">
+                                                                (e.g. {t.examples.join(', ')}{t.count > t.examples.length ? '…' : ''})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Execute post-dry-run */}
+                    <div className="flex justify-end">
+                        <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                    Execute Migration Plan
+                                </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Execute Migration?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will wipe the current database and import data exactly as shown in the Dry Run report.
+                                        <br /><br />
+                                        <strong>{dryRunResults.summary?.totalModels}</strong> models will be imported.
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        onClick={() => handleWipeAndScan(false)}
+                                        className="bg-emerald-600 hover:bg-emerald-700"
+                                    >
+                                        Yes, Execute Migration
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
+                </div>
+            )}
+
+            {/* Delta Drill-Down Sheet */}
             <Sheet open={!!selectedDeltaKey} onOpenChange={(open) => !open && setSelectedDeltaKey(null)}>
-                <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+                <SheetContent className="w-[420px] sm:w-[560px] overflow-y-auto">
                     <SheetHeader>
-                        <SheetTitle>Data Discrepancy Details</SheetTitle>
+                        <SheetTitle>Delta Drill-Down</SheetTitle>
                         <SheetDescription>
-                            Showing items contributing to the delta for <strong>{selectedDeltaKey}</strong>.
+                            Models contributing to the <strong>Migration Fidelity</strong> delta for <strong>{FIELD_LABELS[selectedDeltaKey ?? ''] ?? selectedDeltaKey}</strong>.
+                            {drillDownData.length >= 50 && (
+                                <span className="ml-1 text-amber-400">(Showing first 50)</span>
+                            )}
                         </SheetDescription>
                     </SheetHeader>
-                    <div className="mt-6 space-y-4">
-                        {getDrillDownData().length === 0 ? (
+                    <div className="mt-6 space-y-2">
+                        {drillDownData.length === 0 ? (
                             <p className="text-sm text-muted-foreground italic">No specific items recorded for this delta.</p>
                         ) : (
                             <div className="border rounded-md divide-y">
-                                {getDrillDownData().map((item: any, idx: number) => (
+                                {drillDownData.slice(0, 50).map((item, idx) => (
                                     <div key={idx} className="p-3 text-sm">
-                                        <div className="font-medium text-slate-800 dark:text-slate-200">{item.name}</div>
-                                        <div className="grid grid-cols-2 mt-1 gap-2 text-xs">
-                                            <div className="text-slate-500">
-                                                legacy: <span className={item.legacy ? "text-emerald-600 font-mono" : "text-red-500 font-mono"}>{String(item.legacy)}</span>
-                                            </div>
-                                            <div className="text-slate-500">
-                                                new: <span className={item.dest ? "text-emerald-600 font-mono" : "text-red-500 font-mono"}>{String(item.dest)}</span>
-                                            </div>
+                                        <div className="font-medium">{item.name}</div>
+                                        <div className="text-xs text-muted-foreground mt-1 font-mono">{item.id}</div>
+                                        <div className="grid grid-cols-2 mt-2 gap-2 text-xs">
+                                            <div>legacy: <span className={item.legacy ? 'text-emerald-500' : 'text-red-500'}>{String(item.legacy)}</span></div>
+                                            <div>→ new: <span className={item.dest ? 'text-emerald-500' : 'text-red-500'}>{String(item.dest)}</span></div>
                                         </div>
                                     </div>
                                 ))}
+                                {drillDownData.length > 50 && (
+                                    <div className="p-3 text-xs text-center text-muted-foreground italic">
+                                        …and {drillDownData.length - 50} more items
+                                    </div>
+                                )}
                             </div>
-                        )}
-                        {getDrillDownData().length >= 100 && (
-                            <p className="text-xs text-muted-foreground text-center pt-2">
-                                List limited to first 100 items for performance.
-                            </p>
                         )}
                     </div>
                 </SheetContent>

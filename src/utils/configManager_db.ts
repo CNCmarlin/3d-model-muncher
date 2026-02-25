@@ -218,7 +218,6 @@ export class ConfigManager_db {
           configPath = path.join(process.cwd(), CONFIG_FILENAME);
         }
 
-        console.log(`[ConfigManager] Attempting to load server config from: ${configPath}`);
 
         if (fs.existsSync(configPath)) {
           const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -290,7 +289,6 @@ export class ConfigManager_db {
             fs.mkdirSync(dataDir, { recursive: true });
           }
 
-          console.log(`[ConfigManager] Saving server config to: ${configPath}`);
           fs.writeFileSync(configPath, jsonString, 'utf8');
         } catch (err) {
           console.error('[ConfigManager] Failed to write config file on server:', err);

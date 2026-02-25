@@ -18,8 +18,8 @@ import { useBulkEditForm_db } from "@/hooks/bulk/useBulkEditForm_db";
 import { useBulkOperations_DB } from "@/hooks/bulk/useBulkOperations_DB";
 import { useMediaQuery_db } from "@/hooks/useMediaQuery_db";
 import { Category } from "@/types/category";
-import { Collection } from "@/types/collection";
-import { Model } from "@/types/model";
+import { Collection } from "@/types/collection_db";
+import { Model } from "@/types/model_db";
 import { Layers, Library, RefreshCw, Save, Users } from "lucide-react";
 //import { BulkTargetGrid } from "../bulk-edit/BulkTargetGrid";
 
@@ -129,9 +129,9 @@ export function BulkEditDialog_DB({
                             <ResizablePanel defaultSize={35} minSize={25} maxSize={50} className="bg-background">
                                 <BulkOperationsPanel_DB
                                     form={form}
-                                    models={models}
+                                    models={models as any}
                                     categories={categories}
-                                    collectionsList={collectionsList}
+                                    collectionsList={collectionsList as any}
                                     pendingBulkCollectionId={pendingBulkCollectionId}
                                     isGeneratingImages={isGeneratingImages}
                                     generateProgress={generateProgress}
@@ -143,7 +143,7 @@ export function BulkEditDialog_DB({
 
                             <ResizablePanel defaultSize={65} className="bg-muted/10">
                                 <BulkTargetGrid_DB
-                                    models={models}
+                                    models={models as any}
                                     onRemoveModel={handleRemoveModel}
                                     selectedIds={models.map(m => m.id)}
                                     onToggleSelect={() => { }}
@@ -159,9 +159,9 @@ export function BulkEditDialog_DB({
                             <TabsContent value="operations" className="flex-1 overflow-hidden m-0">
                                 <BulkOperationsPanel_DB
                                     form={form}
-                                    models={models}
+                                    models={models as any}
                                     categories={categories}
-                                    collectionsList={collectionsList}
+                                    collectionsList={collectionsList as any}
                                     pendingBulkCollectionId={pendingBulkCollectionId}
                                     isGeneratingImages={isGeneratingImages}
                                     generateProgress={generateProgress}
@@ -170,7 +170,7 @@ export function BulkEditDialog_DB({
                             </TabsContent>
                             <TabsContent value="models" className="flex-1 overflow-hidden m-0">
                                 <BulkTargetGrid_DB
-                                    models={models}
+                                    models={models as any}
                                     selectedIds={models.map(m => m.id)}
                                     // In dialog mode, we assume all are selected for operation scope, 
                                     // or we could implement sub-selection if needed. For now, selection matches models.

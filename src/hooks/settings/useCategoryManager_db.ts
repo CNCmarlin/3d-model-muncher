@@ -1,6 +1,6 @@
 import { Category } from "@/types/category";
 import { AppConfig } from "@/types/config";
-import { Model } from "@/types/model";
+import { Model_db as Model } from "@/types/model_db";
 import { useMemo, useState } from 'react';
 
 interface UseCategoryManagerProps {
@@ -166,39 +166,24 @@ export function useCategoryManager_db({
             category: model.category === oldCategoryLabel ? newLabelTrimmed : model.category
         }));
 
+        // DB-FIRST: update each affected model's category in parallel
+        const affectedIds = models
+            .filter(m => m.category === oldCategoryLabel)
+            .map(m => m.id)
+            .filter(Boolean) as string[];
+
         let saveErrors = 0;
-        for (const model of updatedModels) {
-            const originalModel = models.find(m => m.id === model.id);
-            if (originalModel && originalModel.category === oldCategoryLabel) {
-                try {
-                    let filePath;
-                    if (model.modelUrl) {
-                        const threeMfPath = model.modelUrl.replace(/^\/models\//, '');
-                        filePath = threeMfPath.replace(/\.3mf$/i, '-munchie.json');
-                    } else if (model.filePath) {
-                        filePath = model.filePath.replace(/\.3mf$/i, '-munchie.json');
-                    } else {
-                        saveErrors++;
-                        continue;
-                    }
-
-                    const requestData = {
-                        filePath,
-                        id: model.id,
-                        category: model.category
-                    };
-
-                    const response = await fetch('/api/save-model', {
-                        method: 'POST',
+        if (affectedIds.length > 0) {
+            const results = await Promise.allSettled(
+                affectedIds.map(id =>
+                    fetch(`/api/models/${id}`, {
+                        method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestData)
-                    });
-                    const result = await response.json();
-                    if (!result.success) saveErrors++;
-                } catch (error) {
-                    saveErrors++;
-                }
-            }
+                        body: JSON.stringify({ category: newLabelTrimmed })
+                    })
+                )
+            );
+            saveErrors = results.filter(r => r.status === 'rejected').length;
         }
 
         setLocalCategories(updatedCategories);
@@ -242,34 +227,24 @@ export function useCategoryManager_db({
         const updatedCategories = localCategories.filter(c => c.id !== categoryId);
         const updatedModels = models.map(m => ({ ...m, category: m.category === cat.label ? 'Uncategorized' : m.category }));
 
-        let saveErrors = 0;
-        for (const model of updatedModels) {
-            const original = models.find(x => x.id === model.id);
-            if (!original) continue;
-            if (original.category !== model.category) {
-                try {
-                    let filePath;
-                    if (model.modelUrl) {
-                        const threeMfPath = model.modelUrl.replace(/^\/models\//, '');
-                        filePath = threeMfPath.replace(/\.3mf$/i, '-munchie.json');
-                    } else if (model.filePath) {
-                        filePath = model.filePath.replace(/\.3mf$/i, '-munchie.json');
-                    }
-                    if (!filePath) {
-                        saveErrors++;
-                        continue;
-                    }
+        // DB-FIRST: update each affected model's category in parallel
+        const affectedIds = models
+            .filter(m => m.category === cat.label)
+            .map(m => m.id)
+            .filter(Boolean) as string[];
 
-                    const requestData = { filePath, id: model.id, category: model.category };
-                    await fetch('/api/save-model', {
-                        method: 'POST',
+        let saveErrors = 0;
+        if (affectedIds.length > 0) {
+            const results = await Promise.allSettled(
+                affectedIds.map(id =>
+                    fetch(`/api/models/${id}`, {
+                        method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestData)
-                    });
-                } catch (err) {
-                    saveErrors++;
-                }
-            }
+                        body: JSON.stringify({ category: 'Uncategorized' })
+                    })
+                )
+            );
+            saveErrors = results.filter(r => r.status === 'rejected').length;
         }
 
         setLocalCategories(updatedCategories);

@@ -5,7 +5,7 @@ import { AspectRatio } from "@/components/ui/aspect-ratio";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Model } from "@/types/model";
+import { Model } from "@/types/model_db";
 import {
     Box,
     CheckCircle2,
@@ -90,12 +90,12 @@ export const ModelPreviewSection_DB = ({
     const activeFileName = active3DFile?.split('/').pop() || "";
 
     return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
+        <div className="space-y-4 p-4">
+            <div className="flex items-center justify-between gap-4">
                 <Button
                     variant="ghost" size="sm"
                     onClick={() => onTogglePrinted?.(!currentModel.isPrinted)}
-                    className={`h-6 gap-1.5 px-2 text-[10px] font-bold uppercase tracking-tight rounded-md border transition-all ${currentModel.isPrinted
+                    className={`h-7 gap-1.5 px-3 text-[10px] font-bold uppercase tracking-tight rounded-lg border transition-all shrink-0 ${currentModel.isPrinted
                         ? "bg-green-500/10 text-green-600 border-green-500/20 hover:bg-green-500/20"
                         : "bg-muted/50 text-muted-foreground/60 border-transparent hover:bg-muted"
                         }`}
@@ -104,12 +104,19 @@ export const ModelPreviewSection_DB = ({
                     {currentModel.isPrinted ? "Printed" : "Mark Printed"}
                 </Button>
 
-                <div className="flex items-center bg-muted/30 rounded-lg p-1 border">
-                    <Button variant={viewMode === '3d' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('3d')} className="gap-2 h-8 px-3">
-                        <Box className="h-4 w-4" /> 3D Model
+                {/* Model Name Badge - Centered between the controls */}
+                <div className="flex-1 flex justify-center min-w-0">
+                    <Badge variant="outline" className="px-4 py-1 bg-primary/5 hover:bg-primary/10 border-primary/20 text-primary font-black tracking-tight text-xs shadow-sm transition-all truncate max-w-[400px]">
+                        {currentModel.name}
+                    </Badge>
+                </div>
+
+                <div className="flex items-center bg-muted/30 rounded-lg p-1 border shrink-0">
+                    <Button variant={viewMode === '3d' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('3d')} className="gap-2 h-7 px-3 text-[10px] font-bold uppercase">
+                        <Box className="h-3.5 w-3.5" /> 3D
                     </Button>
-                    <Button variant={viewMode === 'images' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('images')} className="gap-2 h-8 px-3">
-                        <Images className="h-4 w-4" /> Images ({allImages.length})
+                    <Button variant={viewMode === 'images' ? 'default' : 'ghost'} size="sm" onClick={() => setViewMode('images')} className="gap-2 h-7 px-3 text-[10px] font-bold uppercase">
+                        <Images className="h-3.5 w-3.5" /> Photos
                     </Button>
                 </div>
             </div>
@@ -145,7 +152,7 @@ export const ModelPreviewSection_DB = ({
                         )}
                         {!isGcode ? (
                             <ModelViewerErrorBoundary>
-                                <ModelViewer3D_DB modelUrl={fileToDisplay} modelName={currentModel.name} onCapture={handleCapturedImage} customColor={defaultModelColor || undefined} />
+                                <ModelViewer3D_DB modelUrl={fileToDisplay ?? undefined} modelName={currentModel.name} onCapture={handleCapturedImage} customColor={defaultModelColor || undefined} />
                             </ModelViewerErrorBoundary>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-full bg-muted/50 p-6 text-center">

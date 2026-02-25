@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useBulkEditForm_db } from '@/hooks/bulk/useBulkEditForm_db';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 
 interface BulkRelatedFilesEditorProps {
     form: ReturnType<typeof useBulkEditForm_db>;

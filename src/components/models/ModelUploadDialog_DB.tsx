@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import { ConfigManager } from '@/utils/configManager';
 import { Separator } from '@radix-ui/react-select';
 import { Box, FolderPlus, RefreshCw, Tag, Trash, Upload } from 'lucide-react';
@@ -26,7 +26,7 @@ interface ModelUploadDialogProps {
 const needsIsolation = (model: Model) => {
   // 1. THE PROJECT MARKER CHECK (Deterministic)
   // If it's a Root or a Related Part, it's already "Organized".
-  if (model.isProjectRoot || model.isRelatedPart) {
+  if ((model as any).isProjectRoot || (model as any).isRelatedPart) {
     return false;
   }
 
@@ -170,7 +170,7 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
         formData.append('modelId', authoritativeModel.id);
-        formData.append('filePath', authoritativeModel.filePath);
+        formData.append('filePath', authoritativeModel.filePath || '');
 
         const resp = await fetch('/api/models/upload-document', { method: 'POST', body: formData });
         if (resp.ok) {

@@ -54,6 +54,8 @@ model Model {
   description     String?
   license         String?
   designer        String?  // Model creator/author
+  source          String?
+  notes           String?
   
   // Stats / Metadata
   printTime       Int?     @map("print_time_seconds")
@@ -66,9 +68,29 @@ model Model {
   isHidden        Boolean  @default(false) @map("is_hidden")
   isComponent     Boolean  @default(false) @map("is_component") // For Reference/Related files
   
+  // Promoted from metadata_json (Batch 1)
+  category        String?  @map("category")
+  modelUrl        String?  @map("model_url")
+  price           Float?   @map("price")
+
+  // Promoted from metadata_json (Batch 2 - print settings)
+  layerHeight     String?  @map("layer_height")
+  infill          String?  @map("infill")
+  nozzle          String?  @map("nozzle")
+  printer         String?  @map("printer")
+  material        String?  @map("material")
+  fileSize        String? @map("file_size")
+
+  // Promoted from metadata_json (Batch 3 - G-code Analysis)
+  gcodeFilePath    String?  @map("gcode_file_path")
+  gcodePrintTime   String?  @map("gcode_print_time")
+  gcodeTotalWeight String?  @map("gcode_total_weight")
+  gcodeFilaments   String?  @map("gcode_filaments_json") // JSON array of filament data
+  
   // Navigation / Disk Linkage
   pathHash        String?  @unique @map("path_hash")
-  coverImagePath  String?  @map("cover_image_path")
+  thumbnailPath   String?  @map("thumbnail_path")
+  filePath        String?  @map("file_path") // Path to the munchie JSON on disk
   metadata        String?  @map("metadata_json") // Stores legacy userDefined JSON
   
   createdAt       DateTime @default(now()) @map("created_at")
@@ -76,6 +98,8 @@ model Model {
 
   // Relations
   files           ModelFile[]
+  relatedFiles    ModelRelatedFile[]
+  images          ModelImage[]
   tags            ModelTag[]
   collections     ModelCollection[] // Many-to-Many links (Virtual/Symbolic)
 
@@ -119,6 +143,33 @@ model ModelFile {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("model_files")
+}
+
+// ---------------------------------------------------------
+// 5. Related Files (Arbitrary paths)
+// ---------------------------------------------------------
+model ModelRelatedFile {
+  id      String @id @default(cuid())
+  modelId String @map("model_id")
+  model   Model  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  path    String
+
+  @@map("model_related_files")
+}
+
+// ---------------------------------------------------------
+// 6. Model Images (Gallery, Thumbnails, User uploads)
+// ---------------------------------------------------------
+model ModelImage {
+  id         String  @id @default(cuid())
+  modelId    String  @map("model_id")
+  model      Model   @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  path       String  // Relative path from models root
+  source     String  // 'gallery' | 'thumbnail' | 'user'
+  sourceFile String? @map("source_file") // For thumbnail source — the model file it belongs to
+  order      Int     @default(0)
+
+  @@map("model_images")
 }
 
 // ---------------------------------------------------------

@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTagManager_db } from '@/hooks/settings/useTagManager_db';
-import { Model, TagInfo } from '@/types/model';
+import { TagInfo } from '@/types/model_db';
+import { Model } from '@/types/model_db';
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils_db";
 import { Activity, BarChart3, Edit2, Eye, Search, Tag, Trash2 } from 'lucide-react';
 import React from 'react';
@@ -91,12 +92,19 @@ export function TagsTab_DB({
         const counts = new Map<string, number>();
         models.forEach(m => {
             if (m.tags && Array.isArray(m.tags)) {
-                m.tags.forEach(t => counts.set(t, (counts.get(t) || 0) + 1));
+                m.tags.forEach((t: any) => {
+                    const tagName = typeof t === 'string' ? t : t?.name ?? '';
+                    if (tagName) counts.set(tagName, (counts.get(tagName) || 0) + 1);
+                });
             }
         });
 
         return Array.from(counts.entries())
-            .map(([name, count]) => ({ name, count, models: models.filter(m => Array.isArray(m.tags) && m.tags.includes(name)) } as TagInfo))
+            .map(([name, count]) => ({
+                name,
+                count,
+                models: models.filter(m => Array.isArray(m.tags) && m.tags.some((t: any) => (typeof t === 'string' ? t : t?.name) === name))
+            } as unknown as TagInfo))
             .sort((a, b) => b.count - a.count);
     }, [models]);
 
@@ -273,7 +281,7 @@ export function TagsTab_DB({
                                         key={model.id}
                                         className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50 cursor-pointer"
                                         onClick={() => {
-                                            if (onModelClick) onModelClick(model);
+                                            if (onModelClick) onModelClick(model as any);
                                             setViewTagModels(null);
                                         }}
                                     >

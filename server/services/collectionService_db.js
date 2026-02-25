@@ -133,9 +133,10 @@ async function getCollectionTree(parentId = null) {
  * @returns {Promise<Collection>}
  */
 async function createCollection(data) {
-  const { name, parentId, coverImagePath, pathHash: providedHash, path: providedPath, createOnDisk, type, category, metadata } = data;
+  const { name, parentId, coverImagePath, coverImage, pathHash: providedHash, path: providedPath, createOnDisk, type, category, metadata, images, description } = data;
 
   let finalPathHash = providedHash || null;
+  const finalCoverImagePath = coverImagePath || coverImage || null;
 
   // Case 1: Import Existing Folder (Path provided)
   if (providedPath && !finalPathHash) {
@@ -188,7 +189,7 @@ async function createCollection(data) {
     data: {
       name,
       parentId: parentId || null,
-      coverImagePath: coverImagePath || null,
+      coverImagePath: finalCoverImagePath,
       pathHash: finalPathHash, // NULL = Cloud, Value = Physical
       type: type || 'folder',
       category: category || null,
@@ -204,22 +205,32 @@ async function createCollection(data) {
  * @returns {Promise<Collection>}
  */
 async function updateCollection(id, updates) {
-  const { name, coverImagePath, pathHash, type, category, metadata } = updates;
+  const { name, coverImagePath, coverImage, pathHash, type, category, metadata, description, images, documents } = updates;
+
+  const finalCoverImagePath = coverImagePath !== undefined ? coverImagePath : coverImage;
 
   // If metadata is provided, we should merge it with existing
   let metadataString = undefined;
-  if (metadata) {
+  if (metadata || description !== undefined || images !== undefined || documents !== undefined) {
     const current = await prisma.collection.findUnique({ where: { id }, select: { metadata: true } });
     let existing = {};
     try { existing = JSON.parse(current?.metadata || '{}'); } catch (e) { }
-    metadataString = JSON.stringify({ ...existing, ...metadata });
+
+    // Inject top level description/images back into metadata to bridge legacy
+    const newMeta = { ...existing };
+    if (metadata) Object.assign(newMeta, metadata);
+    if (description !== undefined) newMeta.description = description;
+    if (images !== undefined) newMeta.images = images;
+    if (documents !== undefined) newMeta.documents = documents;
+
+    metadataString = JSON.stringify(newMeta);
   }
 
   return await prisma.collection.update({
     where: { id },
     data: {
       ...(name && { name }),
-      ...(coverImagePath !== undefined && { coverImagePath }),
+      ...(finalCoverImagePath !== undefined && { coverImagePath: finalCoverImagePath }),
       ...(pathHash !== undefined && { pathHash }),
       ...(type && { type }),
       ...(category !== undefined && { category }),

@@ -43,7 +43,7 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
   const [ollamaModel, setOllamaModel] = useState('llava');
 
   // Printer Slot variables
-  const [activePrinterIndex, setActivePrinterIndex] = useState(0);
+  const [activePrinterIndex, setActivePrinterIndex] = useState(0); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Sync with incoming config
   useEffect(() => {
@@ -155,14 +155,14 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
   };
 
   // --- PRINTER LOGIC ---
-  const currentPrinterConfig: PrinterConfig = config.integrations?.printers?.[activePrinterIndex] || {
+  const _currentPrinterConfig: PrinterConfig = config.integrations?.printers?.[activePrinterIndex] || {
     type: 'moonraker',
     url: '',
     apiKey: '',
     color: '#3b82f6'
   };
 
-  const handlePrinterUpdate = (field: string, value: any) => {
+  const _handlePrinterUpdate = (field: string, value: any) => {
     const currentPrinters = [...(config.integrations?.printers || [])];
 
     // Ensure array exists up to this index

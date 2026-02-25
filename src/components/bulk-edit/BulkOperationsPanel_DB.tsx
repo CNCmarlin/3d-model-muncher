@@ -44,7 +44,7 @@ export function BulkOperationsPanel_DB({
     const {
         editState, fieldSelection, handleFieldToggle, commonValues,
         setCategory, setLicense, setDesigner, setPrintStatus, setHidden,
-        setNotes, setSource, setPrice, setPrintTime, setFilament,
+        setNotes, setDescription, setSource, setPrice, setPrintTime, setFilament,
         setCollectionId, setCollectionAction, setPrintSettings, setPrintMaterial
     } = form;
 
@@ -183,6 +183,21 @@ export function BulkOperationsPanel_DB({
                             value={editState.source || ''}
                             onApply={(v) => setSource(String(v))}
                             placeholder="https://..."
+                        />
+                    </BulkEditSection_DB>
+
+                    <BulkEditSection_DB
+                        id="description"
+                        label="Description"
+                        icon={<FileText className="h-4 w-4" />}
+                        checked={fieldSelection.description}
+                        onToggle={() => handleFieldToggle('description')}
+                    >
+                        <BufferedTextarea_DB
+                            value={editState.description || ''}
+                            onApply={setDescription}
+                            placeholder="Detailed description..."
+                            rows={4}
                         />
                     </BulkEditSection_DB>
 

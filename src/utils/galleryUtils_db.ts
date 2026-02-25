@@ -1,6 +1,10 @@
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 
-// Helper: extract data URL from userDefined image entry
+// BATCH 7 NOTE: In DB mode, image data lives in the ModelImage table (Batch 5).
+// The userDefined.images / userDefined.imageOrder pointer system below is deprecated.
+// These functions remain as fallbacks only for models not yet re-saved through the DB.
+
+// Helper: extract data URL from a legacy userDefined image entry
 export const getUserImageData = (entry: any) => {
     if (!entry) return '';
     if (typeof entry === 'string') return entry;
@@ -14,6 +18,7 @@ export const resolveDescriptorToData = (desc: string | undefined, m: Model): str
 
     const parsedImages = Array.isArray(m.parsedImages) ? m.parsedImages : [];
     const legacyImages = Array.isArray(m.images) ? m.images : [];
+    // DEPRECATED (Batch 7): userDefined.images superseded by ModelImage table
     const userArr = Array.isArray((m as any).userDefined?.images) ? (m as any).userDefined.images : [];
 
     if (desc.startsWith('parsed:')) {
@@ -41,6 +46,7 @@ export const buildImageOrderFromModel = (m: Model) => {
     if (!m) return result;
 
     const parsedImages = Array.isArray(m.parsedImages) ? m.parsedImages : [];
+    // DEPRECATED (Batch 7): userDefined.images superseded by ModelImage table
     const userArr = Array.isArray((m as any).userDefined?.images) ? (m as any).userDefined.images : [];
 
     for (let i = 0; i < parsedImages.length; i++) {
@@ -65,6 +71,7 @@ export const buildImageOrderFromModel = (m: Model) => {
 };
 
 export const resolveImageOrderToUrls = (m: Model) => {
+    // DEPRECATED (Batch 7): userDefined.imageOrder superseded by ModelImage.order column
     const order = Array.isArray((m as any).userDefined?.imageOrder) ? (m as any).userDefined.imageOrder : undefined;
     if (!m || !order || order.length === 0) return null;
 

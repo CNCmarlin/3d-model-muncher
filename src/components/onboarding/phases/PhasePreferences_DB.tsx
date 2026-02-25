@@ -1,4 +1,5 @@
 
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppConfig } from "@/types/config";
@@ -14,6 +15,7 @@ interface PhasePreferencesProps {
 
 export function PhasePreferences_DB({ config, onUpdateConfig }: PhasePreferencesProps) {
     // Local state for immediate feedback before saving
+    const [libraryName, setLibraryName] = useState(config.settings?.libraryName || '');
     const [primaryColor, setPrimaryColor] = useState(config.settings.primaryColor || "#7c3aed");
     const [defaultModelColor, setDefaultModelColor] = useState(config.settings.defaultModelColor || "#aaaaaa");
 
@@ -42,6 +44,30 @@ export function PhasePreferences_DB({ config, onUpdateConfig }: PhasePreferences
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Library Name */}
+            <div className="space-y-2">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <span>🏷️</span>
+                    Library Name
+                </h3>
+                <div className="p-6 border rounded-xl bg-card space-y-2">
+                    <Label htmlFor="onboarding-library-name">Display Name</Label>
+                    <Input
+                        id="onboarding-library-name"
+                        value={libraryName}
+                        onChange={(e) => {
+                            setLibraryName(e.target.value);
+                            updateSetting('libraryName', e.target.value || undefined);
+                        }}
+                        placeholder="3D Model Muncher"
+                        className="max-w-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                        Shown in the sidebar and top bar. Leave blank to use the default.
+                    </p>
+                </div>
+            </div>
+
             {/* Appearance Section */}
             <div className="space-y-4">
                 <h3 className="text-lg font-semibold flex items-center gap-2">

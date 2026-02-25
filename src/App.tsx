@@ -1,5 +1,5 @@
 import { DemoPage } from "@/components/management/DemoPage";
-import { OnboardingPage } from "@/pages/Onboarding/OnboardingPage";
+import { OnboardingPage } from "@/pages/Onboarding/OnboardingPage_DB";
 import { useEffect, useMemo, useState } from "react";
 
 import { MigrationStatus } from "@/components/admin/MigrationStatus";
@@ -25,6 +25,7 @@ import { useCollections } from "@/hooks/queries/useCollections";
 import { useModels } from "@/hooks/queries/useModels";
 import { useModelsByIds } from "@/hooks/queries/useModelsByIds";
 import { useFilteredModels } from "@/hooks/useFilteredModels";
+import { useFilteredModels_db } from "@/hooks/useFilteredModels_db";
 import { useGlobalDialogs } from "@/hooks/useGlobalDialogs";
 import { useModelActions } from "@/hooks/useModelActions";
 import { useSelectionMode } from "@/hooks/useSelectionMode";
@@ -111,7 +112,7 @@ function AppContent() {
     isLoading: isModelsLoading,
     isFetching: isRefreshing,
     refetch: refetchModels
-  } = useModels({}, { enabled: !useDatabaseBackend });
+  } = useModels({});
 
   const {
     data: collections = EMPTY_COLLECTIONS,
@@ -122,7 +123,12 @@ function AppContent() {
   const setModels = (_newModels: Model[]) => {
     // For legacy updates (like tag deletion), just trigger a refetch
     // This ensures the UI reflects the backend state
-    refetchModels();
+    if (!useDatabaseBackend) {
+      refetchModels();
+    } else {
+      // In DB mode, React Query invalidations in the mutation hooks handle this.
+      // Calling refetchModels() on a disabled query (line 114) might cause issues.
+    }
   };
 
   // Wrapper functions to match expected signatures
@@ -139,7 +145,30 @@ function AppContent() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
 
-  // 1. Filtered Models Hook (needs model data & selection setters)
+  // 1a. Legacy filter hook (always called — React rules of hooks)
+  const legacyFiltered = useFilteredModels({
+    models,
+    collections,
+    refreshModels,
+    isSelectionMode,
+    setIsSelectionMode,
+    selectedModelIds,
+    setSelectedModelIds
+  });
+
+  // 1b. DB filter hook (always called — React rules of hooks)
+  const dbFiltered = useFilteredModels_db({
+    models: models as any,
+    collections,
+    refreshModels: refreshModels as any,
+    isSelectionMode,
+    setIsSelectionMode,
+    selectedModelIds,
+    setSelectedModelIds
+  });
+
+  // Pick the right hook results based on backend mode.
+  // Cast to legacyFiltered's type — DB-mode consumers all use 'as any' downstream already.
   const {
     filteredModels,
     setFilteredModels,
@@ -152,15 +181,7 @@ function AppContent() {
     collectionBaseModels,
     handleFilterChange,
     handleRefreshModels
-  } = useFilteredModels({
-    models,
-    collections,
-    refreshModels,
-    isSelectionMode,
-    setIsSelectionMode,
-    selectedModelIds,
-    setSelectedModelIds
-  });
+  } = (useDatabaseBackend ? dbFiltered : legacyFiltered) as typeof legacyFiltered;
 
   // DB-Mode Bulk Edit Data Fetching
   const { data: bulkModels } = useModelsByIds(selectedModelIds, {
@@ -480,6 +501,7 @@ function AppContent() {
                 showMissingImages: false,
                 sortBy: appConfig?.filters?.defaultSortBy || 'none',
               }}
+              libraryName={appConfig?.settings?.libraryName}
             />
           ) : (
             <FilterSidebar
@@ -531,7 +553,7 @@ function AppContent() {
                   <img src="/images/favicon-32x32.png" alt="3D Model Muncher" />
                 </div>
                 <div>
-                  <h1 className="text-lg font-semibold text-foreground tracking-tight leading-none">3D Model Muncher</h1>
+                  <h1 className="text-lg font-semibold text-foreground tracking-tight leading-none">{appConfig?.settings?.libraryName || '3D Model Muncher'}</h1>
                   <p className="text-xs text-muted-foreground mt-1 font-medium">{navGetViewTitle()}</p>
                 </div>
               </div>
@@ -587,7 +609,8 @@ function AppContent() {
           {currentView === 'models' ? (
             useDatabaseBackend ? (
               <ModelsView_DB_Any
-                collectionsForDisplay={collectionsForDisplay}
+                filteredModels={filteredModels}
+                collectionsForDisplay={hasActiveFilters ? [] : collectionsForDisplay}
                 allCollections={collections}
                 sortBy={currentSortBy as any}
                 onModelClick={handleModelClick}
@@ -632,9 +655,9 @@ function AppContent() {
                 onCategoriesUpdate={updateCategories}
                 config={appConfig}
                 onConfigUpdate={updateConfig}
-                models={models}
+                models={models as any}
                 onModelsUpdate={() => handleRefreshModels()}
-                onModelClick={handleModelClick}
+                onModelClick={handleModelClick as any}
                 onDonationClick={handleDonationClick}
                 initialTab={settingsInitialTab}
                 settingsAction={settingsAction}
@@ -664,9 +687,9 @@ function AppContent() {
                 collections={collections}
                 collectionsForDisplay={collectionsForDisplay}
                 currentSortBy={(currentSortBy || 'name') as SortKey}
-                models={models}
+                models={models as any}
                 categories={categories}
-                onOpenCollection={navOpenCollection}
+                onOpenCollection={navOpenCollection as any}
                 onRefresh={refreshCollections}
               />
             ) : (
@@ -773,8 +796,10 @@ function AppContent() {
                   setSelectedModel(null);
                   setCurrentView(activeCollection ? 'collection-view' : 'models');
                 }}
+                onModelUpdate={modelActions.handleModelUpdate}
                 onDelete={handleSingleModelDelete as any}
                 onOpenCollection={navOpenCollection as any}
+                onSelectModel={handleModelClick}
               />
             ) : (
               <ModelHubView
@@ -804,7 +829,7 @@ function AppContent() {
               if (useDatabaseBackend) {
                 return (
                   <BulkEditView_DB
-                    models={bulkModelsToRender}
+                    models={bulkModelsToRender as any}
                     onClose={navHandleBack}
                     onRemoveFromSelection={(id: string) => setSelectedModelIds(prev => prev.filter(mid => mid !== id))}
                     onClearSelections={() => {

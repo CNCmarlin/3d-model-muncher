@@ -1,5 +1,5 @@
+import { Model } from '@/types/model_db';
 import { toast } from 'sonner';
-import { Model } from '@/types/model';
 
 export function useDocumentUpload_db(model: Model | null, onModelUpdate: (model: Model) => void) {
 
@@ -10,7 +10,7 @@ export function useDocumentUpload_db(model: Model | null, onModelUpdate: (model:
         const formData = new FormData();
         formData.append('file', files[0]); // Start with single file for stability
         formData.append('modelId', model.id);
-        formData.append('filePath', model.filePath);
+        formData.append('filePath', model.filePath || '');
 
         try {
             toast.loading("Uploading to project folder...");

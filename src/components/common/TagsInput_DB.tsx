@@ -21,6 +21,8 @@ interface TagsInputProps {
   fallbackDisplay?: string[];
   // Case-insensitive de-duplication by default
   caseSensitive?: boolean;
+  // Optional callback to handle tag removal externally (e.g. to show a confirmation dialog)
+  onRemoveRequest?: (tag: string) => void;
 }
 
 // Normalize and dedupe helper
@@ -52,6 +54,7 @@ export default function TagsInput_DB({
   suggested,
   fallbackDisplay,
   caseSensitive = false,
+  onRemoveRequest,
 }: TagsInputProps) {
   const [text, setText] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -272,7 +275,7 @@ export default function TagsInput_DB({
               key={`${tag}-${idx}`}
               variant="secondary"
               className="text-sm gap-1 cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors"
-              onClick={() => handleRemove(tag)}
+              onClick={() => onRemoveRequest ? onRemoveRequest(tag) : handleRemove(tag)}
               title="Click to remove"
             >
               {tag}

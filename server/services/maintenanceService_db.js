@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
-const { getAbsoluteModelsPath, protectModelFileWrite, safeWriteJson } = require('../../../server-utils/dataAccess');
-const { generateThumbnail } = require('../../../dist-backend/utils/thumbnailGenerator');
-const { ConfigManager } = require('../../../dist-backend/utils/configManager');
-const { extractEmbeddedThumbnail } = require('../../../server-utils/thumbnailExtraction');
+const { getAbsoluteModelsPath, protectModelFileWrite, safeWriteJson } = require('../../server-utils/dataAccess');
+const { generateThumbnail } = require('../../dist-backend/utils/thumbnailGenerator');
+const { ConfigManager } = require('../../dist-backend/utils/configManager');
+const { extractEmbeddedThumbnail } = require('../../server-utils/thumbnailExtraction');
 
 class MaintenanceServiceLegacy {
     constructor() {

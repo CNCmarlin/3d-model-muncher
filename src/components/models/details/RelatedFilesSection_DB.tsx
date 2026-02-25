@@ -1,9 +1,20 @@
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useModelMutations_DB } from '@/hooks/useModelMutations_DB';
-import { Model } from "@/types/model";
+import { Model } from "@/types/model_db";
 import {
     Ban,
     Box,
@@ -127,9 +138,6 @@ const ModelFileCard = ({
 
 interface RelatedFilesSectionProps {
     isEditing: boolean;
-    editedModel: Model | null;
-    setEditedModel: React.Dispatch<React.SetStateAction<Model | null>>;
-    setFocusRelatedIndex: (index: number) => void;
     relatedVerifyStatus: Record<number, { loading?: boolean; ok?: boolean; message?: string }>;
     setRelatedVerifyStatus: React.Dispatch<React.SetStateAction<Record<number, any>>>;
     invalidRelated: string[];
@@ -150,9 +158,6 @@ interface RelatedFilesSectionProps {
 
 export const RelatedFilesSection_DB = ({
     isEditing,
-    editedModel,
-    setEditedModel,
-    setFocusRelatedIndex,
     relatedVerifyStatus,
     setRelatedVerifyStatus,
     currentModel,
@@ -170,9 +175,9 @@ export const RelatedFilesSection_DB = ({
 
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-    const { updateModel } = useModelMutations_DB();
+    const { deleteRelatedFile, addRelatedFile, updateRelatedFile } = useModelMutations_DB();
 
-    const categorizeFiles = (files: string[]) => {
+    const categorizeFiles = (files: { id: string, path: string }[]) => {
         const categories = {
             models: [] as string[],
             docs: [] as string[],
@@ -184,7 +189,7 @@ export const RelatedFilesSection_DB = ({
             categories.models.push(currentModel.filePath);
         }
 
-        files.forEach((path) => {
+        files.forEach(({ path }) => {
             // Skip adding the main model twice
             if (path === currentModel.filePath) return;
 
@@ -230,7 +235,7 @@ export const RelatedFilesSection_DB = ({
             const oldMainPath = currentModel.filePath;
 
             // 1. Guard: Prevent self-demotion
-            if (oldMainPath === newPath && currentModel.isProjectRoot) {
+            if (oldMainPath === newPath && (currentModel as any).isProjectRoot) {
                 toast?.info?.("This is already the Main Model.");
                 return;
             }
@@ -253,13 +258,13 @@ export const RelatedFilesSection_DB = ({
             };
 
             // 3. Persist via the Unified Mutation Hook (Triggers Auto-Refresh)
-            // Use mutateAsync to ensure we can await it
-            const refreshedModel = await updateModel.mutateAsync({
-                id: currentModel.id, // We are updating the CURRENT model (promoting a file within it)
-                data: promotionPayload.changes as any // Cast because promotion payload structure is specific
+            // Use fetch directly here because we need the raw response for the heal
+            const patchRes = await fetch(`/api/models/${currentModel.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(promotionPayload.changes),
             });
-
-            // Note: updateModel returns the refreshed model directly per our hook definition
+            if (!patchRes.ok) throw new Error("Failed to promote model");
 
             // 4. OS Grace Period (Ensures file locks are released)
             await new Promise(resolve => setTimeout(resolve, 150));
@@ -284,8 +289,6 @@ export const RelatedFilesSection_DB = ({
             }
 
             // 6. Final UI Update
-            // onModelUpdate removed to prevent double-mutation (Race Condition with parent auto-save).
-            // The Query Invalidation in useModelMutations will trigger a re-render of ModelHubView with fresh data.
             // And useModelGallery effect (now watching filePath) will update the 3D view.
             setActive3DFile(newPath);
 
@@ -294,13 +297,17 @@ export const RelatedFilesSection_DB = ({
             const fileName = newPath.split('/').pop() || 'model';
             toast?.success?.(`Main model set to ${fileName}`);
 
+            // Force a hard reload of the page to ensure all contexts reset correctly
+            window.location.reload();
+
         } catch (err) {
             console.error("Critical failure during model promotion:", err);
             toast?.error?.('Failed to update project identity.');
         }
     };
 
-    const filesToEdit = editedModel?.related_files ?? currentModel.related_files ?? [];
+    // Strict Database First: Map over true DB objects
+    const filesToEdit = currentModel.relatedFiles || [];
 
     if (isEditing) {
         return (
@@ -316,29 +323,67 @@ export const RelatedFilesSection_DB = ({
 
                 <div className="space-y-3">
                     {filesToEdit.map((rf, idx) => (
-                        <div key={`related-edit-${idx}`} className="flex items-center gap-2 group">
-                            <Button
-                                size="icon" variant="ghost"
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => setEditedModel(prev => {
-                                    const base = prev || currentModel;
-                                    const arr = [...(base.related_files || [])];
-                                    arr.splice(idx, 1);
-                                    return { ...base, related_files: arr };
-                                })}
-                            >
-                                <X className="h-4 w-4" />
-                            </Button>
+                        <div key={`related-edit-${rf.id}`} className="flex items-center gap-2 group">
+                            <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button
+                                        size="icon" variant="ghost"
+                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This action cannot be undone. This will permanently delete the file from the server's disk and remove it from the 3D Model Muncher database.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                try {
+                                                    await deleteRelatedFile.mutateAsync({ id: currentModel.id, relatedFileId: rf.id });
+                                                    toast?.success?.("File permanently deleted.");
+                                                } catch (error: any) {
+                                                    toast?.error?.(error.message || "Failed to delete file.");
+                                                }
+                                            }}
+                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                        >
+                                            Permanently Delete
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
 
                             <Input
-                                value={rf}
+                                defaultValue={rf.path}
                                 className="h-9 font-mono text-xs bg-background/50 border-border/40 focus-visible:ring-primary/20"
-                                onChange={(e) => setEditedModel(prev => {
-                                    const base = prev || currentModel;
-                                    const arr = [...(base.related_files || [])];
-                                    arr[idx] = e.target.value;
-                                    return { ...base, related_files: arr };
-                                })}
+                                onBlur={async (e) => {
+                                    const newPath = e.target.value;
+                                    if (newPath === rf.path) return; // No change
+                                    if (!newPath.trim()) {
+                                        toast?.error?.("Path cannot be empty. Use the delete button instead.");
+                                        e.target.value = rf.path; // Revert to original
+                                        return;
+                                    }
+                                    try {
+                                        await updateRelatedFile.mutateAsync({ id: currentModel.id, relatedFileId: rf.id, path: newPath });
+                                        toast?.success?.("Path updated.");
+                                    } catch (err: any) {
+                                        toast?.error?.(err.message || "Failed to update path.");
+                                        e.target.value = rf.path; // Revert
+                                    }
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.currentTarget.blur();
+                                    }
+                                }}
                             />
 
                             <Button
@@ -350,7 +395,7 @@ export const RelatedFilesSection_DB = ({
                                         const resp = await fetch('/api/verify-file', {
                                             method: 'POST',
                                             headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify({ path: rf })
+                                            body: JSON.stringify({ path: rf.path })
                                         });
                                         const j = await resp.json();
                                         setRelatedVerifyStatus(prev => ({ ...prev, [idx]: { loading: false, ok: !!(j && j.success && j.exists) } }));
@@ -367,13 +412,14 @@ export const RelatedFilesSection_DB = ({
                     <div className="grid grid-cols-2 gap-2 mt-2">
                         <Button
                             variant="outline" size="sm" className="h-9 border-dashed text-[10px] font-black uppercase tracking-tighter"
-                            onClick={() => setEditedModel(prev => {
-                                const base = prev || currentModel;
-                                const arr = [...(base.related_files || [])];
-                                arr.push("");
-                                setTimeout(() => setFocusRelatedIndex(arr.length - 1), 0);
-                                return { ...base, related_files: arr };
-                            })}
+                            onClick={async () => {
+                                try {
+                                    await addRelatedFile.mutateAsync({ id: currentModel.id, path: `new/path/to/file-${Date.now()}.stl` });
+                                    toast?.success?.("New empty record created.");
+                                } catch (err: any) {
+                                    toast?.error?.(err.message || "Failed to create new record.");
+                                }
+                            }}
                         >
                             <Plus className="mr-2 h-3.5 w-3.5" /> Link_Entry
                         </Button>
@@ -396,7 +442,7 @@ export const RelatedFilesSection_DB = ({
     }
 
     /* ==================== VIEW MODE ==================== */
-    const categories = categorizeFiles(currentModel.related_files || []);
+    const categories = categorizeFiles(currentModel.relatedFiles || []);
 
     return (
         <div className="space-y-4">

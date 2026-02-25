@@ -15,12 +15,13 @@ class MigrationEngine {
         this.scanner = new LegacySourceScanner(this.modelsDir);
         this.appsDir = path.dirname(this.modelsDir); // Assuming 3d-model-muncher root
         this.errorLogPath = path.join(process.cwd(), 'migration_errors.log');
+        this._transformationsMap = new Map(); // Roll-up accumulator for transformation messages
         this.stats = {
             models: { created: 0, updated: 0, skipped: 0 },
             collections: { created: 0, updated: 0, skipped: 0 },
             files: { created: 0, skipped: 0 },
             warnings: [],
-            discrepancies: [] // New: Structural differences
+            discrepancies: []
         };
     }
 
@@ -81,7 +82,16 @@ class MigrationEngine {
                     hidden: 0,
                     favorites: 0,
                     projectRoots: 0,
-                    projectParts: 0
+                    projectParts: 0,
+                    withCategory: 0,
+                    withModelUrl: 0,
+                    withPrice: 0,
+                    withPrintSettings: 0,
+                    withFileSize: 0,
+                    withGcode: 0,
+                    withFilesIdentity: 0,
+                    withGallery: 0,
+                    withThumbnails: 0
                 },
                 // Dry Run Projection (What WILL be)
                 dryRun: {
@@ -92,7 +102,16 @@ class MigrationEngine {
                     hidden: 0,
                     favorites: 0,
                     projectRoots: 0,
-                    projectParts: 0
+                    projectParts: 0,
+                    withCategory: 0,
+                    withModelUrl: 0,
+                    withPrice: 0,
+                    withPrintSettings: 0,
+                    withFileSize: 0,
+                    withGcode: 0,
+                    withFilesIdentity: 0,
+                    withGallery: 0,
+                    withThumbnails: 0
                 },
                 // Current DB Context (What IS)
                 current: {
@@ -103,7 +122,16 @@ class MigrationEngine {
                     hidden: 0,
                     favorites: 0,
                     projectRoots: 0,
-                    projectParts: 0
+                    projectParts: 0,
+                    withCategory: 0,
+                    withModelUrl: 0,
+                    withPrice: 0,
+                    withPrintSettings: 0,
+                    withFileSize: 0,
+                    withGcode: 0,
+                    withFilesIdentity: 0,
+                    withGallery: 0,
+                    withThumbnails: 0
                 }
             },
             deltas: {
@@ -115,7 +143,16 @@ class MigrationEngine {
                 hidden: [],
                 favorites: [],
                 projectRoots: [],
-                projectParts: []
+                projectParts: [],
+                withCategory: [],
+                withModelUrl: [],
+                withPrice: [],
+                withPrintSettings: [],
+                withFileSize: [],
+                withGcode: [],
+                withFilesIdentity: [],
+                withGallery: [],
+                withThumbnails: []
             },
             actions: {
                 models: { created: 0, updated: 0, skipped: 0 },
@@ -124,7 +161,18 @@ class MigrationEngine {
             },
             critical: [], // Missing files, corrupted data
             warnings: [], // Minor issues
-            transformations: [] // "Hidden field moved", "Tag updated"
+            transformations: [], // Rolled up after run — do not push directly, use _recordTransformation()
+            // Meta: field grouping for UI auto-rendering
+            meta: {
+                fieldBatches: {
+                    core: ['withTags', 'withDescription', 'withPrintTime', 'withFilament', 'hidden', 'favorites', 'projectRoots', 'projectParts'],
+                    batch1: ['withCategory', 'withModelUrl', 'withPrice'],
+                    batch2: ['withPrintSettings', 'withFileSize'],
+                    batch3: ['withGcode'],
+                    batch4: ['withFilesIdentity'],
+                    batch5: ['withGallery', 'withThumbnails']
+                }
+            }
         };
 
         // --- STEP 4: PROCESS COLLECTIONS ---
@@ -143,6 +191,18 @@ class MigrationEngine {
         for (const entity of sourceEntities) {
             await this._processEntity(entity, dryRun);
         }
+
+        // --- STEP 6: POPULATE CURRENT DB STATS ---
+        // Always run this so the UI can compare legacy/dryRun vs current DB.
+        await this._scanCurrentDBStats();
+
+        // --- STEP 7: ROLL UP TRANSFORMATIONS ---
+        // Convert the Map accumulator into a compact array of {message, count, examples}.
+        this.stats.transformations = Array.from(this._transformationsMap.entries()).map(([message, { count, examples }]) => ({
+            message,
+            count,
+            examples
+        }));
 
         return this.stats;
     }
@@ -175,6 +235,16 @@ class MigrationEngine {
             const legFav = !!(data.favorite || data.isFavorite);
             const legRoot = !!data.isProjectRoot;
             const legPart = !!data.isRelatedPart;
+            const legCategory = !!data.category;
+            const legModelUrl = !!data.modelUrl;
+            const legPrice = data.price > 0;
+            // Batch 2
+            const legPrintSettings = !!(data.printSettings?.layerHeight || data.printSettings?.infill || data.printSettings?.nozzle || data.printSettings?.printer || data.printSettings?.material);
+            const legFileSize = !!data.fileSize;
+            const legGcode = !!(data.gcodeData?.gcodeFilePath || data.gcodeData?.printTime);
+            const legFilesIdentity = !!(data.source || data.notes || data.related_files?.length > 0);
+            const legGallery = !!(data.parsedImages?.length > 0 || data.images?.length > 0);
+            const legThumbnails = false; // Legacy JSON doesn't track per-file thumbnails explicitly
 
             if (legTags) this.stats.summary.legacy.withTags++;
             if (legDesc) this.stats.summary.legacy.withDescription++;
@@ -184,6 +254,15 @@ class MigrationEngine {
             if (legFav) this.stats.summary.legacy.favorites++;
             if (legRoot) this.stats.summary.legacy.projectRoots++;
             if (legPart) this.stats.summary.legacy.projectParts++;
+            if (legCategory) this.stats.summary.legacy.withCategory++;
+            if (legModelUrl) this.stats.summary.legacy.withModelUrl++;
+            if (legPrice) this.stats.summary.legacy.withPrice++;
+            if (legPrintSettings) this.stats.summary.legacy.withPrintSettings++;
+            if (legFileSize) this.stats.summary.legacy.withFileSize++;
+            if (legGcode) this.stats.summary.legacy.withGcode++;
+            if (legFilesIdentity) this.stats.summary.legacy.withFilesIdentity++;
+            if (legGallery) this.stats.summary.legacy.withGallery++;
+            if (legThumbnails) this.stats.summary.legacy.withThumbnails++;
 
             // 2. DRY RUN PROJECTION (Mapped properties)
             const dryTags = mapped.tags && mapped.tags.length > 0;
@@ -194,6 +273,16 @@ class MigrationEngine {
             const dryFav = !!mapped.isFavorite;
             const dryRoot = entity.type === 'PROJECT_ROOT';
             const dryPart = entity.type === 'PROJECT_PART';
+            const dryCategory = !!mapped.category;
+            const dryModelUrl = !!mapped.modelUrl;
+            const dryPrice = mapped.price > 0;
+            // Batch 2
+            const dryPrintSettings = !!(mapped.layerHeight || mapped.infill || mapped.nozzle || mapped.printer || mapped.material);
+            const dryFileSize = !!mapped.fileSize;
+            const dryGcode = !!(mapped.gcodeFilePath || mapped.gcodePrintTime);
+            const dryFilesIdentity = !!(mapped.source || mapped.notes || mapped._relatedFiles?.length > 0);
+            const dryGallery = !!(mapped._gallery?.length > 0);
+            const dryThumbnails = !!(Object.keys(mapped._thumbnails || {}).length > 0);
 
             if (dryTags) this.stats.summary.dryRun.withTags++;
             if (dryDesc) this.stats.summary.dryRun.withDescription++;
@@ -203,6 +292,15 @@ class MigrationEngine {
             if (dryFav) this.stats.summary.dryRun.favorites++;
             if (dryRoot) this.stats.summary.dryRun.projectRoots++;
             if (dryPart) this.stats.summary.dryRun.projectParts++;
+            if (dryCategory) this.stats.summary.dryRun.withCategory++;
+            if (dryModelUrl) this.stats.summary.dryRun.withModelUrl++;
+            if (dryPrice) this.stats.summary.dryRun.withPrice++;
+            if (dryPrintSettings) this.stats.summary.dryRun.withPrintSettings++;
+            if (dryFileSize) this.stats.summary.dryRun.withFileSize++;
+            if (dryGcode) this.stats.summary.dryRun.withGcode++;
+            if (dryFilesIdentity) this.stats.summary.dryRun.withFilesIdentity++;
+            if (dryGallery) this.stats.summary.dryRun.withGallery++;
+            if (dryThumbnails) this.stats.summary.dryRun.withThumbnails++;
 
             // 3. Record Deltas (Legacy vs Dry Run)
             // We compare what we HAVE (legacy) vs what we WILL HAVE (dryRun)
@@ -215,11 +313,17 @@ class MigrationEngine {
             this._checkDelta('favorites', entity, legFav, dryFav);
             this._checkDelta('projectRoots', entity, legRoot, dryRoot);
             this._checkDelta('projectParts', entity, legPart, dryPart);
+            this._checkDelta('withCategory', entity, legCategory, dryCategory);
+            this._checkDelta('withModelUrl', entity, legModelUrl, dryModelUrl);
+            this._checkDelta('withPrice', entity, legPrice, dryPrice);
+            this._checkDelta('withPrintSettings', entity, legPrintSettings, dryPrintSettings);
+            this._checkDelta('withFileSize', entity, legFileSize, dryFileSize);
+            this._checkDelta('withGcode', entity, legGcode, dryGcode);
 
-            // Check Transformations (Transformations)
-            if (data.hidden !== undefined && data.hidden !== mapped.isHidden) {
-                if (data.hidden && this.stats.transformations.length < 50) {
-                    this.stats.transformations.push({ file: entity.name, message: `Model marked 'hidden' in file, will be 'isHidden' in DB.` });
+            // Check Transformations — accumulate via roll-up helper
+            if (data.hidden !== undefined && !!data.hidden !== !!mapped.isHidden) {
+                if (data.hidden) {
+                    this._recordTransformation(`Model marked 'hidden' in JSON, will be stored as 'isHidden' in DB.`, entity.name);
                 }
             }
 
@@ -254,6 +358,24 @@ class MigrationEngine {
 
     // --- Helpers ---
 
+    /**
+     * Accumulate a transformation message into the roll-up Map.
+     * @param {string} message - Template message (shared across many entities)
+     * @param {string} entityName - The entity name as an example
+     */
+    _recordTransformation(message, entityName) {
+        if (!this._transformationsMap) {
+            this._transformationsMap = new Map();
+        }
+        if (!this._transformationsMap.has(message)) {
+            this._transformationsMap.set(message, { count: 0, examples: [] });
+        }
+        const entry = this._transformationsMap.get(message);
+        entry.count++;
+        if (entry.examples.length < 3) {
+            entry.examples.push(entityName);
+        }
+    }
 
     _checkDelta(key, entity, legacyVal, destVal) {
         if (legacyVal !== destVal) {
@@ -299,8 +421,8 @@ class MigrationEngine {
     }
 
     async _upsertModel(mapped, collectionId, collectionName) {
-        // Separate tags from the main payload because they require relation handling
-        const { tags, ...modelData } = mapped;
+        // Separate non-schema fields from the main payload
+        const { tags, _relatedFiles, _images, _gallery, _thumbnails, ...modelData } = mapped;
 
         try {
             await prisma.model.upsert({
@@ -321,6 +443,14 @@ class MigrationEngine {
             if (tags && Array.isArray(tags)) {
                 await this._linkTags(mapped.id, tags);
             }
+
+            // Handle Related Files (Batch 4)
+            if (_relatedFiles && Array.isArray(_relatedFiles) && _relatedFiles.length > 0) {
+                await this._linkRelatedFiles(mapped.id, _relatedFiles);
+            }
+
+            // Handle Images (Batch 5)
+            await this._linkImages(mapped.id, { gallery: _gallery, thumbnails: _thumbnails });
 
             return true; // Success
 
@@ -378,6 +508,65 @@ class MigrationEngine {
             this._logError('UPSERT_FAILED', mapped.name, `Model Error: ${e.message}`, e);
             this.stats.warnings.push({ file: mapped.name, message: `Model Error: ${e.message}` });
             return false;
+        }
+    }
+
+    async _linkImages(modelId, metadata) {
+        // 1. Delete existing images for this model to ensure sync
+        await prisma.modelImage.deleteMany({
+            where: { modelId: modelId }
+        });
+
+        const rows = [];
+        let order = 0;
+        const insertedPaths = new Set(); // Track paths to avoid duplicates
+
+        // 2. Per-file thumbnails (keyed by model filename) — insert FIRST
+        if (metadata.thumbnails && typeof metadata.thumbnails === 'object') {
+            for (const [sourceFile, thumbPaths] of Object.entries(metadata.thumbnails)) {
+                if (Array.isArray(thumbPaths)) {
+                    for (const thumbPath of thumbPaths) {
+                        rows.push({ modelId, path: thumbPath, source: 'thumbnail', sourceFile, order: order++ });
+                        insertedPaths.add(thumbPath.toLowerCase());
+                    }
+                }
+            }
+        }
+
+        // 3. Gallery images — use metadata.gallery (orphan images not tied to any model file)
+        //    NOT metadata.images (which is the complete flat list including per-file thumbs)
+        //    This prevents PROJECT_ROOT models from showing component thumbnails in their gallery
+        const gallerySource = metadata.gallery || [];
+
+        if (Array.isArray(gallerySource)) {
+            for (const imgPath of gallerySource) {
+                if (!insertedPaths.has(imgPath.toLowerCase())) {
+                    rows.push({ modelId, path: imgPath, source: 'gallery', order: order++ });
+                    insertedPaths.add(imgPath.toLowerCase());
+                }
+            }
+        }
+
+        // 4. Bulk insert
+        if (rows.length > 0) {
+            await prisma.modelImage.createMany({ data: rows });
+        }
+    }
+
+    async _linkRelatedFiles(modelId, relatedFiles) {
+        // 1. Delete existing related files for this model to ensure sync
+        await prisma.modelRelatedFile.deleteMany({
+            where: { modelId: modelId }
+        });
+
+        // 2. Create new records
+        if (relatedFiles.length > 0) {
+            await prisma.modelRelatedFile.createMany({
+                data: relatedFiles.map(path => ({
+                    modelId: modelId,
+                    path: path
+                }))
+            });
         }
     }
 
@@ -508,7 +697,7 @@ class MigrationEngine {
         }
 
         // 3. Process Related Files (Expected 3D files from metadata)
-        const related = mapped.metadata.related_files || [];
+        const related = mapped._relatedFiles || [];
         for (const relPath of related) {
             let absPath = path.resolve(this.modelsDir, relPath);
             if (!fs.existsSync(absPath)) absPath = path.resolve(folderPath, relPath);
@@ -544,8 +733,8 @@ class MigrationEngine {
     }
 
     /**
-     * "Expensive" Deep Scan of Current Database Stats
-     * Populates this.stats.summary.dest with REAL database values instead of just dry-run projections.
+     * Deep Scan of Current Database Stats
+     * Populates this.stats.summary.current with REAL database values.
      */
     async _scanCurrentDBStats() {
         if (!prisma) return;
@@ -553,6 +742,8 @@ class MigrationEngine {
         try {
             console.log("📊 [MigrationEngine] Deep Scanning Current Database...");
 
+            // Select only fields that actually exist in the Model schema.
+            // NOTE: ModelFile has no 'type' column — removed files relation to prevent Prisma error.
             const models = await prisma.model.findMany({
                 select: {
                     tags: true,
@@ -561,7 +752,23 @@ class MigrationEngine {
                     filamentUsage: true,
                     isHidden: true,
                     isFavorite: true,
-                    files: { select: { type: true } }
+                    isComponent: true,
+                    category: true,       // Batch 1
+                    modelUrl: true,       // Batch 1
+                    price: true,          // Batch 1
+                    layerHeight: true,    // Batch 2
+                    infill: true,         // Batch 2
+                    nozzle: true,         // Batch 2
+                    printer: true,        // Batch 2
+                    material: true,       // Batch 2
+                    fileSize: true,       // Batch 2
+                    gcodeFilePath: true,  // Batch 3
+                    gcodePrintTime: true, // Batch 3
+                    notes: true,          // Batch 4
+                    source: true,         // Batch 4
+                    filePath: true,       // Batch 4
+                    relatedFiles: { select: { id: true } }, // Batch 4
+                    images: { select: { id: true, source: true } } // Batch 5
                 }
             });
 
@@ -574,35 +781,55 @@ class MigrationEngine {
                 hidden: 0,
                 favorites: 0,
                 projectRoots: 0,
-                projectParts: 0
+                projectParts: 0,
+                withCategory: 0,
+                withModelUrl: 0,
+                withPrice: 0,
+                withPrintSettings: 0,
+                withFileSize: 0,
+                withGcode: 0,
+                withFilesIdentity: 0,
+                withGallery: 0,
+                withThumbnails: 0
             };
 
             for (const m of models) {
                 if (m.tags && m.tags.length > 0) this.stats.summary.current.withTags++;
                 if (m.description) this.stats.summary.current.withDescription++;
-                if (m.printTime > 0) this.stats.summary.current.withPrintTime++;
-                if (m.filamentUsage > 0) this.stats.summary.current.withFilament++;
+                if (m.printTime != null && m.printTime > 0) this.stats.summary.current.withPrintTime++;
+                if (m.filamentUsage != null && m.filamentUsage > 0) this.stats.summary.current.withFilament++;
                 if (m.isHidden) this.stats.summary.current.hidden++;
                 if (m.isFavorite) this.stats.summary.current.favorites++;
 
-                // Identify Project Roots/Parts based on file types
-                // (Note: The DB schema doesn't have explicit 'isProjectRoot' flag on Model, 
-                // but we can infer roots if they have children, or just rely on file metadata)
-                // Actually, the best way for now is checking if it 'looks' like a root (has parts)
-                const hasParts = m.files.some(f => f.type === 'part');
-                if (hasParts) this.stats.summary.current.projectRoots++;
+                // isComponent marks sub-parts; non-component models are potential project roots
+                if (m.isComponent) this.stats.summary.current.projectParts++;
 
-                // Parts themselves are usually Models in the DB too? 
-                // Wait, your schema might treat parts as just files attached to a model.
-                // If parts are 'ModelFile' records, we count them here:
-                const partCount = m.files.filter(f => f.type === 'part').length;
-                this.stats.summary.current.projectParts += partCount;
+                // Batch 1: Promoted Fields
+                if (m.category) this.stats.summary.current.withCategory++;
+                if (m.modelUrl) this.stats.summary.current.withModelUrl++;
+                if (m.price != null && m.price > 0) this.stats.summary.current.withPrice++;
+                // Batch 2: Promoted Fields
+                if (m.layerHeight || m.infill || m.nozzle || m.printer || m.material) this.stats.summary.current.withPrintSettings++;
+                if (m.fileSize) this.stats.summary.current.withFileSize++;
+                // Batch 3: Promoted Fields
+                if (m.gcodeFilePath || m.gcodePrintTime) this.stats.summary.current.withGcode++;
+                // Batch 4: Promoted Fields
+                if (m.source || m.notes || m.filePath || (m.relatedFiles && m.relatedFiles.length > 0)) {
+                    this.stats.summary.current.withFilesIdentity++;
+                }
+                // Batch 5: Images
+                if (m.images && m.images.length > 0) {
+                    const hasGallery = m.images.some(i => i.source === 'gallery');
+                    const hasThumbs = m.images.some(i => i.source === 'thumbnail');
+                    if (hasGallery) this.stats.summary.current.withGallery++;
+                    if (hasThumbs) this.stats.summary.current.withThumbnails++;
+                }
             }
 
             console.log("📊 [MigrationEngine] Deep Scan Complete.", this.stats.summary.current);
 
         } catch (e) {
-            console.error("Failed to scan current DB stats:", e);
+            console.error("❌ [MigrationEngine] Failed to scan current DB stats:", e.message);
         }
     }
 

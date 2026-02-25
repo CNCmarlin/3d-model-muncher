@@ -1,4 +1,4 @@
-import { TagInfo } from '@/types/model';
+import { TagInfo } from '@/types/model_db';
 
 const API_BASE = '/api/tags';
 

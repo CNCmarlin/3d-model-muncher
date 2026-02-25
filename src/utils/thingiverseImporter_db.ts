@@ -26,7 +26,6 @@ export class ThingiverseImporter {
     const limit = res.headers.get('X-RateLimit-Limit');
     const remaining = res.headers.get('X-RateLimit-Remaining');
     if (remaining) {
-      console.log(`[Thingiverse API] Quota: ${remaining}/${limit} remaining`);
     }
     if (!res.ok) {
       if (res.status === 401) throw new Error('Invalid Thingiverse Token');
@@ -52,7 +51,6 @@ export class ThingiverseImporter {
   }
 
   async importThing(thingId: string, modelsRoot: string, targetFolder: string = 'imported') {
-    console.log(`[Thingiverse] Starting import for ID: ${thingId} to ${targetFolder}`);
 
     // 1. Fetch Metadata
     const meta = await this.fetchTV(`/things/${thingId}`);
@@ -81,8 +79,6 @@ export class ThingiverseImporter {
     for (const file of validFiles) {
       const cleanName = sanitize(file.name);
       const dest = path.join(destDir, cleanName);
-
-      console.log(`[Thingiverse] Downloading ${cleanName}...`);
       await this.downloadFile(file.download_url, dest);
       importedFiles.push(cleanName);
     }
@@ -106,8 +102,6 @@ export class ThingiverseImporter {
       const baseImgName = sanitize(imgData.name || 'view').replace(/\.(jpg|jpeg|png|gif)$/i, '');
       const imgFileName = `image_${i}_${baseImgName}.jpg`;
       const dest = path.join(destDir, imgFileName);
-
-      console.log(`[Thingiverse] Downloading High-Res Image ${i + 1}/${realPhotosCount}...`);
       await this.downloadFile(imgUrl, dest);
       localImagePaths.push(`${relativeWebFolder}/${imgFileName}`);
     }

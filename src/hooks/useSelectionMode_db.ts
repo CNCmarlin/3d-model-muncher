@@ -1,5 +1,5 @@
+import { Model } from '@/types/model_db';
 import { useState } from 'react';
-import { Model } from '@/types/model';
 
 export interface UseSelectionModeProps {
     filteredModels: Model[];
@@ -27,7 +27,6 @@ export function useSelectionMode_db({
     };
 
     const handleModelSelection = (modelId: string, opts?: { shiftKey?: boolean; index?: number }) => {
-        console.log('[useSelectionMode] handleModelSelection:', modelId, opts);
         const currentIndex = typeof opts?.index === 'number'
             ? opts!.index as number
             : filteredModels.findIndex(m => m.id === modelId);
@@ -45,20 +44,16 @@ export function useSelectionMode_db({
                 } else {
                     rangeIds.forEach(id => set.add(id));
                 }
-                const newVal = Array.from(set);
-                console.log('[useSelectionMode] Range selection update:', newVal);
-                return newVal;
+                return Array.from(set);
             });
             return;
         }
 
-        setSelectedModelIds(prev => {
-            const newVal = prev.includes(modelId)
+        setSelectedModelIds(prev =>
+            prev.includes(modelId)
                 ? prev.filter(id => id !== modelId)
-                : [...prev, modelId];
-            console.log('[useSelectionMode] Single selection update:', newVal, 'Previous:', prev);
-            return newVal;
-        });
+                : [...prev, modelId]
+        );
         if (currentIndex !== -1) setSelectionAnchorIndex(currentIndex);
     };
 

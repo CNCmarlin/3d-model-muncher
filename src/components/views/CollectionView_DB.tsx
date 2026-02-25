@@ -1,7 +1,7 @@
 import CollectionGrid from '@/components/collections/CollectionGrid_DB';
-import { Collection } from '@/types/collection';
+import { Collection } from '@/types/collection_db';
 import { AppConfig } from '@/types/config';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 
 interface CollectionViewProps {
     activeCollection: Collection;

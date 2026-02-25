@@ -1,4 +1,8 @@
 const prisma = require('../../server-utils/db');
+const fs = require('fs');
+const path = require('path');
+const { parseDurationToSeconds } = require('../../server-utils/timeHelper');
+const { getAbsoluteModelsPath } = require('../../server-utils/dataAccess');
 const {
     ModelSchema,
     ModelFormSchema,
@@ -7,6 +11,15 @@ const {
     BulkEditSchema
 } = require('../schemas/index_db');
 const { dbLog } = require('../../server-utils/configHelper');
+
+const PRISMA_MODEL_COLUMNS = [
+    'id', 'collectionId', 'name', 'description', 'license', 'designer',
+    'source', 'notes', 'printTime', 'filamentUsage', 'isPrinted', 'isFavorite',
+    'isDeleted', 'isHidden', 'isComponent', 'category', 'modelUrl', 'price',
+    'layerHeight', 'infill', 'nozzle', 'printer', 'material', 'fileSize',
+    'gcodeFilePath', 'gcodePrintTime', 'gcodeTotalWeight', 'gcodeFilaments',
+    'pathHash', 'thumbnailPath', 'filePath', 'createdAt', 'updatedAt'
+];
 
 /**
  * DATABASE VERSION: Model Service
@@ -102,7 +115,9 @@ async function getAllModels(query = {}) {
                 include: { tag: true }
             }
         }),
-        ...(includeCollection && { collection: true })
+        ...(includeCollection && { collection: true }),
+        images: { orderBy: { order: 'asc' } }, // Batch 5: Always include images
+        relatedFiles: true // Batch 4: Always include related files
     };
 
     // Execute queries in parallel
@@ -139,7 +154,9 @@ async function getModelById(id) {
             tags: {
                 include: { tag: true }
             },
-            collection: true
+            collection: true,
+            images: { orderBy: { order: 'asc' } }, // Batch 5
+            relatedFiles: true // Batch 4
         }
     });
 
@@ -197,19 +214,64 @@ async function updateModel(id, updates) {
     dbLog('[updateModel] After Zod validation:', JSON.stringify(validated, null, 2));
 
 
-    const { tags, metadata, category, notes, printSettings, ...modelUpdates } = validated;
+    const {
+        tags,
+        metadata,
+        notes,
+        source,
+        designer,
+        filePath,
+        relatedFiles,
+        related_files, // Legacy key sent by frontend
+        userDefined,   // Legacy wrapper for description/thumbnail
+        printSettings,
+        gcodeData,
+        printTime,
+        filamentUsage,
+        ...modelUpdates
+    } = validated;
+
+    // Batch 2: Support duration strings and numeric seconds
+    if (printTime !== undefined) modelUpdates.printTime = parseDurationToSeconds(printTime);
+    if (filamentUsage !== undefined) {
+        if (typeof filamentUsage === 'string') {
+            const match = filamentUsage.match(/([\d.]+)/);
+            modelUpdates.filamentUsage = match ? parseFloat(match[1]) : 0;
+        } else {
+            modelUpdates.filamentUsage = filamentUsage;
+        }
+    }
+
+    // Batch 2: Explode printSettings group into flat model columns
+    if (printSettings) {
+        if (printSettings.layerHeight !== undefined) modelUpdates.layerHeight = printSettings.layerHeight;
+        if (printSettings.infill !== undefined) modelUpdates.infill = printSettings.infill;
+        if (printSettings.nozzle !== undefined) modelUpdates.nozzle = printSettings.nozzle;
+        if (printSettings.printer !== undefined) modelUpdates.printer = printSettings.printer;
+        if (printSettings.material !== undefined) modelUpdates.material = printSettings.material;
+    }
+
+    // Batch 3: Explode gcodeData group into flat model columns
+    if (gcodeData) {
+        if (gcodeData.gcodeFilePath !== undefined) modelUpdates.gcodeFilePath = gcodeData.gcodeFilePath;
+        if (gcodeData.printTime !== undefined) modelUpdates.gcodePrintTime = gcodeData.printTime;
+        if (gcodeData.totalFilamentWeight !== undefined) modelUpdates.gcodeTotalWeight = gcodeData.totalFilamentWeight;
+        if (gcodeData.filaments !== undefined) modelUpdates.gcodeFilaments = JSON.stringify(gcodeData.filaments);
+    }
 
     dbLog('[updateModel] Extracted modelUpdates:', JSON.stringify(modelUpdates, null, 2));
     dbLog('[updateModel] Extracted tags:', tags);
-    dbLog('[updateModel] Extracted category:', category);
     dbLog('[updateModel] Extracted notes:', notes);
-    dbLog('[updateModel] Extracted printSettings:', printSettings ? JSON.stringify(printSettings, null, 2) : 'null');
+    dbLog('[updateModel] Extracted source:', source);
+    dbLog('[updateModel] Extracted designer:', designer);
+    dbLog('[updateModel] Extracted relatedFiles:', relatedFiles);
+    dbLog('[updateModel] Extracted printSettings (exploded to cols):', printSettings ? JSON.stringify(printSettings, null, 2) : 'null');
     dbLog('[updateModel] Extracted metadata:', metadata ? JSON.stringify(metadata, null, 2) : 'null');
 
     // Fetch current model to get existing metadata
     const currentModel = await prisma.model.findUnique({ where: { id } });
     if (!currentModel) {
-        throw new Error(`Model not found: ${id}`);
+        throw new Error(`Model not found: ${id} `);
     }
 
     // Parse existing metadata
@@ -222,20 +284,38 @@ async function updateModel(id, updates) {
         dbLog('[updateModel] Warning: Could not parse existing metadata');
     }
 
-    // Merge metadata fields: category, notes, and printSettings go into metadata JSON
+    // Merge metadata fields
     const mergedMetadata = {
         ...existingMetadata,
         ...(metadata || {}),  // User-provided metadata
-        ...(category !== undefined && { category }),  // Store category in metadata
-        ...(notes !== undefined && { notes }),  // Store notes in metadata
-        ...(printSettings !== undefined && {
-            printSettings: {
-                ...(existingMetadata.printSettings || {}),
-                ...printSettings
-            }
-        })
-
     };
+
+    // Legacy wrappers: merge userDefined and related_files into metadata
+    if (userDefined !== undefined) {
+        mergedMetadata.userDefined = {
+            ...(mergedMetadata.userDefined || {}),
+            ...userDefined
+        };
+    }
+    if (related_files !== undefined) {
+        mergedMetadata.related_files = related_files;
+    }
+
+    // [Batch 4] Promote source, notes, filePath, related_files out of metadata
+    if (source !== undefined) modelUpdates.source = source;
+    if (notes !== undefined) modelUpdates.notes = notes;
+    if (designer !== undefined) modelUpdates.designer = designer;
+    if (filePath !== undefined) modelUpdates.filePath = filePath;
+
+    // Clean up promoted fields from JSON blob to maintain "Strict" state
+    delete mergedMetadata.source;
+    delete mergedMetadata.notes;
+    delete mergedMetadata.designer;
+    delete mergedMetadata.filePath;
+    delete mergedMetadata.related_files;
+
+    // [Batch 3] Ensure gcodeData is NOT in the JSON blob (it's promoted to columns)
+    delete mergedMetadata.gcodeData;
 
     dbLog('[updateModel] Merged metadata:', JSON.stringify(mergedMetadata, null, 2));
 
@@ -253,6 +333,22 @@ async function updateModel(id, updates) {
             where: { id },
             data: prismaData
         });
+
+        // Handle Related Files (Batch 4)
+        if (relatedFiles) {
+            dbLog('[updateModel] Updating related files:', relatedFiles);
+            // Delete old
+            await tx.modelRelatedFile.deleteMany({ where: { modelId: id } });
+            // Add new
+            if (relatedFiles.length > 0) {
+                await tx.modelRelatedFile.createMany({
+                    data: relatedFiles.map(path => ({
+                        modelId: id,
+                        path: path
+                    }))
+                });
+            }
+        }
 
         dbLog('[updateModel] Prisma returned model:', JSON.stringify(model, null, 2));
 
@@ -305,23 +401,27 @@ async function bulkEditModels(bulkData) {
     return await prisma.$transaction(async (tx) => {
         let updatedCount = 0;
 
-        // Separate Prisma column fields from metadata-only fields
+        // Separate Prisma column fields from metadata-only fields using dynamic routing
         const columnUpdates = {};
         const metadataUpdates = {};
 
-        // Fields that exist as Prisma columns
-        if (typeof updates.isPrinted === 'boolean') columnUpdates.isPrinted = updates.isPrinted;
-        if (typeof updates.isFavorite === 'boolean') columnUpdates.isFavorite = updates.isFavorite;
-        if (updates.license !== undefined) columnUpdates.license = updates.license;
-        if (updates.designer !== undefined) columnUpdates.designer = updates.designer;
-        if (updates.printTime !== undefined) columnUpdates.printTime = updates.printTime;
-        if (updates.filamentUsage !== undefined) columnUpdates.filamentUsage = updates.filamentUsage;
+        // Handle specific groups if any
+        const { printSettings, tags, metadata, ...restUpdates } = updates;
 
-        // Fields that must go into metadata JSON (no Prisma column)
-        if (typeof updates.hidden === 'boolean') metadataUpdates.hidden = updates.hidden;
-        if (updates.category) metadataUpdates.category = updates.category;
-        if (updates.source !== undefined) metadataUpdates.source = updates.source;
-        if (updates.price !== undefined) metadataUpdates.price = updates.price;
+        if (printSettings) {
+            Object.keys(printSettings).forEach(k => {
+                if (printSettings[k] !== undefined) columnUpdates[k] = printSettings[k];
+            });
+        }
+
+        for (const [key, value] of Object.entries(restUpdates)) {
+            if (value === undefined) continue;
+            if (PRISMA_MODEL_COLUMNS.includes(key)) {
+                columnUpdates[key] = value;
+            } else {
+                metadataUpdates[key] = value;
+            }
+        }
 
         // Bulk update column fields (fast: single updateMany)
         if (Object.keys(columnUpdates).length > 0) {
@@ -452,6 +552,94 @@ async function removeTagsFromModel(modelId, tagNames, tx = prisma) {
     });
 }
 
+/**
+ * Remove a specific tag from a model
+ * @param {string} modelId 
+ * @param {string} tagName 
+ */
+async function removeTagFromModel(modelId, tagName) {
+    dbLog(`[DB Service] Removing tag "${tagName}" from model ${modelId}`);
+    const tag = await prisma.tag.findUnique({
+        where: { name: tagName }
+    });
+    if (!tag) return;
+
+    await prisma.modelTag.deleteMany({
+        where: {
+            modelId,
+            tagId: tag.id
+        }
+    });
+}
+
+/**
+ * Add a new related file to a model
+ * @param {string} modelId 
+ * @param {string} path 
+ */
+async function addRelatedFile(modelId, path) {
+    dbLog(`[DB Service] Adding related file to model ${modelId}: ${path}`);
+    return await prisma.modelRelatedFile.create({
+        data: {
+            modelId,
+            path
+        }
+    });
+}
+
+/**
+ * Update an existing related file path
+ * @param {string} modelId 
+ * @param {string} relatedFileId 
+ * @param {string} newPath 
+ */
+async function updateRelatedFile(modelId, relatedFileId, newPath) {
+    dbLog(`[DB Service] Updating related file ${relatedFileId} for model ${modelId} to: ${newPath}`);
+    return await prisma.modelRelatedFile.update({
+        where: { id: relatedFileId },
+        data: { path: newPath }
+    });
+}
+
+/**
+ * Delete a related file from a model and the file system
+ * @param {string} modelId 
+ * @param {string} relatedFileId 
+ */
+async function deleteRelatedFile(modelId, relatedFileId) {
+    dbLog(`[DB Service] Deleting related file ${relatedFileId} from model ${modelId}`);
+
+    // 1. Get the record to find the path
+    const relatedFile = await prisma.modelRelatedFile.findUnique({
+        where: { id: relatedFileId }
+    });
+
+    if (!relatedFile || relatedFile.modelId !== modelId) {
+        throw new Error('Related file not found or does not belong to this model');
+    }
+
+    // 2. Delete from DB
+    await prisma.modelRelatedFile.delete({
+        where: { id: relatedFileId }
+    });
+
+    // 3. Delete from File System
+    try {
+        const modelsDir = getAbsoluteModelsPath();
+        const absolutePath = path.join(modelsDir, relatedFile.path);
+
+        if (fs.existsSync(absolutePath)) {
+            fs.unlinkSync(absolutePath);
+            dbLog(`[DB Service] Deleted physical related file: ${absolutePath}`);
+        } else {
+            dbLog(`[DB Service] Physical related file not found on disk: ${absolutePath}`);
+        }
+    } catch (fsError) {
+        console.error(`[DB Service] Failed to delete physical related file: ${relatedFile.path}`, fsError);
+        // We don't throw here, as the DB link is already severed
+    }
+}
+
 module.exports = {
     getAllModels,
     getModelById,
@@ -460,5 +648,9 @@ module.exports = {
     deleteModel,
     hardDeleteModel,
     bulkEditModels,
-    searchModels
+    searchModels,
+    removeTagFromModel,
+    deleteRelatedFile,
+    addRelatedFile,
+    updateRelatedFile
 };

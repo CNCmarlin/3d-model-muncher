@@ -266,8 +266,8 @@ export function ModelCard_DB({
         {/* Tags Section — DB schema uses ModelTag_db[] with nested tag.name */}
         {model.tags && model.tags.length > 0 && (
           <div className="flex gap-1 overflow-hidden flex-wrap h-9 content-start">
-            {model.tags.slice(0, 6).map(mt => {
-              const tagName = mt.tag?.name ?? `tag-${mt.tagId}`;
+            {model.tags.slice(0, 6).map((mt: any) => {
+              const tagName = typeof mt === 'string' ? mt : (mt.tag?.name ?? mt?.name ?? `tag-${mt.tagId}`);
               return (
                 <Badge key={tagName} variant="secondary" className="text-[10px] h-4 px-1.5 font-normal truncate max-w-[120px]">
                   {tagName}

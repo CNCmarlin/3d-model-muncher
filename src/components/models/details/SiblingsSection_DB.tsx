@@ -1,6 +1,6 @@
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
-import { Model } from "@/types/model";
-import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
+import { Model } from "@/types/model_db";
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils_db';
 import { ChevronRight, Layers } from 'lucide-react';
 import React from 'react';
 

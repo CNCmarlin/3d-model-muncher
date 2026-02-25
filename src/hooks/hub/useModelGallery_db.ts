@@ -1,5 +1,4 @@
 import { Model_db } from '@/types/model_db';
-import { normalizeModelPath } from '@/utils/downloadUtils';
 import { getUserImageData } from '@/utils/galleryUtils';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -52,12 +51,17 @@ export function useModelGallery_db({
     const allImages = useMemo(() => {
         if (isEditing && inlineCombined) return inlineCombined.slice();
         if (!model) return [];
-        // If we are editing, we might want to show the current state + local edits
-        // But for DB mode, we usually just show what's in the DB object or the `editedModel` override.
         const src = editedModel || model;
 
+        // DB mode: model.images may be ModelImage_db objects, not plain strings
+        const toPath = (img: any): string => {
+            if (!img) return '';
+            if (typeof img === 'string') return img;
+            return img.path || img.url || img.src || '';
+        };
+
         // 1. Gather all potential sources
-        const gallery = (src.gallery || []).map(standardizePath);
+        const gallery = (src.gallery || []).map((g: any) => standardizePath(toPath(g)));
         const userImages = (src.userDefined?.images || []).map((u: any) => getUserImageData(u)).map(standardizePath);
 
         // 2. Resolve "Strict" Thumbnails (Assigned to specific files)
@@ -65,70 +69,49 @@ export function useModelGallery_db({
         let specificThumbs: string[] = [];
 
         // Determine which file we are "focused" on
-        const targetFilePath = active3DFile || src.filePath;
-        let isMainModel = false;
+        // IMPORTANT: Use modelUrl (actual 3D file) for thumbnail lookup, NOT filePath (munchie JSON path)
+        const targetFilePath = active3DFile || src.modelUrl || src.filePath;
 
         if (targetFilePath) {
-            // Check if what we are viewing is the main model itself
-            if (normalizeModelPath(targetFilePath) === normalizeModelPath(src.filePath)) {
-                isMainModel = true;
-            }
-
-            // We need to match the key in thumbnailsMap. 
-            // The map keys are usually filenames (e.g. "cube.stl").
             const parts = targetFilePath.split(/[/\\]/);
             const filename = parts[parts.length - 1];
 
             if (thumbnailsMap[filename]) {
                 specificThumbs = thumbnailsMap[filename].map(standardizePath);
-            } else {
-                // For 3MF files, the scanner sometimes keys it by `file.3mf` 
-                // but the embedded thumb is `file-embedded-thumb.png`. 
-                // The map should have `file.3mf` as the key.
             }
         }
 
         // 3. Construct the list with strict de-duplication
-        // Priority: User Images > Specific Component Thumbs > General Gallery > Legacy Fallback
-
         let candidates: string[] = [];
-
         const hasStrictData = gallery.length > 0 || Object.keys(thumbnailsMap).length > 0;
 
         if (hasStrictData) {
-            // In Strict Mode:
-            // If we are looking at the MAIN model, we show its specific thumbs AND the general gallery.
-            // If we are looking at a SUB-COMPONENT, we ONLY show its specific thumbs (and user uploads).
-            // This prevents the sub-component from showing the main model's gallery or other parts' thumbs.
+            // Cover image (model's own thumbnail) always comes first
+            const coverImage = src.thumbnailPath ? [standardizePath(src.thumbnailPath)] :
+                (src.thumbnail && !src.thumbnail.startsWith('parsed:')) ? [standardizePath(src.thumbnail)] : [];
+            // Then current file's thumbnails, then shared gallery, then user images
+            // De-dup below handles overlaps (e.g. cover image === specific thumb)
+            candidates = [...coverImage, ...specificThumbs, ...gallery, ...userImages];
 
-            if (isMainModel) {
-                candidates = [...specificThumbs, ...gallery, ...userImages];
-            } else {
-                // ONLY specific thumbs for this component, plus general user uploads (optional, but usually desired)
-                // Actually, if it's a sub-component, we only want its own stuff.
-                // We will add `gallery` ONLY if no specific thumbs exist for this sub-component (fallback).
-                if (specificThumbs.length > 0) {
-                    candidates = [...specificThumbs, ...userImages];
-                } else {
-                    candidates = [...gallery, ...userImages];
-                }
+            // Fallback: if strict mode yields nothing, use parsedImages/thumbnail
+            if (candidates.length === 0) {
+                const parsedImages = Array.isArray(src.parsedImages) ? src.parsedImages.map(standardizePath) : [];
+                const thumbnail = (src.thumbnail && !src.thumbnail.startsWith('parsed:')) ? [standardizePath(src.thumbnail)] : [];
+                const coverImage = src.thumbnailPath ? [standardizePath(src.thumbnailPath)] : [];
+                candidates = [...thumbnail, ...coverImage, ...parsedImages, ...userImages];
             }
         } else {
-            // Legacy Mode
-            const legacyImages = Array.isArray(src.images) ? src.images.map(standardizePath) : [];
-            const parsedImages = Array.isArray(src.parsedImages) ? src.parsedImages.map(standardizePath) : [];
+            // Legacy Mode (also catches DB model.images which are ModelImage_db objects)
+            const legacyImages = Array.isArray(src.images) ? src.images.map((img: any) => standardizePath(toPath(img))) : [];
+            const parsedImages = Array.isArray(src.parsedImages) ? src.parsedImages.map((p: any) => standardizePath(toPath(p))) : [];
 
-            // Loose models will now have empty images arrays, so ensure their standalone cover is added
             const thumbnail = (src.thumbnail && !src.thumbnail.startsWith('parsed:')) ? [standardizePath(src.thumbnail)] : [];
-            const coverImage = src.coverImagePath ? [standardizePath(src.coverImagePath)] : [];
+            const coverImage = src.thumbnailPath ? [standardizePath(src.thumbnailPath)] : [];
 
-            // If we are looking at a sub-component in legacy mode, we don't have a great way to filter.
-            // We just show everything.
             candidates = [...thumbnail, ...coverImage, ...legacyImages, ...parsedImages, ...userImages];
         }
 
-        // 4. De-duplicate using a Set
-        // We normalize to lowercase for the check to avoid case-sensitivity dupes (windows)
+        // 4. De-duplicate
         const seen = new Set<string>();
         const unique: string[] = [];
 
@@ -159,11 +142,6 @@ export function useModelGallery_db({
             setViewMode(resolvedMode);
             setSelectedImageIndex(0);
 
-            // We only reset active3DFile when the actual model ID/path changes, not on active3DFile changes.
-            // Wait, this effect resets the active3DFile to the main file whenever the model changes.
-            const rawPath = model.modelUrl || model.filePath;
-            // Only set if we haven't already navigated to a sub-part, otherwise it auto-reverts.
-            // Actually, if model.id changes, we SHOULD revert. If defaultModelView changes, we shouldn't.
         }
     }, [model?.id, model?.filePath, model?.modelUrl]);
 

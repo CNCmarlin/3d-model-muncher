@@ -1,19 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
 import { useNavigation } from "@/context/NavigationContext";
 import { Collection } from "@/types/collection";
-import { Model } from "@/types/model";
-import { applyFiltersToModels, FilterState } from "@/utils/filterUtils";
-import { SortKey, sortModels } from "@/utils/sortUtils";
+import { Model_db } from "@/types/model_db";
+import { applyFiltersToModels_db, FilterState_db } from "@/utils/filterUtils_db";
+import { SortKey, sortModels } from "@/utils/sortUtils_db";
+import { useEffect, useMemo, useState } from "react";
 
 interface UseFilteredModelsProps {
-    models: Model[];
+    models: Model_db[];
     collections: Collection[];
-    refreshModels: (isInitial: boolean) => Promise<Model[] | null>;
+    refreshModels: (isInitial: boolean) => Promise<Model_db[] | null>;
     isSelectionMode: boolean;
     setIsSelectionMode: (v: boolean) => void;
     setSelectedModelIds: (ids: string[]) => void;
     selectedModelIds: string[];
-    initialFilters?: Partial<FilterState>;
+    initialFilters?: Partial<FilterState_db>;
 }
 
 export function useFilteredModels_db({
@@ -35,18 +35,8 @@ export function useFilteredModels_db({
     } = useNavigation();
 
     // State
-    const [filteredModels, setFilteredModels] = useState<Model[]>([]);
-    const [lastFilters, setLastFilters] = useState<{
-        search: string;
-        category: string;
-        printStatus: string;
-        license: string;
-        fileType: string;
-        tags: string[];
-        showHidden: boolean;
-        showMissingImages: boolean;
-        sortBy?: string
-    }>({
+    const [filteredModels, setFilteredModels] = useState<Model_db[]>([]);
+    const [lastFilters, setLastFilters] = useState<FilterState_db>({
         search: '',
         category: 'all',
         printStatus: 'all',
@@ -72,7 +62,7 @@ export function useFilteredModels_db({
 
     // Recursively get all model IDs from a collection and its children
     // Database-first: Collect all descendant collection IDs, then filter models
-    const getRecursiveModelIds = (col: Collection, allCols: Collection[], allModels: Model[]): Set<string> => {
+    const getRecursiveModelIds = (col: Collection, allCols: Collection[], allModels: Model_db[]): Set<string> => {
         // Step 1: Recursively collect this collection ID and all descendant collection IDs
         const collectDescendantIds = (c: Collection): Set<string> => {
             const ids = new Set<string>([c.id]);
@@ -89,8 +79,13 @@ export function useFilteredModels_db({
         // Step 2: Find all models whose collectionId matches ANY descendant
         const modelIds = new Set<string>();
         allModels.forEach(m => {
-            // Check if model's collection array contains any descendant collection ID
-            if (m.collections?.some(cid => allDescendantCollectionIds.has(cid))) {
+            // Primary: check the direct collectionId FK (Prisma DB mode)
+            if (allDescendantCollectionIds.has((m as any).collectionId)) {
+                modelIds.add(m.id);
+                return;
+            }
+            // Fallback: legacy virtual collections string array
+            if (m.collections?.some((cid: string) => allDescendantCollectionIds.has(cid))) {
                 modelIds.add(m.id);
             }
         });
@@ -100,17 +95,25 @@ export function useFilteredModels_db({
 
     const collectionBaseModels = useMemo(() => {
         if (activeCollection) {
-            // LEGACY MODE: If collection has modelIds array, return all models
-            // CollectionGrid will filter by the modelIds array
-            if (activeCollection.modelIds && Array.isArray(activeCollection.modelIds)) {
-                return models.filter(m => activeCollection.modelIds.includes(m.id));
+            if (hasActiveFilters) {
+                // ── FILTER MODE: expand scope to entire descendant tree ──────────
+                // Any active filter → include models from this collection AND all
+                // nested child collections so you can search/filter across the whole
+                // sub-tree without manually drilling into each sub-folder.
+                const idSet = getRecursiveModelIds(activeCollection, collections, models);
+                return models.filter(m => idSet.has(m.id));
+            } else {
+                // ── BROWSE MODE: direct members only ────────────────────────────
+                // No active filters → show only models directly in this collection.
+                // Sub-collections appear as folder tiles to drill into.
+                return models.filter(m =>
+                    (m as any).collectionId === activeCollection.id ||
+                    m.collections?.some((cid: string) => cid === activeCollection.id)
+                );
             }
-            // DATABASE MODE: Filter by model.collections array
-            const idSet = getRecursiveModelIds(activeCollection, collections, models);
-            return models.filter(m => idSet.has(m.id));
         }
         return models;
-    }, [models, activeCollection, collections]);
+    }, [models, activeCollection, collections, hasActiveFilters]);
 
 
     // [REFACTOR] Centralized Filtering Logic
@@ -141,17 +144,8 @@ export function useFilteredModels_db({
             effectiveFilters.showHidden = true;
         }
 
-        const filtered = applyFiltersToModels(base, effectiveFilters);
+        const filtered = applyFiltersToModels_db(base, effectiveFilters);
         const sorted = sortModels(filtered, currentSortBy);
-
-        // DEBUG
-        console.log('[useFilteredModels] Debug:', {
-            activeCollectionId: activeCollection?.id,
-            baseModelsLength: base.length,
-            filteredLength: filtered.length,
-            sortedLength: sorted.length,
-            isSelectionMode
-        });
 
         setFilteredModels(sorted);
 

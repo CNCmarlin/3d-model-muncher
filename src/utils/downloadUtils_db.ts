@@ -1,4 +1,4 @@
-import { Model } from "@/types/model";
+import { Model_db } from "@/types/model_db";
 import JSZip from "jszip";
 import { toast } from "sonner";
 
@@ -46,13 +46,16 @@ export function triggerDownload_db(url: string | undefined | null, e?: MouseEven
 
 // Fetch helper that handles the API we just added to server.js
 async function fetchFileBlob(path: string): Promise<Blob | null> {
+  const normalized = normalizeModelPath(path);
+  if (!normalized) return null;
+
   try {
-    const encoded = encodeURIComponent(path);
+    const encoded = encodeURIComponent(normalized);
     const resp = await fetch(`/api/models/download?path=${encoded}`);
     if (resp.ok) return await resp.blob();
-    console.warn(`Download API failed for ${path}: ${resp.status}`);
+    console.warn(`Download API failed for ${normalized}: ${resp.status}`);
   } catch (e) {
-    console.error("Fetch failed for", path, e);
+    console.error("Fetch failed for", normalized, e);
   }
   return null;
 }
@@ -113,7 +116,7 @@ export const downloadAllFiles_db = async (mainFilePath: string, relatedFiles: st
   }
 };
 
-export const downloadMultipleModels = async (models: Model[]) => {
+export const downloadMultipleModels = async (models: Model_db[]) => {
   if (!models || models.length === 0) return;
   const toastId = toast.loading(`Zipping ${models.length} models...`);
 

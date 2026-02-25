@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Model } from '@/types/model_db';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 /**
  * DATABASE-FIRST Model Mutations Hook
@@ -140,7 +140,7 @@ export function useModelMutations_DB() {
 
             return { previousModels };
         },
-        onError: (err, variables, context) => {
+        onError: (err, _variables, context) => {
             if (context?.previousModels) {
                 queryClient.setQueryData(['models'], context.previousModels);
             }
@@ -151,9 +151,82 @@ export function useModelMutations_DB() {
         },
     });
 
+    const deleteRelatedFile = useMutation({
+        mutationFn: async ({ id, relatedFileId }: { id: string; relatedFileId: string }) => {
+            const response = await fetch(`/api/models/${id}/related-files/${relatedFileId}`, {
+                method: 'DELETE',
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to delete related file');
+            }
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['models'] });
+            queryClient.invalidateQueries({ queryKey: ['model', variables.id] });
+        },
+    });
+
+    const addRelatedFile = useMutation({
+        mutationFn: async ({ id, path }: { id: string; path: string }) => {
+            const response = await fetch(`/api/models/${id}/related-files`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to add related file');
+            }
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['models'] });
+            queryClient.invalidateQueries({ queryKey: ['model', variables.id] });
+        },
+    });
+
+    const removeTag = useMutation({
+        mutationFn: async ({ id, tagName }: { id: string; tagName: string }) => {
+            const response = await fetch(`/api/models/${id}/tags/${encodeURIComponent(tagName)}`, {
+                method: 'DELETE',
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to remove tag');
+            }
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['models'] });
+            queryClient.invalidateQueries({ queryKey: ['model', variables.id] });
+            queryClient.invalidateQueries({ queryKey: ['tags'] });
+        },
+    });
+
+    const updateRelatedFile = useMutation({
+        mutationFn: async ({ id, relatedFileId, path }: { id: string; relatedFileId: string; path: string }) => {
+            const response = await fetch(`/api/models/${id}/related-files/${relatedFileId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path }),
+            });
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to update related file');
+            }
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['models'] });
+            queryClient.invalidateQueries({ queryKey: ['model', variables.id] });
+        },
+    });
+
     return {
         updateModel,
         deleteModel,
         bulkUpdateModels,
+        deleteRelatedFile,
+        removeTag,
+        addRelatedFile,
+        updateRelatedFile
     };
 }

@@ -1,5 +1,5 @@
 import { License } from '@/constants/licenses';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import { useCallback, useEffect, useState } from 'react';
 
 export interface BulkEditState_DB {
@@ -13,6 +13,7 @@ export interface BulkEditState_DB {
         remove: string[];
     };
     notes?: string;
+    description?: string;
     source?: string;
     price?: number;
     printTime?: string;
@@ -42,6 +43,7 @@ export interface FieldSelection {
     hidden: boolean;
     tags: boolean;
     notes: boolean;
+    description: boolean;
     source: boolean;
     price: boolean;
     printTime: boolean;
@@ -73,6 +75,7 @@ export function useBulkEditForm_db({ models, selectedTargetIds, isOpen }: UseBul
         hidden: false,
         tags: false,
         notes: false,
+        description: false,
         source: false,
         price: false,
         printTime: false,
@@ -113,7 +116,7 @@ export function useBulkEditForm_db({ models, selectedTargetIds, isOpen }: UseBul
             setStagedEdits({});
             setFieldSelection({
                 category: false, license: false, designer: false, isPrinted: false, hidden: false,
-                tags: false, notes: false, source: false, price: false, printTime: false,
+                tags: false, notes: false, description: false, source: false, price: false, printTime: false,
                 filamentUsed: false, printSettings: false, generateImages: false, regenerateMunchie: false,
                 relatedFiles: false, collection: false,
             });
@@ -171,6 +174,7 @@ export function useBulkEditForm_db({ models, selectedTargetIds, isOpen }: UseBul
         setPrintStatus: (val: boolean) => updateStaged('isPrinted', val),
         setHidden: (val: boolean) => updateStaged('hidden', val),
         setNotes: (val: string) => updateStaged('notes', val),
+        setDescription: (val: string) => updateStaged('description', val),
         setSource: (val: string) => updateStaged('source', val),
         setPrice: (val: string) => updateStaged('price', val ? parseFloat(val) : undefined),
         setPrintTime: (val: string) => updateStaged('printTime', val),
@@ -361,6 +365,7 @@ export function useBulkEditForm_db({ models, selectedTargetIds, isOpen }: UseBul
         checkField('designer');
         checkField('isPrinted');
         checkField('hidden');
+        checkField('description');
         checkField('printSettings'); // TODO: Deep check might be needed
 
         return common;
@@ -375,7 +380,10 @@ export function useBulkEditForm_db({ models, selectedTargetIds, isOpen }: UseBul
         const allTags = new Set<string>();
         models.forEach((model) => {
             if (model.tags && Array.isArray(model.tags)) {
-                model.tags.forEach((tag) => allTags.add(tag));
+                model.tags.forEach((tag: any) => {
+                    const tagName = typeof tag === 'string' ? tag : tag?.name;
+                    if (tagName) allTags.add(tagName);
+                });
             }
         });
         return Array.from(allTags).sort();

@@ -1,8 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
 import { getModel } from '@/api/services/modelService_db';
-import { useConfig } from '@/context/ConfigContext';
-import { Model } from '@/types/model';
-import { adaptDbModelToLegacy } from '@/utils/dbAdapter';
+import { Model } from '@/types/model_db';
+import { useQuery } from '@tanstack/react-query';
 
 interface UseModelOptions {
     enabled?: boolean;
@@ -10,21 +8,12 @@ interface UseModelOptions {
 }
 
 export function useModel_db(id: string, options: UseModelOptions = {}) {
-    const { appConfig } = useConfig();
-    const useDatabaseBackend = appConfig?.settings?.useDatabaseBackend ?? false;
-
     return useQuery({
         queryKey: ['model', id],
-        queryFn: async () => {
-            const data = await getModel(id);
-
-            // Adapt if needed
-            if (useDatabaseBackend && 'collectionId' in data) {
-                return adaptDbModelToLegacy(data as any);
-            }
-            return data;
+        queryFn: async (): Promise<Model> => {
+            return getModel(id);
         },
-        enabled: !!id && (options.enabled !== false), // Default to true unless explicitly disabled
+        enabled: !!id && (options.enabled !== false),
         initialData: options.initialData,
         staleTime: 0, // Always refetch on navigation to ensure fresh data
     });

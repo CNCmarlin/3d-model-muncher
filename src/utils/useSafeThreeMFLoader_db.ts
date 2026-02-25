@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 // @ts-ignore
-import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader';
 import * as THREE from 'three';
+import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader';
 
 interface LoaderState {
   data: THREE.Group | null;
@@ -22,7 +22,6 @@ export function useSafeThreeMFLoader_db(url: string | undefined): LoaderState {
       return;
     }
 
-    console.log('Loading 3MF file:', url);
     setState({ data: null, error: null, loading: true });
 
     const loader = new ThreeMFLoader();
@@ -41,7 +40,6 @@ export function useSafeThreeMFLoader_db(url: string | undefined): LoaderState {
       // onLoad
       (group: THREE.Group) => {
         clearTimeout(timeoutId);
-        console.log('Successfully loaded 3MF file:', url);
         setState({ data: group, error: null, loading: false });
       },
       // onProgress
@@ -55,9 +53,9 @@ export function useSafeThreeMFLoader_db(url: string | undefined): LoaderState {
         } else {
           console.warn('ThreeMFLoader error for', url, ':', error);
         }
-        
+
         let errorMessage = 'Failed to load 3D model';
-        
+
         if (error instanceof Error) {
           errorMessage = error.message;
         } else if (typeof error === 'string') {

@@ -1,6 +1,6 @@
 
-import { Collection } from '@/types/collection';
-import { Model } from '@/types/model';
+import { Collection } from '@/types/collection_db';
+import { Model } from '@/types/model_db';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -79,7 +79,7 @@ export function useGlobalDialogs_db({
                 let folder = m.filePath.substring(0, lastSlash);
 
                 // If Project Root, step up one level to get the 'Apparent' parent folder
-                if (m.isProjectRoot) {
+                if ((m.metadata as any)?.isProjectRoot) {
                     const parentSlash = Math.max(folder.lastIndexOf('/'), folder.lastIndexOf('\\'));
                     folder = parentSlash > 0 ? folder.substring(0, parentSlash) : '';
                 }

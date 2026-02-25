@@ -1,7 +1,6 @@
+import { Model } from '@/types/model_db';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
-import { Model } from '@/types/model';
-import { adaptDbModelsToLegacy } from '@/utils/dbAdapter';
 
 export function useModelData_db() {
     const [models, setModels] = useState<Model[]>([]);
@@ -22,16 +21,10 @@ export function useModelData_db() {
         try {
             const response = await fetch('/api/models');
             if (!response.ok) throw new Error('Failed to fetch models');
-            const data = await response.json();
-
-            // Only apply adapter if database mode (models have `collectionId` instead of `collections`)
-            const needsAdapter = data.length > 0 && 'collectionId' in data[0] && !('collections' in data[0]);
-            const adaptedData = needsAdapter ? adaptDbModelsToLegacy(data) : data;
-
-            setModels(adaptedData);
-
+            const data: Model[] = await response.json();
+            setModels(data);
             if (!isInitial) toast("Models reloaded successfully");
-            return adaptedData as Model[];
+            return data;
         } catch (error) {
             console.error('Failed to load models:', error);
             toast("Failed to load models");
@@ -46,7 +39,7 @@ export function useModelData_db() {
         models,
         setModels,
         isModelsLoading,
-        setIsModelsLoading, // Exported so App can set it if needed during init
+        setIsModelsLoading,
         isRefreshing,
         refreshModels: fetchModels
     };

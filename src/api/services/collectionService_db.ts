@@ -1,4 +1,4 @@
-import { Collection } from '@/types/collection';
+import { Collection } from '@/types/collection_db';
 
 const API_BASE = '/api/collections';
 

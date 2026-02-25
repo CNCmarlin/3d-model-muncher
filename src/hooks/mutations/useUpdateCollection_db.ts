@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { updateCollection } from '@/api/services/collectionService_db';
-import { Collection } from '@/types/collection';
+import { Collection } from '@/types/collection_db';
 
 export function useUpdateCollection_db() {
     const queryClient = useQueryClient();

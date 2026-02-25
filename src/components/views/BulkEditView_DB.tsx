@@ -10,8 +10,8 @@ import { useBulkOperations_DB } from "@/hooks/bulk/useBulkOperations_DB";
 import { useCreateCollection_db } from "@/hooks/mutations/useCreateCollection_db";
 import { useMediaQuery_db } from "@/hooks/useMediaQuery_db";
 import { Category } from "@/types/category";
-import { Collection } from "@/types/collection";
-import { Model } from "@/types/model";
+import { Collection } from "@/types/collection_db";
+import { Model } from "@/types/model_db";
 import { ArrowLeft, Check, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -482,9 +482,9 @@ export function BulkEditView_DB({
                         <ResizablePanel defaultSize={25} minSize={20} maxSize={40} className="bg-muted/5 border-r">
                             <BulkOperationsPanel_DB
                                 form={form}
-                                models={targetModels}
+                                models={targetModels as any}
                                 categories={categories}
-                                collectionsList={collectionsList}
+                                collectionsList={collectionsList as any}
                                 pendingBulkCollectionId={pendingBulkCollectionId}
                                 isGeneratingImages={isGeneratingImages}
                                 generateProgress={generateProgress}
@@ -501,7 +501,7 @@ export function BulkEditView_DB({
                                 <GlobalEditsBar_DB />
                                 <div className="flex-1 overflow-hidden relative min-h-0">
                                     <BulkTargetGrid_DB
-                                        models={models} // Show ALL models passed to the view, so user can select/deselect them
+                                        models={models as any} // Show ALL models passed to the view, so user can select/deselect them
                                         selectedIds={selectedTargetIds}
                                         onToggleSelect={handleToggleSelect}
                                         onRemoveModel={onRemoveFromSelection}
@@ -522,7 +522,7 @@ export function BulkEditView_DB({
                         {/* Top: Model Strip (Auto Compact) */}
                         <div className="shrink-0 bg-muted/10 border-b">
                             <BulkTargetGrid_DB
-                                models={models}
+                                models={models as any}
                                 selectedIds={selectedTargetIds}
                                 onToggleSelect={handleToggleSelect}
                                 onRemoveModel={onRemoveFromSelection}
@@ -540,9 +540,9 @@ export function BulkEditView_DB({
                         <div className="flex-1 overflow-y-auto">
                             <BulkOperationsPanel_DB
                                 form={form}
-                                models={targetModels} // Operations only apply to targets
+                                models={targetModels as any} // Operations only apply to targets
                                 categories={categories}
-                                collectionsList={collectionsList}
+                                collectionsList={collectionsList as any}
                                 pendingBulkCollectionId={pendingBulkCollectionId}
                                 isGeneratingImages={isGeneratingImages}
                                 generateProgress={generateProgress}

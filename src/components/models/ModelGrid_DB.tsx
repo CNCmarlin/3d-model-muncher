@@ -17,7 +17,7 @@ import { useNavigation } from "@/context/NavigationContext";
 import type { Collection } from "@/types/collection_db";
 import { Model } from "@/types/model_db";
 import { ConfigManager } from "@/utils/configManager";
-import { downloadMultipleModels } from "@/utils/downloadUtils";
+import { downloadMultipleModels } from "@/utils/downloadUtils_db";
 import { SortKey, getCollectionTimestamp, getModelTimestamp } from "@/utils/sortUtils";
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils_db';
 import { Box, Clock, CloudDownload, FolderPlus, HardDrive, Weight } from "lucide-react";
@@ -75,7 +75,7 @@ export function ModelGrid_DB({
 
   const handleOpenCollection = (id: string) => {
     const col = allCollections.find(c => c.id === id);
-    if (col) openCollection(col);
+    if (col) openCollection(col as any);
   };
 
   const { viewMode, getGridClasses } = useLayoutSettings();
@@ -525,9 +525,9 @@ export function ModelGrid_DB({
 
                           {/* Tags */}
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {(Array.isArray(model.tags) ? model.tags : []).slice(0, 4).map((tag) => (
-                              <Badge key={tag} variant="secondary" className="text-xs">
-                                {tag}
+                            {(Array.isArray(model.tags) ? model.tags : []).slice(0, 4).map((tag: any) => (
+                              <Badge key={typeof tag === 'string' ? tag : (tag.id || tag.name)} variant="secondary" className="text-xs">
+                                {typeof tag === 'string' ? tag : tag.name}
                               </Badge>
                             ))}
                             {(Array.isArray(model.tags) ? model.tags : []).length > 4 && (

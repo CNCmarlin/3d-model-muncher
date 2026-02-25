@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Collection } from '@/types/collection_db';
 import type { AppConfig } from '@/types/config';
 import { Model } from '@/types/model_db';
-import { downloadMultipleModels } from "@/utils/downloadUtils";
+import { downloadMultipleModels } from "@/utils/downloadUtils_db";
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils_db';
 import {
   ArrowLeft,
@@ -816,7 +816,7 @@ export default function CollectionGrid_DB({
             onCollectionChanged?.();
             onDeselectAll?.();
             if (isSelectionMode) onToggleSelectionMode?.();
-            return result.collection;
+            return result.data || result.collection;
           } catch (e) {
             console.error(e);
             toast.error("Failed to create collection");
@@ -845,7 +845,7 @@ export default function CollectionGrid_DB({
               const result = await response.json();
               if (!result.success) throw new Error(result.error);
               onCollectionChanged?.();
-              return result.collection;
+              return result.data || result.collection;
             } catch (e) {
               console.error(e);
               toast.error("Failed to update collection");

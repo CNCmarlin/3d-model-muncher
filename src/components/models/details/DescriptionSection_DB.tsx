@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"; // Ensure Button is imported
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Model } from "@/types/model";
+import { Model } from "@/types/model_db";
 import { Check, Edit2, Trash2, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 

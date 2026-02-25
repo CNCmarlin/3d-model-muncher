@@ -51,7 +51,7 @@ const ModelFormSchema = z.object({
     isPrinted: BooleanSchema.optional(),
     isFavorite: BooleanSchema.optional(),
     tags: StringArraySchema.optional(),
-    metadata: z.record(z.any()).optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
 });
 
 // Model Update Schema (for PATCH - all fields optional, id comes from route param)
@@ -79,7 +79,7 @@ const ModelUpdateSchema = z.object({
     }).optional(),
     // Metadata: accept either object or JSON string, transform to object
     metadata: z.union([
-        z.record(z.any()),
+        z.record(z.string(), z.any()),
         z.string().transform(str => JSON.parse(str))
     ]).optional(),
 });
@@ -116,7 +116,7 @@ const BulkEditSchema = z.object({
             add: StringArraySchema.optional(),
             remove: StringArraySchema.optional(),
         }).optional(),
-        metadata: z.record(z.any()).optional(),
+        metadata: z.record(z.string(), z.any()).optional(),
     }),
 });
 

@@ -34,8 +34,8 @@ import {
 } from "lucide-react";
 
 import { Category } from "@/types/category";
-import { Collection } from "@/types/collection";
-import { Model } from "@/types/model";
+import { Collection } from "@/types/collection_db";
+import { Model } from "@/types/model_db";
 
 import { BulkEditSection_DB } from "@/components/bulk-edit/BulkEditSection_DB";
 import { BulkRelatedFilesEditor_DB } from "@/components/bulk-edit/BulkRelatedFilesEditor_DB";

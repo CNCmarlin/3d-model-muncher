@@ -171,6 +171,22 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Custom Scrollbar matching the theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
 }
 
 /* Custom gradient backgrounds for enhanced visual depth */

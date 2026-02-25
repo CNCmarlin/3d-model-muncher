@@ -109,7 +109,6 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
   let nozzle: string | null = null;
   let printer: string | null = null;
 
-  console.log(`[GcodeParser] Scanning ${linesToScan.length} lines...`);
 
   const patterns = {
     // [FIX] Strict Time Regex to avoid matching "min_layer_time = 30"
@@ -134,19 +133,16 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
       let match = trimmed.match(patterns.time);
       if (match) {
         printTimeRaw = parseTimeString(match[1]);
-        console.log('[GcodeParser] Found Time:', printTimeRaw);
       }
       else {
         match = trimmed.match(patterns.timeCura);
         if (match) {
           printTimeRaw = normalizeTime(parseInt(match[1]));
-          console.log('[GcodeParser] Found timeCura:', printTimeRaw);
         }
       }
     }
     if (filamentWeights.length === 0) {
       const match = trimmed.match(patterns.weight);
-      if (match) { filamentWeights = parseCSV(match[1]); console.log('[GcodeParser] Found Weights:', filamentWeights); }
     }
     if (filamentLengths.length === 0) {
       let match = trimmed.match(patterns.length);
@@ -161,14 +157,12 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
       // [FIX] Log found material types for debugging
       if (match) {
         filamentTypes = parseCSV(match[1]);
-        console.log('[GcodeParser] Found Materials:', filamentTypes);
       }
     }
     if (filamentColors.length === 0) {
       const match = trimmed.match(patterns.color);
       if (match) {
         filamentColors = parseCSV(match[1]);
-        console.log('[GcodeParser] Found Material Colors:', filamentColors);
       }
 
     }
@@ -226,7 +220,6 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
 
 
   if (filePath) {
-    console.log(`[GcodeParser] Checking filename for time: "${filePath}"`);
   }
 
   // [FIX] Fallback: If content scan failed, try extracting time from filename
@@ -241,12 +234,9 @@ export function parseGcode(gcodeContent: string, filePath?: string): GcodeMetada
     if (timeMatch) {
       // Join the matched parts (index 0 is the full match)
       metadata.printTime = timeMatch[0].toLowerCase();
-      console.log('[GcodeParser] ✅ Recovered Time from Filename:', metadata.printTime);
     } else {
-      console.log('[GcodeParser] ❌ No time pattern found in filename.');
     }
   }
 
-  console.log('[GcodeParser] Final Settings:', JSON.stringify(metadata.printSettings));
   return metadata;
 }

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Bot, Images as ImagesIcon, Loader2, Search, Trash2, X } from "lucide-react";
@@ -547,69 +547,30 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
     setEditDescription(selected.description ?? "");
     setEditTags(selected.tags ? selected.tags.slice() : []);
 
-    // Default empty or missing categories to 'Uncategorized'
     const defaultCategory = selected.category && selected.category.trim() ? selected.category : 'Uncategorized';
 
-    // Try to read the model's munchie.json to get the authoritative category
-    // Show loading state while we query the server so the Select can be disabled
-    (async () => {
+    // DB-FIRST: fetch model by ID from the database API to get authoritative category
+    if ((selected as any)?.id) {
       setCategoryLoading(true);
-      try {
-        let fetched: any = null;
-
-        // Prefer id-based lookup which is more robust (server will scan munchie files)
-        if ((selected as any)?.id) {
-          try {
-            const url = `/api/load-model?id=${encodeURIComponent((selected as any).id)}`;
-            const res = await fetch(url);
-            if (res.ok) fetched = await res.json();
-          } catch (e) {
-            // ignore and fall back to filePath candidates
-          }
-        }
-
-        if (!fetched) {
-          // Build candidate munchie.json relative paths using shared helper
-          // NOTE: dynamic import to avoid circular/top-level import ordering issues in some build environments
-          const helper = await import('../../utils/munchiePath');
-          const candidatesRaw: string[] = helper.deriveMunchieCandidates({ filePath: (selected as any)?.filePath, modelUrl: (selected as any)?.modelUrl, id: (selected as any)?.id, name: (selected as any)?.name });
-
-          for (const rel of candidatesRaw) {
-            try {
-              const url = `/api/load-model?filePath=${encodeURIComponent(rel)}`;
-              const res = await fetch(url);
-              if (!res.ok) continue;
-              fetched = await res.json();
-              if (fetched) break;
-            } catch (e) {
-              // ignore and try next
+      fetch(`/api/models/${encodeURIComponent((selected as any).id)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then((fetched: any) => {
+          if (fetched) {
+            const cat = fetched.category ?? undefined;
+            setEditCategory(cat && cat.toString().trim() ? cat.toString() : defaultCategory);
+            // Prefer description from DB record
+            if (typeof fetched.description === 'string') {
+              setEditDescription(fetched.description);
             }
+          } else {
+            setEditCategory(defaultCategory);
           }
-        }
-
-        if (fetched) {
-          const cat = fetched.category ?? undefined;
-          setEditCategory(cat && cat.toString().trim() ? cat.toString() : defaultCategory);
-          // If the authoritative munchie.json contains a userDefined entry, prefer
-          // its description field (even if it's an empty string) as the editable
-          // description. This matches ModelDetailsDrawer behavior.
-          try {
-            const ud = (fetched as any).userDefined;
-            if (Array.isArray(ud) && ud.length > 0 && typeof ud[0].description === 'string') {
-              setEditDescription(ud[0].description);
-            }
-          } catch (e) {
-            // ignore and keep existing editDescription
-          }
-        } else {
-          setEditCategory(defaultCategory);
-        }
-      } catch (e) {
-        setEditCategory(defaultCategory);
-      } finally {
-        setCategoryLoading(false);
-      }
-    })();
+        })
+        .catch(() => setEditCategory(defaultCategory))
+        .finally(() => setCategoryLoading(false));
+    } else {
+      setEditCategory(defaultCategory);
+    }
   }, [selected]);
 
   return (
@@ -856,12 +817,13 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
             <SheetHeader className="border-b p-4 sticky top-0 bg-background/95 backdrop-blur-sm z-20">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-semibold px-2">{selected?.name}</h3>
+                  <SheetTitle className="text-lg font-semibold px-2">{selected?.name}</SheetTitle>
                 </div>
                 <button aria-label="Close" title="Close" className="btn btn-ghost p-2" onClick={() => setSelected(null)}>
                   <X className="h-4 w-4" />
                 </button>
               </div>
+              <SheetDescription className="sr-only">Edit AI metadata for {selected?.name}</SheetDescription>
             </SheetHeader>
 
             <ScrollArea className="min-h-0">
@@ -1077,35 +1039,32 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
 
                 <div className="flex gap-2 mt-3">
                   <Button size="sm" variant="default" onClick={async () => {
-                    if (saving) return; // prevent duplicate saves while request is in-flight
+                    if (saving) return;
                     setSaving(true);
                     setGeminiError('');
                     const toastId = toast.loading('Saving updates...');
                     try {
-                      // Prefer id-based saves; no need to derive munchie path here
-                      // no-op: prefer id-based saves; helper not needed in this handler
-                      const toSave: any = {
-                        description: editDescription || selected?.description || "",
-                      };
+                      const modelId = (selected as any)?.id;
+                      if (!modelId) throw new Error('No model ID — cannot save without a database record');
 
-                      // Build request body for /api/save-model: prefer sending model id and use filePath only as fallback
-                      // Prefer a stable id when available; fall back to name so server can find by name
-                      const body: any = {
-                        id: selected?.id ?? selected?.name ?? undefined,
-                        category: editCategory || selected?.category || undefined,
-                        tags: editTags.length > 0 ? editTags : (selected?.tags ?? undefined),
-                        // overwrite userDefined object with provided fields (experimental behavior)
-                        userDefined: toSave
-                      };
+                      // DB-FIRST: PATCH /api/models/:id with top-level fields
+                      const body: Record<string, any> = {};
+                      if (typeof editDescription === 'string') body.description = editDescription;
+                      if (editCategory) body.category = editCategory;
+                      if (editTags.length > 0) body.tags = editTags;
 
-                      const r = await fetch('/api/save-model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                      const r = await fetch(`/api/models/${encodeURIComponent(modelId)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                      });
                       const result = await r.json();
-                      if (!result.success) throw new Error(result.error || 'Save failed');
-                      setGeminiResult('Saved to munchie.json');
+                      if (!r.ok || result.success === false) throw new Error(result.error || 'Save failed');
+                      setGeminiResult('Saved to database');
                       toast.success('Changes saved', { id: toastId });
                     } catch (e: any) {
                       setGeminiError(e?.message ?? 'Save error');
-                      try { toast.error(e?.message ?? 'Save error'); } catch { }
+                      try { toast.error(e?.message ?? 'Save error', { id: toastId }); } catch { }
                     }
                     finally { setSaving(false); }
                   }} disabled={saving}>{saving ? 'Saving...' : 'Save User Data'}</Button>

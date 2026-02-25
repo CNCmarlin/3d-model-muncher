@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { LICENSES } from '@/constants/licenses';
 import { Category } from "@/types/category";
 import { Collection } from "@/types/collection";
-import { Model } from "@/types/model";
+import { Model } from "@/types/model_db";
 import * as LucideIcons from 'lucide-react';
 import { ChevronDown, ChevronRight, CircleCheckBig, Eye, FileBox, FileText, Filter, Layers, LayoutGrid, Search, Settings, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -59,6 +59,7 @@ interface FilterSidebarProps {
     showMissingImages: boolean;
     sortBy?: string;
   };
+  libraryName?: string;
 }
 
 const normalizeIconName = (input?: string) => {
@@ -184,7 +185,8 @@ export function FilterSidebar_DB({
   onOpenCollection,
   onBackToRoot,
   initialFilters,
-  currentFilters // New prop
+  currentFilters,
+  libraryName
 }: FilterSidebarProps) {
   const TAG_DISPLAY_LIMIT = 25;
 
@@ -346,7 +348,7 @@ export function FilterSidebar_DB({
               </div>
               <div>
                 <h2 className="font-semibold text-white text-lg tracking-tight cursor-pointer hover:underline" onClick={() => window.location.pathname = "/"}>
-                  3D Model Muncher
+                  {libraryName || '3D Model Muncher'}
                 </h2>
                 <p className="text-xs text-white/80 font-medium">Organize & Print</p>
               </div>

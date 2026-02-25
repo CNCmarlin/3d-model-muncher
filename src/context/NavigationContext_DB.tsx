@@ -1,4 +1,4 @@
-import { Collection } from '@/types/collection';
+import { Collection } from '@/types/collection_db';
 import { ViewType } from '@/types/view';
 import { ReactNode, useContext, useState } from 'react';
 import { NavigationContext } from './NavigationContext';
@@ -32,11 +32,13 @@ export function NavigationProvider_DB({ children }: { children: ReactNode }) {
 
     const openCollectionsList = () => {
         setCurrentView('collections');
+        // setIsSelectionMode(false); // TODO: Selection mode clearing should be handled by consumer (App/SelectionHook)
     };
 
     const openCollection = (col: Collection) => {
         setActiveCollection(col);
         setCurrentView('collection-view');
+        // NOTE: Filtering logic (setting filteredModels) must be handled by an effect in the consumer
     };
 
     const openSettingsOnTab = (tab: string, action?: SettingsAction) => {
@@ -62,19 +64,19 @@ export function NavigationProvider_DB({ children }: { children: ReactNode }) {
     return (
         <NavigationContext.Provider value={{
             currentView,
-            activeCollection,
+            activeCollection: activeCollection as any, // Collection_db — context type still uses legacy Collection (Batch 6 bridge)
             isSidebarOpen,
             settingsInitialTab,
             settingsAction,
 
             handleBackToModels,
             openCollectionsList,
-            openCollection,
+            openCollection: openCollection as any,    // Same bridge cast
             openSettingsOnTab,
             toggleSidebar,
 
             setCurrentView,
-            setActiveCollection,
+            setActiveCollection: setActiveCollection as any, // Same bridge cast
             setSettingsInitialTab,
             setSettingsAction,
             setIsSidebarOpen,

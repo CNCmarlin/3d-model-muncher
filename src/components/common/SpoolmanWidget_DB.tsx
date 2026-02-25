@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import { AlertTriangle, CheckCircle2, Loader2, Printer } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';

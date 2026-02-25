@@ -1163,4 +1163,247 @@ router.post('/cancel-thumbnails', (req, res) => {
     res.json({ success: false, message: 'No active job' });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DB-FIRST BACKUP / RESTORE
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/admin/backup-db
+// Exports the entire Prisma database as a downloadable JSON snapshot.
+// Includes: models (with files, tags, images, relatedFiles), collections.
+router.post('/backup-db', async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+
+        const [models, collections] = await Promise.all([
+            prisma.model.findMany({
+                include: {
+                    files: true,
+                    tags: { include: { tag: true } }, // need tag.name for restore-by-name
+                    images: true,
+                    relatedFiles: true,
+                }
+            }),
+            prisma.collection.findMany({
+                include: { children: false } // flat export — tree is reconstructed via parentId
+            })
+        ]);
+
+        const backup = {
+            version: '1.0',
+            exportedAt: new Date().toISOString(),
+            counts: { models: models.length, collections: collections.length },
+            models,
+            collections,
+        };
+
+        const dateStr = new Date().toISOString().slice(0, 10);
+
+        // Include library name in backup filename if configured
+        let librarySlug = '';
+        try {
+            const configHelper = require('../../server-utils/configHelper');
+            const appConfig = configHelper.readConfig();
+            const name = appConfig?.settings?.libraryName?.trim();
+            if (name) {
+                librarySlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + '-';
+            }
+        } catch { /* non-critical — skip slug on error */ }
+
+        const filename = `${librarySlug}db-backup-${dateStr}.json`;
+
+        // Use a BigInt-safe serializer — Prisma/SQLite may return BigInt for some fields
+        const safeJson = JSON.stringify(backup, (_key, value) =>
+            typeof value === 'bigint' ? Number(value) : value
+        );
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return res.send(safeJson);
+    } catch (error) {
+        console.error('[DB Admin] backup-db error:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// POST /api/admin/restore-db
+// Restores models and collections from a JSON backup.
+// Body (multipart): backupFile (JSON file), strategy ('merge' | 'replace')
+// merge  → upsert by ID; existing records not in backup are kept
+// replace → delete all records, then insert backup data (DESTRUCTIVE)
+const multer = require('multer');
+const restoreUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 500 * 1024 * 1024 } });
+router.post('/restore-db', restoreUpload.single('backupFile'), async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+        const strategy = req.body?.strategy || 'merge';
+
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No backup file uploaded' });
+        }
+
+        let backup;
+        try {
+            backup = JSON.parse(req.file.buffer.toString('utf8'));
+        } catch {
+            return res.status(400).json({ success: false, error: 'Invalid JSON backup file' });
+        }
+
+        if (!backup.models || !backup.collections) {
+            return res.status(400).json({ success: false, error: 'Backup file missing models or collections' });
+        }
+
+        let restored = 0;
+        let skipped = 0;
+        const errors = [];
+
+        if (strategy === 'replace') {
+            // Destructive: clear all existing data first
+            await prisma.modelFile.deleteMany({});
+            await prisma.modelTag.deleteMany({});
+            await prisma.modelImage.deleteMany({});
+            await prisma.relatedFile.deleteMany({});
+            await prisma.model.deleteMany({});
+            await prisma.collection.deleteMany({});
+        }
+
+        // Restore collections first (models reference collectionId)
+        let restoredModels = 0;
+        let restoredCollections = 0;
+        for (const col of backup.collections || []) {
+            try {
+                await prisma.collection.upsert({
+                    where: { id: col.id },
+                    update: { name: col.name, description: col.description, parentId: col.parentId },
+                    create: { id: col.id, name: col.name, description: col.description, parentId: col.parentId }
+                });
+                restoredCollections++;
+                restored++;
+            } catch (err) {
+                errors.push({ id: col.id, type: 'collection', error: err.message });
+                skipped++;
+            }
+        }
+
+        // Restore models
+        for (const model of backup.models || []) {
+            try {
+                const { files, tags, images, relatedFiles, ...modelData } = model;
+
+                await prisma.model.upsert({
+                    where: { id: modelData.id },
+                    update: modelData,
+                    create: modelData
+                });
+
+                if (strategy === 'merge') {
+                    // ── TRUE MERGE ────────────────────────────────────────────────────────
+                    // Upsert each relation record by its stable ID.
+                    // Relations in the DB that are NOT in the backup are left untouched.
+                    // This is safe — no data loss for changes made since the backup.
+
+                    for (const f of (files || [])) {
+                        const { modelId: _m, model: _mo, ...data } = f;
+                        await prisma.modelFile.upsert({
+                            where: { id: data.id },
+                            update: { ...data, modelId: modelData.id },
+                            create: { ...data, modelId: modelData.id }
+                        });
+                    }
+
+                    for (const i of (images || [])) {
+                        const { modelId: _m, model: _mo, ...data } = i;
+                        await prisma.modelImage.upsert({
+                            where: { id: data.id },
+                            update: { ...data, modelId: modelData.id },
+                            create: { ...data, modelId: modelData.id }
+                        });
+                    }
+
+                    for (const r of (relatedFiles || [])) {
+                        const { modelId: _m, model: _mo, ...data } = r;
+                        await prisma.modelRelatedFile.upsert({
+                            where: { id: data.id },
+                            update: { ...data, modelId: modelData.id },
+                            create: { ...data, modelId: modelData.id }
+                        });
+                    }
+
+                } else {
+                    // ── REPLACE (within model scope) ─────────────────────────────────────
+                    // Delete all existing relations for THIS model, then bulk-insert from backup.
+                    // (The parent replace already wiped the whole DB above — this path handles
+                    //  any records that were added after the wipe by concurrent processes.)
+
+                    if (files?.length) {
+                        await prisma.modelFile.deleteMany({ where: { modelId: modelData.id } });
+                        await prisma.modelFile.createMany({
+                            data: files.map(({ modelId: _m, model: _mo, ...f }) => ({ ...f, modelId: modelData.id }))
+                        });
+                    }
+                    if (images?.length) {
+                        await prisma.modelImage.deleteMany({ where: { modelId: modelData.id } });
+                        await prisma.modelImage.createMany({
+                            data: images.map(({ modelId: _m, model: _mo, ...i }) => ({ ...i, modelId: modelData.id }))
+                        });
+                    }
+                    if (relatedFiles?.length) {
+                        await prisma.modelRelatedFile.deleteMany({ where: { modelId: modelData.id } });
+                        await prisma.modelRelatedFile.createMany({
+                            data: relatedFiles.map(({ modelId: _m, model: _mo, ...r }) => ({ ...r, modelId: modelData.id }))
+                        });
+                    }
+                }
+
+                // ── Tags (both strategies) ────────────────────────────────────────────
+                // Tags use a join table keyed by auto-increment tagId — must upsert by name.
+                // Merge: adds tags from backup without removing existing ones.
+                // Replace: clears existing tags first, then re-adds from backup.
+                if (tags?.length) {
+                    if (strategy === 'replace') {
+                        await prisma.modelTag.deleteMany({ where: { modelId: modelData.id } });
+                    }
+
+                    for (const tagRecord of tags) {
+                        const tagName = tagRecord.tag?.name;
+                        if (!tagName) continue;
+
+                        const tag = await prisma.tag.upsert({
+                            where: { name: tagName },
+                            update: {},
+                            create: { name: tagName }
+                        });
+
+                        await prisma.modelTag.upsert({
+                            where: { modelId_tagId: { modelId: modelData.id, tagId: tag.id } },
+                            update: {},
+                            create: { modelId: modelData.id, tagId: tag.id }
+                        });
+                    }
+                }
+
+                restoredModels++;
+                restored++;
+            } catch (err) {
+                errors.push({ id: model.id, type: 'model', error: err.message });
+                skipped++;
+            }
+        }
+
+        console.log(`[DB Admin] restore-db complete: collections=${restoredCollections}, models=${restoredModels}, skipped=${skipped}, errors=${errors.length}`);
+        return res.json({
+            success: true,
+            strategy,
+            restored,
+            restoredModels,
+            restoredCollections,
+            skipped,
+            errors: errors.slice(0, 20),
+            summary: `Restored ${restoredModels} models and ${restoredCollections} collections (${skipped} skipped)`
+        });
+    } catch (error) {
+        console.error('[DB Admin] restore-db error:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 module.exports = router;
+

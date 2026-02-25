@@ -63,6 +63,7 @@ export interface AppConfig {
     useDatabaseBackend?: boolean; // Phase 3: Dual-Running Feature Flag
     alwaysMoveFiles?: boolean; // If true, always move files on collection change without asking.
     onboardingCompleted?: boolean;
+    libraryName?: string; // Custom name shown in the sidebar and top bar (default: "3D Model Muncher")
   };
   filters: {
     defaultCategory: string;

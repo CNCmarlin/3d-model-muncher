@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Model } from "@/types/model";
+import { Model } from "@/types/model_db";
 import { Check, Edit2, History, Plus, Send, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 

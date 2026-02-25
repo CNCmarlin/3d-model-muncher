@@ -28,96 +28,144 @@ export function adaptDbModelToLegacy(dbModel: DbModel): LegacyModel {
         console.error('[dbAdapter] Failed to parse metadata for model:', dbModel.id, e);
     }
 
-    return {
+    return ({
         // Identity
         id: dbModel.id,
         name: dbModel.name,
-        filePath: parsedMetadata.filePath || dbModel.pathHash || '', // Prefer metadata filePath
+        filePath: dbModel.filePath || dbModel.pathHash || '',
 
         // Collections (KEY TRANSFORM: single → array)
-        collections: dbModel.collectionId ? [dbModel.collectionId] : (parsedMetadata.collections || []),
-        excludedCollections: parsedMetadata.excludedCollections || [], // From metadata
+        collections: dbModel.collectionId ? [dbModel.collectionId] : [],
+        excludedCollections: [],
 
-        // Tags (transform relation to string array)
-        tags: dbModel.tags?.map((mt: any) => mt.tag?.name).filter(Boolean) || [],
+        // Tags: handle both formats — already-flattened string[] from server OR raw ModelTag[] from Prisma
+        tags: dbModel.tags?.map((mt: any) => typeof mt === 'string' ? mt : mt.tag?.name || mt?.name || '').filter(Boolean) || [],
 
-        // Print stats
+        // Print stats (Batch 2 promoted columns)
         isPrinted: dbModel.isPrinted,
-        printTime: dbModel.printTime ? String(dbModel.printTime) : (parsedMetadata.printTime || ''),
-        filamentUsed: dbModel.filamentUsage ? String(dbModel.filamentUsage) : (parsedMetadata.filamentUsed || ''),
+        printTime: dbModel.printTime ?? 0,
+        filamentUsage: dbModel.filamentUsage ?? 0,
+        filamentUsed: dbModel.filamentUsage ? String(dbModel.filamentUsage) : '',
 
-        // Metadata - NOW READING FROM PARSED METADATA!
+        // Promoted columns (Batch 1+)
         description: dbModel.description || '',
         license: dbModel.license || '',
         designer: dbModel.designer ?? undefined,
-        notes: parsedMetadata.notes ?? undefined,
-        source: parsedMetadata.source ?? undefined,
-        category: parsedMetadata.category || '', // ← FIX: Read from parsed metadata!
-        printSettings: parsedMetadata.printSettings || {  // ← CRITICAL FIX: Extract printSettings!
-            layerHeight: '',
-            infill: '',
-            nozzle: '',
-            printer: '',
-            material: ''
-        },
+        notes: dbModel.notes || undefined,
+        source: dbModel.source || undefined,
+        category: dbModel.category || '',
 
-        // Images - Use metadata parsedImages if available
-        thumbnail: parsedMetadata.thumbnail || (dbModel.coverImagePath ? `/models/${dbModel.coverImagePath}` : undefined),
-        parsedImages: parsedMetadata.parsedImages || (dbModel.coverImagePath ? [`/models/${dbModel.coverImagePath}`] : []),
-        images: parsedMetadata.images || [], // From metadata
+        // Images - Reconstruct from ModelImage relation (Batch 5), fall back to metadata
+        thumbnail: parsedMetadata.thumbnail || (dbModel.thumbnailPath ? `/models/${dbModel.thumbnailPath}` : undefined),
+        parsedImages: (() => {
+            // If we have ModelImage relations, the parsedImages concept is replaced
+            // Just fall back to metadata or thumbnailPath
+            if (parsedMetadata.parsedImages?.length) return parsedMetadata.parsedImages;
+            if (dbModel.thumbnailPath) return [`/models/${dbModel.thumbnailPath}`];
+            return [];
+        })(),
+        images: (() => {
+            // Batch 5: Reconstruct flat images list from ALL ModelImage rows (gallery + thumbnails)
+            if (dbModel.images && dbModel.images.length > 0) {
+                return dbModel.images
+                    .sort((a: any, b: any) => a.order - b.order)
+                    .map((img: any) => img.path);
+            }
+            return parsedMetadata.images || [];
+        })(),
 
-        // File system - construct modelUrl from files relation
-        // Find primary file (STL/3MF) or use first file
+        // modelUrl — Batch 1 promoted column, fallback to deriving from files
         modelUrl: (() => {
-            // Prefer metadata modelUrl first
-            if (parsedMetadata.modelUrl) return parsedMetadata.modelUrl;
-
+            if (dbModel.modelUrl) return dbModel.modelUrl;
             if (!dbModel.files || dbModel.files.length === 0) return '';
-
-            // Helper to check if file is a model file (STL/3MF)
-            const isModelFile = (f: any) => {
-                const ext = f.filename?.toLowerCase().split('.').pop();
-                return ext === 'stl' || ext === '3mf';
-            };
-
+            const isModelFile = (f: any) => { const ext = f.filename?.toLowerCase().split('.').pop(); return ext === 'stl' || ext === '3mf'; };
             const primaryFile = dbModel.files?.find((f: any) => f.isPrimary && isModelFile(f));
             const modelFile = primaryFile || dbModel.files?.find(isModelFile);
-
             return modelFile ? `/models/${modelFile.filePath}` : '';
         })(),
-        fileSize: (() => {
-            // Prefer metadata fileSize first
-            if (parsedMetadata.fileSize) return parsedMetadata.fileSize;
 
+        // Batch 2: Print settings from DB columns
+        layerHeight: dbModel.layerHeight || null,
+        infill: dbModel.infill || null,
+        nozzle: dbModel.nozzle || null,
+        printer: dbModel.printer || null,
+        material: dbModel.material || null,
+        fileSize: dbModel.fileSize || (() => {
             const isModelFile = (f: any) => {
                 const ext = f.filename?.toLowerCase().split('.').pop();
                 return ext === 'stl' || ext === '3mf';
             };
-
             const primaryFile = dbModel.files?.find((f: any) => f.isPrimary && isModelFile(f));
             const modelFile = primaryFile || dbModel.files?.find(isModelFile);
-            if (!modelFile) return '';
+            if (!modelFile || !modelFile.size) return null;
+            if (modelFile.size < 1024 * 1024) {
+                const sizeInKB = (modelFile.size / 1024).toFixed(0);
+                return `${sizeInKB} KB`;
+            }
             const sizeInMB = (modelFile.size / (1024 * 1024)).toFixed(1);
             return `${sizeInMB} MB`;
         })(),
+        // Virtual printSettings object — built from flat columns for backward compat
+        printSettings: {
+            layerHeight: dbModel.layerHeight || '',
+            infill: dbModel.infill || '',
+            nozzle: dbModel.nozzle || '',
+            printer: dbModel.printer || '',
+            material: dbModel.material || '',
+        },
 
-        // Extended fields from metadata
-        price: parsedMetadata.price,
-        hidden: parsedMetadata.hidden,
-        isRelatedPart: parsedMetadata.isRelatedPart,
-        isProjectRoot: parsedMetadata.isProjectRoot,
-        related_files: parsedMetadata.related_files,
-        hash: parsedMetadata.hash,
+        // Promoted columns
+        price: dbModel.price ?? null,
+        hidden: (dbModel as any).isHidden ?? false,
+        isRelatedPart: (dbModel as any).isComponent ?? false,
+        isProjectRoot: !(dbModel as any).isComponent && dbModel.filePath?.includes('/'),
+        related_files: dbModel.relatedFiles?.map((rf: any) => rf.path) || [],
+
+        // Batch 5: Reconstruct gallery and thumbnails map from ModelImage relation
+        gallery: (() => {
+            if (dbModel.images && dbModel.images.length > 0) {
+                return dbModel.images
+                    .filter((img: any) => img.source === 'gallery')
+                    .sort((a: any, b: any) => a.order - b.order)
+                    .map((img: any) => img.path);
+            }
+            return parsedMetadata.gallery || [];
+        })(),
+        thumbnails: (() => {
+            if (dbModel.images && dbModel.images.length > 0) {
+                const thumbMap: Record<string, string[]> = {};
+                for (const img of dbModel.images as any[]) {
+                    if (img.source === 'thumbnail' && img.sourceFile) {
+                        if (!thumbMap[img.sourceFile]) thumbMap[img.sourceFile] = [];
+                        thumbMap[img.sourceFile].push(img.path);
+                    }
+                }
+                return thumbMap;
+            }
+            return parsedMetadata.thumbnails || {};
+        })(),
+
+        hash: undefined,
         userDefined: parsedMetadata.userDefined as any,
 
-        // G-code data from metadata
-        gcodeData: parsedMetadata.gcodeData,
+        // G-code data reconstruction (Batch 3 promoted columns)
+        gcodeData: (dbModel.gcodeFilePath || dbModel.gcodePrintTime) ? {
+            gcodeFilePath: dbModel.gcodeFilePath,
+            printTime: dbModel.gcodePrintTime,
+            totalFilamentWeight: dbModel.gcodeTotalWeight,
+            filaments: (() => {
+                const raw = dbModel.gcodeFilaments;
+                try {
+                    return raw ? JSON.parse(raw) : [];
+                } catch (e) { return []; }
+            })()
+        } : undefined,
 
-        // Timestamps from metadata
-        created: parsedMetadata.created,
-        lastModified: parsedMetadata.lastModified,
-        lastScanned: parsedMetadata.lastScanned,
-    };
+        // Timestamps from DB columns
+        created: dbModel.createdAt,
+        lastModified: dbModel.updatedAt,
+        lastScanned: dbModel.updatedAt,
+    }) as unknown as LegacyModel;
 }
 
 /**
@@ -131,10 +179,13 @@ export function adaptDbCollectionToLegacy(dbCollection: DbCollection): any {
         path: dbCollection.path,
         pathHash: dbCollection.pathHash,
         description: dbCollection.description,
-        coverImage: dbCollection.coverImage
-            ? (dbCollection.coverImage.startsWith('/') || dbCollection.coverImage.startsWith('http')
-                ? dbCollection.coverImage
-                : `/models/${dbCollection.coverImage}`)
+        coverImage: ((dbCollection as any).coverImagePath || dbCollection.coverImage)
+            ? (() => {
+                const path = (dbCollection as any).coverImagePath || dbCollection.coverImage;
+                if (path.startsWith('/') || path.startsWith('http')) return path;
+                if (path.startsWith('images/') || path.startsWith('documents/')) return `/api/${path}`;
+                return `/models/${path}`;
+            })()
             : undefined,
         modelIds: dbCollection.modelIds,
         createdAt: dbCollection.createdAt,
@@ -145,6 +196,26 @@ export function adaptDbCollectionToLegacy(dbCollection: DbCollection): any {
         _count: (dbCollection as any)._count,
         tags: [], // Collections don't have tags in database schema
         totalModels: (dbCollection as any)._count?.models || 0, // For UI display
+        images: (() => {
+            try {
+                const meta = JSON.parse((dbCollection as any).metadata || '{}');
+                return (meta.images || []).map((p: string) => {
+                    if (p.startsWith('/') || p.startsWith('http')) return p;
+                    if (p.startsWith('images/')) return `/api/${p}`;
+                    return `/models/${p}`;
+                });
+            } catch (e) { return []; }
+        })(),
+        documents: (() => {
+            try {
+                const meta = JSON.parse((dbCollection as any).metadata || '{}');
+                return (meta.documents || []).map((p: string) => {
+                    if (p.startsWith('/') || p.startsWith('http')) return p;
+                    if (p.startsWith('documents/')) return `/api/${p}`;
+                    return `/models/${p}`;
+                });
+            } catch (e) { return []; }
+        })()
     };
 }
 

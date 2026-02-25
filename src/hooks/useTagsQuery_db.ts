@@ -29,6 +29,6 @@ export function useTagsQuery_db(options: UseTagsQueryOptions = {}) {
             return data;
         },
         enabled,
-        staleTime: 10 * 60 * 1000, // 10 minutes (tags change less frequently)
+        staleTime: 30 * 1000, // 30 seconds — new tags show quickly after creation
     });
 }

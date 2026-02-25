@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import { CheckCircle2, Loader2, Upload, X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -28,7 +28,7 @@ export const ProjectFolderDialog_DB = ({ isOpen, onClose, model, onUpdated }: Pr
                 const fd = new FormData();
                 fd.append('file', file);
                 fd.append('modelId', model.id);
-                fd.append('filePath', model.filePath);
+                fd.append('filePath', model.filePath || '');
 
                 const resp = await fetch('/api/models/upload-document', { method: 'POST', body: fd });
                 const result = await resp.json();

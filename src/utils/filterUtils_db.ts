@@ -1,4 +1,4 @@
-import { Model } from "@/types/model";
+import { Model_db } from "@/types/model_db";
 
 export interface FilterState_db {
   search: string;
@@ -12,32 +12,33 @@ export interface FilterState_db {
   sortBy?: string; // Optional sort field
 }
 
-export const applyFiltersToModels_db = (modelsToFilter: Model[], filters: FilterState_db) => {
+/** Extract a tag name string from either a string tag (legacy) or a ModelTag_db object. */
+const getTagName = (t: any): string =>
+  typeof t === 'string' ? t : (t?.tag?.name ?? t?.name ?? '');
+
+export const applyFiltersToModels_db = (modelsToFilter: Model_db[], filters: FilterState_db) => {
   let filtered = modelsToFilter;
 
-  // 1. Filter by Hidden Status
+  // 1. Filter by Hidden Status (DB column: isHidden)
   if (!filters.showHidden) {
-    filtered = filtered.filter(model => !model.hidden);
+    filtered = filtered.filter(model => !model.isHidden);
   }
 
-  // 2. Filter by Missing Images
+  // 2. Filter by Missing Images — use DB ModelImage relation first, then parsedImages bridge
   if (filters.showMissingImages) {
     filtered = filtered.filter(model => {
-      const hasParsedImages = model.parsedImages && model.parsedImages.length > 0;
-      const hasUserImages = model.userDefined?.images && model.userDefined.images.length > 0;
-      return !hasParsedImages && !hasUserImages;
+      const hasDbImages = Array.isArray(model.images) && model.images.length > 0;
+      const hasParsedImages = Array.isArray(model.parsedImages) && model.parsedImages.length > 0;
+      return !hasDbImages && !hasParsedImages;
     });
   }
 
-  // 3. Search Filter (Updated to check File Paths/Folders)
+  // 3. Search Filter
   if (filters.search) {
     const term = filters.search.toLowerCase();
     filtered = filtered.filter(model =>
-      // Check Name
       model.name.toLowerCase().includes(term) ||
-      // Check Tags
-      (model.tags || []).some(tag => tag.toLowerCase().includes(term)) ||
-      // Check File Path (Critical for Folder Navigation)
+      (model.tags || []).some(tag => getTagName(tag).toLowerCase().includes(term)) ||
       (model.modelUrl || '').toLowerCase().includes(term) ||
       (model.filePath || '').toLowerCase().includes(term)
     );
@@ -45,12 +46,16 @@ export const applyFiltersToModels_db = (modelsToFilter: Model[], filters: Filter
 
   // 4. Category Filter
   if (filters.category && filters.category !== 'all') {
-    filtered = filtered.filter(model => model.category.toLowerCase() === filters.category.toLowerCase());
+    filtered = filtered.filter(model =>
+      (model.category ?? '').toLowerCase() === filters.category.toLowerCase()
+    );
   }
 
   // 5. Print Status Filter
   if (filters.printStatus && filters.printStatus !== 'all') {
-    filtered = filtered.filter(model => filters.printStatus === 'printed' ? model.isPrinted : !model.isPrinted);
+    filtered = filtered.filter(model =>
+      filters.printStatus === 'printed' ? model.isPrinted : !model.isPrinted
+    );
   }
 
   // 6. License Filter
@@ -58,22 +63,29 @@ export const applyFiltersToModels_db = (modelsToFilter: Model[], filters: Filter
     filtered = filtered.filter(model => model.license === filters.license);
   }
 
-  // 7. Tags Filter
+  // 7. Tags Filter — handles both string[] (legacy bridge) and ModelTag_db[]
   if (filters.tags && filters.tags.length > 0) {
     filtered = filtered.filter(model =>
-      filters.tags.every(selectedTag => (model.tags || []).some(modelTag => modelTag.toLowerCase() === selectedTag.toLowerCase()))
+      filters.tags.every(selectedTag =>
+        (model.tags || []).some(modelTag =>
+          getTagName(modelTag).toLowerCase() === selectedTag.toLowerCase()
+        )
+      )
     );
   }
 
   // 8. File Type Filter
   if (filters.fileType && filters.fileType !== 'all') {
     const ext = filters.fileType.toLowerCase();
-    if (ext === 'collections') {
-      // 'collections' type is handled by the UI separately (displaying collections grid), 
-      // but if we need to filter models, we pass through or handle specific logic.
-      // For now, standard behavior is usually to just show models matching extension.
-    } else {
+    if (ext !== 'collections') {
       filtered = filtered.filter(model => {
+        // DB-first: use ModelFile_db.fileType enum (most reliable)
+        const files: any[] = (model as any).files || [];
+        if (files.some((f: any) =>
+          (f.fileType || '').toLowerCase() === ext ||
+          (f.path || f.filePath || '').toLowerCase().endsWith('.' + ext)
+        )) return true;
+        // Fallback: top-level filePath / modelUrl
         const path = (model.filePath || model.modelUrl || '').toLowerCase();
         return path.endsWith('.' + ext);
       });
@@ -81,8 +93,6 @@ export const applyFiltersToModels_db = (modelsToFilter: Model[], filters: Filter
   }
 
   return filtered;
-
-
 };
 
 export const isViewableImage = (path: string) => {

@@ -1,7 +1,7 @@
 // GcodeSection.tsx
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Model } from "@/types/model";
+import { Model } from "@/types/model_db";
 import { ChevronDown, ChevronUp, Clock, Codesandbox, HardDrive, RefreshCw, Upload, Weight } from 'lucide-react';
 import React from 'react';
 
@@ -118,7 +118,7 @@ export const GcodeSection_DB = ({
                       </tr>
                     </thead>
                     <tbody>
-                      {currentModel.gcodeData.filaments.map((filament, idx) => (
+                      {currentModel.gcodeData.filaments.map((filament: any, idx: number) => (
                         <tr key={idx} className="border-b last:border-0">
                           <td className="py-2 px-2">
                             <div

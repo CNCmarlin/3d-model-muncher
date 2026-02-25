@@ -1,291 +1,260 @@
+import { DurationInput_DB } from "@/components/common/DurationInput_DB";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Category } from "@/types/category";
-import { Model } from "@/types/model";
-import { DollarSign } from 'lucide-react';
-import React from 'react';
+import { Model } from "@/types/model_db";
+import { DollarSign } from "lucide-react";
 
 interface MetadataSectionProps {
     isEditing: boolean;
-    isStlModel: boolean;
-    editedModel: Model | null; // Use actual Model type
-    setEditedModel: React.Dispatch<React.SetStateAction<Model | null>>;
-    categories: Category[]; // Use actual Category type
-    isKnownLicense: (license: string) => boolean;
-    LICENSES: readonly string[];
-    onLocalUpdate?: (updates: Partial<Model>) => void;
+    canHavePrintSettings: boolean;
+    editedModel: Model | null;
+    setEditedModel: (model: Model | null) => void;
+    categories: any[];
+    isKnownLicense: (l: string) => boolean;
+    LICENSES: readonly any[];
+    onLocalUpdate: (updates: Partial<Model>) => void;
 }
 
 export const MetadataSection_DB = ({
     isEditing,
-    isStlModel,
     editedModel,
-    setEditedModel,
     categories,
     isKnownLicense,
     LICENSES,
-    onLocalUpdate,
+    onLocalUpdate
 }: MetadataSectionProps) => {
-    if (!isEditing) return null;
+    if (!isEditing || !editedModel) return null;
 
-    // Helper to trigger parent updates
-    const triggerLocalUpdate = (updates: Partial<Model>) => {
-        if (onLocalUpdate) {
-            onLocalUpdate(updates);
-        }
+    const printSettings = (editedModel as any).printSettings || {};
+
+    const updatePrintSetting = (field: string, value: string) => {
+        onLocalUpdate({
+            printSettings: {
+                ...printSettings,
+                [field]: value
+            }
+        });
     };
 
     return (
-        <div className="grid gap-6">
-            {/* Print settings (editable only for STL models) */}
-            {isStlModel && (
-                <div className="grid gap-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-material">Material</Label>
-                            <Input
-                                id="edit-material"
-                                value={(editedModel as any)?.printSettings?.material || ''}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setEditedModel(prev => {
-                                        if (!prev) return prev;
-                                        const ps = { ...(prev.printSettings || {}), material: val } as any;
-                                        return { ...prev, printSettings: ps } as Model;
-                                    });
-                                    triggerLocalUpdate({ printSettings: { ...(editedModel?.printSettings || {}), material: val } as any });
-                                }}
-                                placeholder="e.g. PLA, PETG"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-printer">Printer</Label>
-                            <Input
-                                id="edit-printer"
-                                value={(editedModel as any)?.printSettings?.printer || ''}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setEditedModel(prev => {
-                                        if (!prev) return prev;
-                                        const ps = { ...(prev.printSettings || {}), printer: val } as any;
-                                        return { ...prev, printSettings: ps } as Model;
-                                    });
-                                    triggerLocalUpdate({ printSettings: { ...(editedModel?.printSettings || {}), printer: val } as any });
-                                }}
-                                placeholder="e.g. Bambu P1S"
-                            />
-                        </div>
-                    </div>
+        <div className="space-y-6 pb-10">
+            {/* 0. General Area (Moved from Print Settings) */}
+            <div className="space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-[0.2em] text-muted-foreground/50">GENERAL</h3>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-layer-height">Layer height (mm)</Label>
-                            <Input
-                                id="edit-layer-height"
-                                value={(editedModel as any)?.printSettings?.layerHeight || ''}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setEditedModel(prev => {
-                                        if (!prev) return prev;
-                                        const ps = { ...(prev.printSettings || {}), layerHeight: val } as any;
-                                        return { ...prev, printSettings: ps } as Model;
-                                    });
-                                    triggerLocalUpdate({ printSettings: { ...(editedModel?.printSettings || {}), layerHeight: val } as any });
-                                }}
-                                placeholder="e.g. 0.2"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-infill">Infill (%)</Label>
-                            <Input
-                                id="edit-infill"
-                                value={(editedModel as any)?.printSettings?.infill || ''}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setEditedModel(prev => {
-                                        if (!prev) return prev;
-                                        const ps = { ...(prev.printSettings || {}), infill: val } as any;
-                                        return { ...prev, printSettings: ps } as Model;
-                                    });
-                                    triggerLocalUpdate({ printSettings: { ...(editedModel?.printSettings || {}), infill: val } as any });
-                                }}
-                                placeholder="e.g. 20%"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="edit-nozzle">Nozzle (mm)</Label>
-                            <Input
-                                id="edit-nozzle"
-                                value={(editedModel as any)?.printSettings?.nozzle || ''}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    setEditedModel(prev => {
-                                        if (!prev) return prev;
-                                        const ps = { ...(prev.printSettings || {}), nozzle: val } as any;
-                                        return { ...prev, printSettings: ps } as Model;
-                                    });
-                                    triggerLocalUpdate({ printSettings: { ...(editedModel?.printSettings || {}), nozzle: val } as any });
-                                }}
-                                placeholder="e.g. 0.4"
-                            />
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 gap-4">
+                {/* Model Name Input */}
                 <div className="space-y-2">
-                    <Label htmlFor="edit-name">Model Name</Label>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Model Name</Label>
                     <Input
-                        id="edit-name"
-                        value={editedModel?.name || ""}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            setEditedModel(prev => prev ? { ...prev, name: val } : null);
-                            triggerLocalUpdate({ name: val });
-                        }}
+                        value={editedModel.name || ""}
+                        onChange={(e) => onLocalUpdate({ name: e.target.value })}
+                        className="font-bold text-sm bg-primary/5 focus:bg-background border-primary/20 transition-all"
+                        placeholder="Model Name"
                     />
                 </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="edit-category">Category</Label>
-                    <Select
-                        value={editedModel?.category || ""}
-                        onValueChange={(value: string) => {
-                            setEditedModel(prev => prev ? { ...prev, category: value } : null);
-                            triggerLocalUpdate({ category: value });
-                        }}
-                    >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            {(categories || []).map((category) => (
-                                <SelectItem key={category.id} value={category.label}>{category.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Category</Label>
+                        <Select
+                            value={editedModel.category || ""}
+                            onValueChange={(val) => onLocalUpdate({ category: val })}
+                        >
+                            <SelectTrigger className="h-9 text-xs">
+                                <SelectValue placeholder="Select Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {categories.map((c) => (
+                                    <SelectItem key={c.id || c.label || c.name} value={c.label || c.name}>{c.label || c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">License</Label>
+                        <Select
+                            value={isKnownLicense(editedModel.license || "") ? editedModel.license || "" : "Other"}
+                            onValueChange={(val) => onLocalUpdate({ license: val })}
+                        >
+                            <SelectTrigger className="h-9 text-xs">
+                                <SelectValue placeholder="License Type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {LICENSES.map((l: any) => (
+                                    <SelectItem key={l} value={l}>{l}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="edit-designer">Designer</Label>
-                    <Input
-                        id="edit-designer"
-                        value={(editedModel as any)?.designer ?? ""}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            setEditedModel(prev => prev ? ({ ...prev, designer: val } as any) : null);
-                            triggerLocalUpdate({ designer: val } as any);
-                        }}
-                        placeholder="Designer name"
-                    />
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="edit-license">License</Label>
-                    <Select
-                        value={editedModel?.license || ""}
-                        onValueChange={(value: string) => {
-                            setEditedModel(prev => prev ? { ...prev, license: value } : null);
-                            triggerLocalUpdate({ license: value });
-                        }}
-                    >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            {editedModel?.license && !isKnownLicense(editedModel.license) && (
-                                <SelectItem value={editedModel.license} disabled>
-                                    {editedModel.license} (unknown)
-                                </SelectItem>
-                            )}
-                            {LICENSES.map((lic) => (
-                                <SelectItem key={lic} value={lic}>{lic}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="space-y-2">
-                    <Label htmlFor="edit-price">Selling Price</Label>
-                    <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Designer</Label>
                         <Input
-                            id="edit-price"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            value={editedModel?.price ?? ""}
-                            onChange={(e) => {
-                                const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                setEditedModel(prev => prev ? { ...prev, price: val } : null);
-                                triggerLocalUpdate({ price: val });
-                            }}
-                            className="pl-9"
+                            value={(editedModel as any).designer || ""}
+                            onChange={(e) => onLocalUpdate({ designer: e.target.value || null } as any)}
+                            className="h-9 text-xs font-bold"
+                            placeholder="Designer name"
                         />
                     </div>
                 </div>
             </div>
 
-            <div className="space-y-4">
-                <div className="flex items-center space-x-3">
-                    <Switch
-                        id="edit-printed"
-                        checked={editedModel?.isPrinted || false}
-                        onCheckedChange={(checked: boolean) => {
-                            setEditedModel(prev => prev ? { ...prev, isPrinted: checked } : null);
-                            triggerLocalUpdate({ isPrinted: checked });
-                        }}
-                    />
-                    <Label htmlFor="edit-printed">Mark as printed</Label>
-                </div>
+            <Separator />
 
-                <div className="flex items-center space-x-3">
-                    <Switch
-                        id="edit-hidden"
-                        checked={editedModel?.hidden || false}
-                        onCheckedChange={(checked: boolean) => {
-                            setEditedModel(prev => prev ? { ...prev, hidden: checked } : null);
-                            triggerLocalUpdate({ hidden: checked });
-                        }}
+            {/* 1. Print Settings Header & Info */}
+            <div className="space-y-4">
+                <h3 className="font-black text-sm uppercase tracking-[0.2em] text-muted-foreground/50">PRINT SETTINGS (EDIT)</h3>
+
+                {/* Printer Input */}
+                <div className="space-y-2">
+                    <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Printer</Label>
+                    <Input
+                        value={printSettings.printer || ""}
+                        onChange={(e) => updatePrintSetting('printer', e.target.value)}
+                        className="text-xs font-bold h-8"
+                        placeholder="Default Printer"
                     />
-                    <Label htmlFor="edit-hidden">Hide model from view</Label>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
-                <div className="space-y-2">
-                    <Label htmlFor="edit-print-time">Print Time</Label>
-                    <Input
-                        id="edit-print-time"
-                        placeholder="e.g. 1h 30m"
-                        value={editedModel?.printTime || ""}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            setEditedModel(prev => prev ? { ...prev, printTime: val } : null);
-                            triggerLocalUpdate({ printTime: val });
-                        }}
-                    />
+            <Separator />
+
+            {/* 2. Primary Stats Grid - 2x2 with Time/Filament and Size/Price */}
+            <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    {/* Print Time */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Print Time</Label>
+                        <DurationInput_DB
+                            seconds={editedModel.printTime || 0}
+                            onChange={(seconds) => onLocalUpdate({ printTime: seconds })}
+                        />
+                    </div>
+
+                    {/* Filament Usage */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Filament (g)</Label>
+                        <Input
+                            type="text"
+                            value={editedModel.filamentUsage || ""}
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                onLocalUpdate({ filamentUsage: val === '' ? 0 : Number(val) });
+                            }}
+                            className="h-9 font-bold tabular-nums"
+                            placeholder="e.g. 45"
+                        />
+                    </div>
                 </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="edit-filament">Filament</Label>
-                    <Input
-                        id="edit-filament"
-                        placeholder="e.g. 12g PLA"
-                        value={editedModel?.filamentUsed || ""}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            setEditedModel(prev => prev ? { ...prev, filamentUsed: val } : null);
-                            triggerLocalUpdate({ filamentUsed: val });
-                        }}
-                    />
+                <div className="grid grid-cols-2 gap-4">
+                    {/* File Size (read-only, determined by actual file) */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">File Size</Label>
+                        <Input
+                            value={editedModel.fileSize || "—"}
+                            disabled
+                            className="h-9 text-xs disabled:opacity-60"
+                            placeholder="e.g. 1.2 MB"
+                        />
+                    </div>
+
+                    {/* Price */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-primary/40">Price ($)</Label>
+                        <div className="relative">
+                            <DollarSign className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-primary/40" />
+                            <Input
+                                type="number"
+                                step="0.01"
+                                value={editedModel.price || 0}
+                                onChange={(e) => onLocalUpdate({ price: parseFloat(e.target.value) || 0 })}
+                                className="h-9 pl-8 font-bold text-primary border-primary/20"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <Separator />
+
+            {/* 3. Detailed Slicer Settings */}
+            <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    {/* Material */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Material</Label>
+                        <Input
+                            value={printSettings.material || ""}
+                            onChange={(e) => updatePrintSetting('material', e.target.value)}
+                            className="h-8 text-xs font-bold uppercase"
+                            placeholder="PLA"
+                        />
+                    </div>
+
+                    {/* Layer Height */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Layer Height (mm)</Label>
+                        <Input
+                            value={printSettings.layerHeight || ""}
+                            onChange={(e) => updatePrintSetting('layerHeight', e.target.value)}
+                            className="h-8 text-xs font-bold tabular-nums"
+                            placeholder="0.2"
+                        />
+                    </div>
+
+                    {/* Infill */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Infill (%)</Label>
+                        <Input
+                            value={printSettings.infill || ""}
+                            onChange={(e) => updatePrintSetting('infill', e.target.value)}
+                            className="h-8 text-xs font-bold tabular-nums"
+                            placeholder="15%"
+                        />
+                    </div>
+
+                    {/* Nozzle */}
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Nozzle (mm)</Label>
+                        <Input
+                            value={printSettings.nozzle || ""}
+                            onChange={(e) => updatePrintSetting('nozzle', e.target.value)}
+                            className="h-8 text-xs font-bold tabular-nums"
+                            placeholder="0.4"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <Separator />
+
+            {/* 4. Toggles */}
+            <div className="space-y-6 pt-4">
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="flex items-center space-x-3 bg-muted/20 p-3 rounded-lg border border-transparent hover:border-border transition-all">
+                        <Switch
+                            id="edit-isPrinted"
+                            checked={editedModel.isPrinted || false}
+                            onCheckedChange={(checked) => onLocalUpdate({ isPrinted: checked })}
+                        />
+                        <Label htmlFor="edit-isPrinted" className="text-xs font-bold uppercase tracking-tight">Mark Printed</Label>
+                    </div>
+
+                    <div className="flex items-center space-x-3 bg-muted/20 p-3 rounded-lg border border-transparent hover:border-border transition-all">
+                        <Switch
+                            id="edit-isFavorite"
+                            checked={editedModel.isFavorite || false}
+                            onCheckedChange={(checked) => onLocalUpdate({ isFavorite: checked })}
+                        />
+                        <Label htmlFor="edit-isFavorite" className="text-xs font-bold uppercase tracking-tight">Favorite</Label>
+                    </div>
                 </div>
             </div>
         </div>

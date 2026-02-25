@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCategoryManager } from '@/hooks/settings/useCategoryManager';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import * as LucideIcons from 'lucide-react';
 import { Box, Edit2, Folder, GripVertical, Plus, Save, Trash2 } from 'lucide-react';
 import React from 'react';

@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useDialog_db } from "@/hooks/useDialog_db";
 import type { Category } from "@/types/category";
-import type { Collection } from "@/types/collection";
+import type { Collection } from "@/types/collection_db";
 import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";

@@ -14,7 +14,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import type { Category } from '@/types/category';
-import type { Collection } from '@/types/collection';
+import type { Collection } from '@/types/collection_db';
 import { Box, Copy, FileText, Image as ImageIcon, LayoutGrid, List, Loader2, Plus, Star, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from "sonner";
@@ -523,7 +523,7 @@ export default function CollectionEditDrawer_DB({
       const remainingIds = (removalTarget.modelIds || []).filter(id => !removableIds.includes(id));
       const payload = {
         id: removalTarget.id,
-        name: removalTarget.name,
+        name: removalTarget.name || '',
         description: removalTarget.description || '',
         modelIds: remainingIds,
         category: (removalTarget as any).category || '',

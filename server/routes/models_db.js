@@ -3,6 +3,7 @@ const router = express.Router();
 const { z } = require('zod');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 const modelService = require('../services/modelService_db');
 const { dbLog } = require('../../server-utils/configHelper');
 const { getAbsoluteModelsPath } = require('../../server-utils/dataAccess');
@@ -13,6 +14,18 @@ const {
     BulkEditSchema,
     ApiResponseSchema
 } = require('../schemas/index_db');
+
+// Multer setup for file uploads (gcode parsing)
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB
+});
+
+// Reuse legacy controller for file-system based operations (gcode parsing)
+const modelController = require('../controllers/legacy/modelController');
+
+// Maintenance controller for file verification
+const maintenanceController = require('../controllers/maintenanceController_db');
 
 /**
  * DATABASE VERSION: Models API Routes
@@ -42,6 +55,11 @@ function handleZodError(error, res) {
     });
 }
 
+// --- Maintenance Endpoints ---
+
+// Verify a physical file exists (used by file manifest UI checkmarks)
+router.post('/verify-file', (req, res) => maintenanceController.verifyFile(req, res));
+
 // --- GET /api/models ---
 // Get all models with filtering, pagination, and relations
 router.get('/models', async (req, res) => {
@@ -70,19 +88,36 @@ router.get('/models', async (req, res) => {
                 dbLog(`[DB API] Failed to parse metadata for model ${m.id}`);
             }
 
-            // Extract thumbnail (prefer metadata, fallback to coverImagePath)
-            const thumbnail = meta.thumbnail || (m.coverImagePath ? `/models/${m.coverImagePath}` : undefined);
+            // Extract thumbnail (prefer metadata, fallback to thumbnailPath)
+            const thumbnail = meta.thumbnail || (m.thumbnailPath ? `/models/${m.thumbnailPath}` : undefined);
 
             return {
                 ...m,
                 thumbnail,
                 // Also extract other commonly needed fields from metadata
                 parsedImages: meta.parsedImages || [],
-                gallery: meta.gallery || [], // NEW: Gallery orphans
-                thumbnails: meta.thumbnails || {}, // NEW: Functional thumbnails
+                gallery: meta.gallery || [], // Orphan gallery images still in metadata
+                thumbnails: meta.thumbnails || {}, // Functional thumbnails still in metadata
                 userDefined: meta.userDefined,
-                category: meta.category || '',
-                notes: meta.notes
+                // Promoted columns — use DB first, metadata fallback for unmigrated data only
+                category: m.category || meta.category || '',
+                notes: m.notes || meta.notes || undefined,
+                // Flatten tags from ModelTag relation to string array
+                tags: Array.isArray(m.tags)
+                    ? m.tags.map(t => typeof t === 'string' ? t : t?.tag?.name || t?.name || '').filter(Boolean)
+                    : [],
+                // Removed flatten logic – DB-first components now use the actual relatedFiles objects
+                related_files: [], // Kept as empty to avoid undefined errors in stale hooks
+                // Reconstruct gcodeData nested object from promoted DB columns
+                gcodeData: (m.gcodeFilePath || m.gcodePrintTime) ? {
+                    gcodeFilePath: m.gcodeFilePath,
+                    printTime: m.gcodePrintTime,
+                    totalFilamentWeight: m.gcodeTotalWeight,
+                    filaments: (() => {
+                        try { return m.gcodeFilaments ? JSON.parse(m.gcodeFilaments) : []; }
+                        catch (e) { return []; }
+                    })()
+                } : undefined,
             };
         });
         dbLog('[DB API] Thumbnail extraction complete');
@@ -125,6 +160,52 @@ router.get('/models', async (req, res) => {
     }
 });
 
+// --- GET /api/models/download ---
+// Download a file (model or image)
+// Query: ?path=relative/path/to/file
+router.get('/models/download', async (req, res) => {
+    try {
+        const relativePath = req.query.path;
+        if (!relativePath) {
+            return res.status(400).json({ success: false, error: 'Path is required' });
+        }
+
+        // Security check: Prevent directory traversal
+        if (relativePath.includes('..')) {
+            return res.status(400).json({ success: false, error: 'Invalid path' });
+        }
+
+        const modelsDir = getAbsoluteModelsPath();
+
+        // Normalize path: specific handling for /models/ prefix if present
+        let cleanPath = relativePath;
+        if (cleanPath.startsWith('/models/')) cleanPath = cleanPath.substring(8);
+        else if (cleanPath.startsWith('models/')) cleanPath = cleanPath.substring(7);
+
+        const absPath = path.join(modelsDir, cleanPath);
+
+        console.log(`[DB API] Downloading file: ${absPath}`);
+
+        if (!fs.existsSync(absPath)) {
+            console.log(`[DB API] Download failed - File not found: ${absPath}`);
+            return res.status(404).json({ success: false, error: 'File not found' });
+        }
+
+        const filename = path.basename(absPath);
+        res.download(absPath, filename, (err) => {
+            if (err) {
+                console.error('[DB API] Download error:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ success: false, error: 'Download failed' });
+                }
+            }
+        });
+    } catch (error) {
+        console.error('[DB API] Download endpoint error:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 // --- GET /api/models/:id ---
 // Get a single model with all relations
 router.get('/models/:id', async (req, res) => {
@@ -157,13 +238,32 @@ router.get('/models/:id', async (req, res) => {
 
         const enrichedModel = {
             ...serializedModel,
-            thumbnail: meta.thumbnail || (serializedModel.coverImagePath ? `/models/${serializedModel.coverImagePath}` : undefined),
+            thumbnail: meta.thumbnail || (serializedModel.thumbnailPath ? `/models/${serializedModel.thumbnailPath}` : undefined),
             parsedImages: meta.parsedImages || [],
-            gallery: meta.gallery || [], // NEW
-            thumbnails: meta.thumbnails || {}, // NEW
+            gallery: meta.gallery || [],
+            thumbnails: meta.thumbnails || {},
             userDefined: meta.userDefined,
-            category: meta.category || '',
-            notes: meta.notes
+            // Promoted columns — use DB first, metadata fallback for unmigrated data only
+            category: serializedModel.category || meta.category || '',
+            notes: serializedModel.notes || meta.notes || undefined,
+            // Flatten tags from ModelTag relation to string array
+            tags: Array.isArray(serializedModel.tags)
+                ? serializedModel.tags.map(t => typeof t === 'string' ? t : t?.tag?.name || t?.name || '').filter(Boolean)
+                : [],
+            // Flatten relatedFiles relation to legacy string array
+            related_files: Array.isArray(serializedModel.relatedFiles)
+                ? serializedModel.relatedFiles.map(rf => rf.path).filter(Boolean)
+                : (meta.related_files || []),
+            // Reconstruct gcodeData nested object from promoted DB columns
+            gcodeData: (serializedModel.gcodeFilePath || serializedModel.gcodePrintTime) ? {
+                gcodeFilePath: serializedModel.gcodeFilePath,
+                printTime: serializedModel.gcodePrintTime,
+                totalFilamentWeight: serializedModel.gcodeTotalWeight,
+                filaments: (() => {
+                    try { return serializedModel.gcodeFilaments ? JSON.parse(serializedModel.gcodeFilaments) : []; }
+                    catch (e) { return []; }
+                })()
+            } : undefined,
         };
 
         res.json({
@@ -222,49 +322,6 @@ router.patch('/models/:id', async (req, res) => {
     }
 });
 
-// --- GET /api/models/download ---
-// Download a file (model or image)
-// Query: ?path=relative/path/to/file
-router.get('/models/download', async (req, res) => {
-    try {
-        const relativePath = req.query.path;
-        if (!relativePath) {
-            return res.status(400).json({ success: false, error: 'Path is required' });
-        }
-
-        // Security check: Prevent directory traversal
-        if (relativePath.includes('..')) {
-            return res.status(400).json({ success: false, error: 'Invalid path' });
-        }
-
-        const modelsDir = getAbsoluteModelsPath();
-
-        // Normalize path: specific handling for /models/ prefix if present
-        let cleanPath = relativePath;
-        if (cleanPath.startsWith('/models/')) cleanPath = cleanPath.substring(8);
-        else if (cleanPath.startsWith('models/')) cleanPath = cleanPath.substring(7);
-
-        const absPath = path.join(modelsDir, cleanPath);
-
-        if (!fs.existsSync(absPath)) {
-            dbLog(`[DB API] Download failed - File not found: ${absPath}`);
-            return res.status(404).json({ success: false, error: 'File not found' });
-        }
-
-        const filename = path.basename(absPath);
-        res.download(absPath, filename, (err) => {
-            if (err) {
-                console.error('[DB API] Download error:', err);
-                if (!res.headersSent) {
-                    res.status(500).json({ success: false, error: 'Download failed' });
-                }
-            }
-        });
-    } catch (error) {
-        console.error('[DB API] Download endpoint error:', error);
-        res.status(500).json({ success: false, error: 'Internal server error' });
-    }
-});
 
 // --- DELETE /api/models/delete ---
 // Bulk delete models
@@ -302,6 +359,88 @@ router.delete('/models/delete', async (req, res) => {
     } catch (error) {
         console.error('[DB API] Bulk delete error:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// --- POST /api/models/:id/related-files ---
+router.post('/models/:id/related-files', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { path } = req.body;
+
+        if (!path) {
+            return res.status(400).json({ success: false, error: 'Path is required' });
+        }
+
+        dbLog(`[DB API] POST /api/models/${id}/related-files: ${path}`);
+        const relatedFile = await modelService.addRelatedFile(id, path);
+
+        res.json({
+            success: true,
+            data: relatedFile
+        });
+    } catch (error) {
+        dbLog('[DB API] Failed to add related file:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to add related file' });
+    }
+});
+
+// --- PATCH /api/models/:id/related-files/:relatedFileId ---
+router.patch('/models/:id/related-files/:relatedFileId', async (req, res) => {
+    try {
+        const { id, relatedFileId } = req.params;
+        const { path } = req.body;
+
+        if (!path) {
+            return res.status(400).json({ success: false, error: 'Path is required' });
+        }
+
+        dbLog(`[DB API] PATCH /api/models/${id}/related-files/${relatedFileId}: ${path}`);
+        const relatedFile = await modelService.updateRelatedFile(id, relatedFileId, path);
+
+        res.json({
+            success: true,
+            data: relatedFile
+        });
+    } catch (error) {
+        dbLog('[DB API] Failed to update related file:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to update related file' });
+    }
+});
+
+// --- DELETE /api/models/:id/related-files/:relatedFileId ---
+router.delete('/models/:id/related-files/:relatedFileId', async (req, res) => {
+    try {
+        const { id, relatedFileId } = req.params;
+        dbLog(`[DB API] DELETE /api/models/${id}/related-files/${relatedFileId}`);
+
+        await modelService.deleteRelatedFile(id, relatedFileId);
+
+        res.json({
+            success: true,
+            message: 'Related file deleted successfully'
+        });
+    } catch (error) {
+        dbLog('[DB API] Failed to delete related file:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to delete related file' });
+    }
+});
+
+// --- DELETE /api/models/:id/tags/:tagName ---
+router.delete('/models/:id/tags/:tagName', async (req, res) => {
+    try {
+        const { id, tagName } = req.params;
+        dbLog(`[DB API] DELETE /api/models/${id}/tags/${tagName}`);
+
+        await modelService.removeTagFromModel(id, tagName);
+
+        res.json({
+            success: true,
+            message: 'Tag removed successfully'
+        });
+    } catch (error) {
+        dbLog('[DB API] Failed to remove tag:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to remove tag' });
     }
 });
 
@@ -401,4 +540,112 @@ router.get('/models/search', async (req, res) => {
 // - server/routes/collections_db.js
 // - server/routes/tags_db.js
 
+// --- GCode Parse (file-system based, shared with legacy) ---
+router.post('/parse-gcode', upload.single('file'), (req, res) => modelController.parseGcode(req, res));
+
+// --- POST /api/hash-check ---
+// DB-FIRST integrity check: one result per model — verifies the primary file exists on disk.
+// If model.pathHash is stored, also verifies the SHA-256 hash matches.
+// Request: { fileType: '3mf' | 'stl' }
+// Response: { success: true, results: [...] }
+router.post('/hash-check', async (req, res) => {
+    const crypto = require('crypto');
+    const { fileType } = req.body;
+
+    if (!fileType || !['3mf', 'stl'].includes(fileType)) {
+        return res.status(400).json({ success: false, error: 'fileType must be "3mf" or "stl"' });
+    }
+
+    const ext = '.' + fileType;
+
+    try {
+        const prisma = require('../../server-utils/db');
+        const modelsDir = getAbsoluteModelsPath();
+
+        // Fetch all non-deleted models — one record per model.
+        // We do NOT include all ModelFile records here to avoid N*files results.
+        const models = await prisma.model.findMany({
+            where: { isDeleted: false },
+            select: {
+                id: true,
+                name: true,
+                filePath: true,
+                modelUrl: true,
+                pathHash: true,
+            }
+        });
+
+        const results = [];
+
+        for (const model of models) {
+            // Determine the candidate file path for this model and fileType.
+            // Priority: model.filePath (direct column) > model.modelUrl
+            const rawPath = model.filePath || model.modelUrl || null;
+            if (!rawPath || !rawPath.toLowerCase().endsWith(ext)) continue;
+
+            // Resolve to absolute path.
+            // Migration may have stored absolute paths (e.g. C:\Users\...\models\...).
+            // If it's already absolute and exists, use it directly.
+            // Otherwise, treat as relative to modelsDir.
+            let absPath;
+            if (path.isAbsolute(rawPath)) {
+                absPath = rawPath;
+            } else {
+                let cleanPath = rawPath;
+                if (cleanPath.startsWith('/models/')) cleanPath = cleanPath.substring(8);
+                else if (cleanPath.startsWith('models/')) cleanPath = cleanPath.substring(7);
+                absPath = path.join(modelsDir, cleanPath);
+            }
+
+            const displayPath = path.relative(modelsDir, absPath).replace(/\\/g, '/');
+            const baseName = path.basename(absPath, ext);
+
+            let status, actualHash = null, details = null;
+
+            if (!fs.existsSync(absPath)) {
+                status = 'missing';
+                details = `File not found on disk: ${displayPath}`;
+            } else if (model.pathHash) {
+                // Only compute hash when we have a stored hash to compare against.
+                // Reading large 3MF/STL files is expensive — skip when unnecessary.
+                try {
+                    const fileBuffer = fs.readFileSync(absPath);
+                    actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+                    status = (model.pathHash === actualHash) ? 'ok' : 'hash_mismatch';
+                    if (status === 'hash_mismatch') {
+                        details = 'File hash differs from stored record — file may have been updated on disk.';
+                    }
+                } catch (hashErr) {
+                    status = 'error';
+                    details = `Could not read file: ${hashErr.message}`;
+                }
+            } else {
+                // File exists but no stored hash — treat as verified (existence check only)
+                status = 'ok';
+            }
+
+            const result = {
+                baseName,
+                hash: actualHash,
+                storedHash: model.pathHash || null,
+                status,
+                details,
+                modelId: model.id,
+            };
+
+            if (fileType === '3mf') result.threeMF = displayPath;
+            else result.stl = displayPath;
+
+            results.push(result);
+        }
+
+        return res.json({ success: true, results });
+    } catch (error) {
+        console.error('[DB API] hash-check error:', error);
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+
 module.exports = router;
+

@@ -27,7 +27,7 @@ import { useTagManager_db } from '@/hooks/settings/useTagManager_db';
 // Types
 import { Category } from '@/types/category';
 import { AppConfig } from '@/types/config';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 
 const ExperimentalTab = React.lazy(() => import('@/components/settings/ExperimentalTab_DB'));
 
@@ -61,7 +61,7 @@ export function SettingsPage_DB({
   settingsAction,
   onActionHandled
 }: SettingsPageProps) {
-  const { setCurrentView } = useNavigation();
+  const { setCurrentView: _setCurrentView } = useNavigation();
   const [selectedTab, setSelectedTab] = React.useState(initialTab || 'general');
 
   React.useEffect(() => {
@@ -94,8 +94,8 @@ export function SettingsPage_DB({
 
   // 2. Tag Manager Hook
   const tagManager = useTagManager_db({
-    models,
-    onModelsUpdate,
+    models: models as any,
+    onModelsUpdate: onModelsUpdate as any,
     setSaveStatus,
     setStatusMessage
   });
@@ -103,10 +103,10 @@ export function SettingsPage_DB({
   // 3. Category Manager Hook
   const categoryManager = useCategoryManager_db({
     categories,
-    models,
+    models: models as any,
     localConfig,
     handleSaveConfig,
-    onModelsUpdate,
+    onModelsUpdate: onModelsUpdate as any,
     onCategoriesUpdate: (cats) => {
       // Notify parent
       onCategoriesUpdate(cats);
@@ -115,10 +115,10 @@ export function SettingsPage_DB({
     setStatusMessage
   });
 
-  // 4. Integrity Check Hook
+  // 4. Integrity Check Hook — hash check + duplicate detection (DB-first)
   const integrityCheck = useIntegrityCheck_db({
-    models,
-    onModelsUpdate,
+    models: models as any,
+    onModelsUpdate: onModelsUpdate as any,
     setSaveStatus,
     setStatusMessage
   });
@@ -216,7 +216,7 @@ export function SettingsPage_DB({
             <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="tags">Tags</TabsTrigger>
             <TabsTrigger value="backup">Backup</TabsTrigger>
-            <TabsTrigger value="integrity">Integrity</TabsTrigger>
+            <TabsTrigger value="integrity">File Integrity</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
             <TabsTrigger value="support">Support</TabsTrigger>
             <TabsTrigger value="experimental">Experimental</TabsTrigger>
@@ -261,10 +261,9 @@ export function SettingsPage_DB({
               isCreatingBackup={backups.isCreatingBackup}
               isRestoring={backups.isRestoring}
               backupHistory={backups.backupHistory}
+              restoreResult={backups.restoreResult}
               restoreStrategy={backups.restoreStrategy}
               setRestoreStrategy={backups.setRestoreStrategy}
-              collectionsRestoreStrategy={backups.collectionsRestoreStrategy}
-              setCollectionsRestoreStrategy={backups.setCollectionsRestoreStrategy}
               backupFileInputRef={backups.backupFileInputRef}
               handleCreateBackup={backups.handleCreateBackup}
               handleRestoreFromFile={backups.handleRestoreFromFile}
@@ -274,6 +273,7 @@ export function SettingsPage_DB({
             />
           </TabsContent>
 
+          {/* IntegritySettings_DB — DB-first: hash check + duplicate detection */}
           <TabsContent value="integrity" className="space-y-6 mt-0">
             <IntegritySettings_DB
               {...integrityCheck}

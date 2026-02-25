@@ -122,26 +122,44 @@ class LegacySourceScanner {
         const mapped = {
             id: data.id,
             name: data.name || filename.replace(/-munchie\.json$/, ''),
+            // Promoted columns (Batch 1)
+            category: data.category || null,
+            modelUrl: data.modelUrl || null,
+            price: typeof data.price === 'number' ? data.price : null,
+            // Promoted columns (Batch 2 - print settings)
+            layerHeight: data.printSettings?.layerHeight || null,
+            infill: data.printSettings?.infill || null,
+            nozzle: data.printSettings?.nozzle || null,
+            printer: data.printSettings?.printer || null,
+            material: data.printSettings?.material || null,
+            fileSize: data.fileSize || null,
             description: data.description || '',
+            source: data.source || null,
+            notes: data.notes || null,
             tags: Array.isArray(data.tags) ? data.tags : [], // NEW: Map Tags
             isHidden: data.hidden || false,     // Direct Map
             isComponent: type === 'PROJECT_PART', // Derived
             printTime: this._parsePrintTime(data.printTime),
             filamentUsage: this._parseFilamentUsage(data.filamentUsed),
+            // Promoted from metadata (Batch 3 - G-code Analysis)
+            gcodeFilePath: data.gcodeData?.gcodeFilePath || null,
+            gcodePrintTime: data.gcodeData?.printTime || null,
+            gcodeTotalWeight: data.gcodeData?.totalFilamentWeight || null,
+            gcodeFilaments: data.gcodeData?.filaments ? JSON.stringify(data.gcodeData.filaments) : null,
             isPrinted: data.isPrinted || false,
             isFavorite: data.favorite || false, // Note: legacy might call it 'favorite' or 'isFavorite'
-            coverImagePath: this._findCoverImage(data, dir),
+            thumbnailPath: this._findCoverImage(data, dir),  // Maps to `thumbnail_path` column
             pathHash: this._generatePathHash(dir, filename),
-            // Complex objects stored in metadata
+            filePath: path.relative(this.modelsDir, fullPath).replace(/\\/g, '/'),
+            // Complex objects stored in metadata (only userDefined remains after Batch 6)
             metadata: {
-                gcodeData: data.gcodeData || null,
-                printSettings: data.printSettings || null,
-                userDefined: data.userDefined || {},
-                related_files: data.related_files || [],
-                images: assignedImages,
-                gallery: assignedGallery,
-                thumbnails: assignedThumbnails
-            }
+                userDefined: data.userDefined || {}
+            },
+            // Promoted data passed as top-level for MigrationEngine linking
+            _relatedFiles: data.related_files || [],
+            _images: assignedImages,
+            _gallery: assignedGallery,
+            _thumbnails: assignedThumbnails
         };
 
         const entity = {

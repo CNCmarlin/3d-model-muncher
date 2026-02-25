@@ -1,4 +1,3 @@
-import { useConfig } from '@/context/ConfigContext';
 import { useRef, useState } from 'react';
 
 interface UseBackupsProps {
@@ -6,46 +5,84 @@ interface UseBackupsProps {
     setStatusMessage: (msg: string) => void;
 }
 
+interface BackupEntry {
+    name: string;
+    timestamp: string;
+    size: number;
+}
+
+const HISTORY_KEY = 'db_backup_history';
+const MAX_HISTORY = 10;
+
+function loadHistory(): BackupEntry[] {
+    try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveHistory(entries: BackupEntry[]) {
+    try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, MAX_HISTORY)));
+    } catch { /* ignore quota errors */ }
+}
+
+/**
+ * DB-FIRST Backup Hook
+ * - Create Backup: POST /api/admin/backup-db → downloads a JSON snapshot of the DB
+ * - Restore:       POST /api/admin/restore-db → uploads JSON, upserts records (merge | replace)
+ * - backupHistory  persisted in localStorage so it survives page reloads
+ */
 export function useBackups_db({
     setSaveStatus,
     setStatusMessage
 }: UseBackupsProps) {
-    const { updateRunTimestamp } = useConfig();
     const [isCreatingBackup, setIsCreatingBackup] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
-    const [backupHistory, setBackupHistory] = useState<Array<{
-        name: string;
-        timestamp: string;
-        size: number;
-        fileCount: number;
-    }>>([]);
 
-    // Strategies
-    const [restoreStrategy, setRestoreStrategy] = useState<'hash-match' | 'path-match' | 'force'>('hash-match');
-    const [collectionsRestoreStrategy, setCollectionsRestoreStrategy] = useState<'merge' | 'replace'>('merge');
+    // Persisted across reloads via localStorage
+    const [backupHistory, _setBackupHistory] = useState<BackupEntry[]>(() => loadHistory());
+
+    const setBackupHistory = (updater: (prev: BackupEntry[]) => BackupEntry[]) => {
+        _setBackupHistory(prev => {
+            const next = updater(prev);
+            saveHistory(next);
+            return next;
+        });
+    };
+
+    const [restoreResult, setRestoreResult] = useState<{
+        restoredModels: number;
+        restoredCollections: number;
+        skipped: number;
+        errors: any[];
+        summary: string;
+    } | null>(null);
+
+    // Single strategy: merge (safe default) or replace (destructive)
+    const [restoreStrategy, setRestoreStrategy] = useState<'merge' | 'replace'>('merge');
 
     const backupFileInputRef = useRef<HTMLInputElement>(null);
 
     const handleCreateBackup = async () => {
         setIsCreatingBackup(true);
         setSaveStatus('saving');
-        setStatusMessage('Creating backup of munchie.json files...');
+        setStatusMessage('Exporting database snapshot...');
 
         try {
-            const response = await fetch('/api/backup-munchie-files', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-            });
+            const response = await fetch('/api/admin/backup-db', { method: 'POST' });
 
             if (!response.ok) {
-                throw new Error('Failed to create backup');
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Failed to create backup');
             }
 
-            // Get the filename from the response headers
             const contentDisposition = response.headers.get('Content-Disposition');
-            const filename = contentDisposition?.match(/filename="(.+)"/)?.[1] || `munchie-backup-${new Date().toISOString().slice(0, 19)}.gz`;
+            const filename = contentDisposition?.match(/filename="(.+)"/)?.[1]
+                || `db-backup-${new Date().toISOString().slice(0, 10)}.json`;
 
-            // Download the backup file
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -56,28 +93,24 @@ export function useBackups_db({
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
 
-            // Update backup history
-            const newBackup = {
+            const newEntry: BackupEntry = {
                 name: filename,
                 timestamp: new Date().toISOString(),
                 size: blob.size,
-                fileCount: 0
             };
-            setBackupHistory(prev => [newBackup, ...prev].slice(0, 10));
+
+            // Persist to localStorage immediately
+            setBackupHistory(prev => [newEntry, ...prev]);
 
             setSaveStatus('saved');
-            setStatusMessage(`Backup created successfully: ${filename}`);
-            updateRunTimestamp('createBackup');
+            setStatusMessage(`Backup downloaded: ${filename}`);
         } catch (error) {
             setSaveStatus('error');
             setStatusMessage('Failed to create backup');
-            console.error('Backup creation error:', error);
+            console.error('Backup error:', error);
         } finally {
             setIsCreatingBackup(false);
-            setTimeout(() => {
-                setSaveStatus('idle');
-                setStatusMessage('');
-            }, 3000);
+            setTimeout(() => { setSaveStatus('idle'); setStatusMessage(''); }, 3000);
         }
     };
 
@@ -91,70 +124,38 @@ export function useBackups_db({
 
         setIsRestoring(true);
         setSaveStatus('saving');
-        setStatusMessage('Restoring from backup file...');
+        setStatusMessage('Restoring database from backup...');
 
         try {
-            if (file.name.endsWith('.gz')) {
-                // Use file upload for gzipped files
-                const formData = new FormData();
-                formData.append('backupFile', file);
-                formData.append('strategy', restoreStrategy);
-                formData.append('collectionsStrategy', collectionsRestoreStrategy);
+            const formData = new FormData();
+            formData.append('backupFile', file);
+            formData.append('strategy', restoreStrategy);
 
-                const response = await fetch('/api/restore-munchie-files/upload', {
-                    method: 'POST',
-                    body: formData
-                });
+            const response = await fetch('/api/admin/restore-db', {
+                method: 'POST',
+                body: formData
+            });
 
-                const result = await response.json();
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error || 'Restore failed');
 
-                if (!result.success) {
-                    throw new Error(result.error || 'Restore failed');
-                }
-
-                setSaveStatus('saved');
-                setStatusMessage(`Restore completed: ${result.summary}`);
-                console.log('Restore results:', result);
-
-            } else {
-                // Handle plain JSON files
-                const buffer = await file.arrayBuffer();
-                const backupData = new TextDecoder().decode(buffer);
-
-                // Send restore request to backend
-                const response = await fetch('/api/restore-munchie-files', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        backupData,
-                        strategy: restoreStrategy,
-                        collectionsStrategy: collectionsRestoreStrategy
-                    })
-                });
-
-                const result = await response.json();
-
-                if (!result.success) {
-                    throw new Error(result.error || 'Restore failed');
-                }
-
-                setSaveStatus('saved');
-                setStatusMessage(`Restore completed: ${result.summary}`);
-                console.log('Restore results:', result);
-            }
-
+            setRestoreResult({
+                restoredModels: result.restoredModels ?? 0,
+                restoredCollections: result.restoredCollections ?? 0,
+                skipped: result.skipped ?? 0,
+                errors: result.errors ?? [],
+                summary: result.summary ?? 'Restore complete'
+            });
+            setSaveStatus('saved');
+            setStatusMessage(result.summary || 'Restore complete');
         } catch (error) {
             setSaveStatus('error');
             setStatusMessage('Failed to restore from backup');
             console.error('Restore error:', error);
         } finally {
             setIsRestoring(false);
-            // Clear the file input
             event.target.value = '';
-            setTimeout(() => {
-                setSaveStatus('idle');
-                setStatusMessage('');
-            }, 3000);
+            setTimeout(() => { setSaveStatus('idle'); setStatusMessage(''); }, 4000);
         }
     };
 
@@ -163,15 +164,14 @@ export function useBackups_db({
         isCreatingBackup,
         isRestoring,
         backupHistory,
+        restoreResult,
         restoreStrategy,
         setRestoreStrategy,
-        collectionsRestoreStrategy,
-        setCollectionsRestoreStrategy,
         backupFileInputRef,
 
         // Actions
         handleCreateBackup,
         handleRestoreFromFile,
-        handleBackupFileRestore
+        handleBackupFileRestore,
     };
 }

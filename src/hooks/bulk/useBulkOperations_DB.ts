@@ -1,6 +1,6 @@
 import { updateModel } from '@/api/services/modelService_db';
 import { useBulkEditModels_db } from '@/hooks/mutations/useBulkEditModels_db';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import { RendererPool } from '@/utils/rendererPool';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -84,7 +84,7 @@ export function useBulkOperations_DB({
                         }
                     };
 
-                    const refreshedModel = await updateModel(model.id, updates);
+                    const refreshedModel = await updateModel(model.id, updates) as unknown as Model;
                     savedModels.push(refreshedModel);
                 } catch (err) {
                     console.error('[BulkEdit] Failed to save generated image for model', model.id, err);
@@ -125,17 +125,21 @@ export function useBulkOperations_DB({
                 const updates: any = {};
                 const tagChanges: any = {};
 
-                // 1. Standard Fields (Always from stagedEdits now)
-                if (editState.category) updates.category = editState.category;
-                if (editState.license) updates.license = editState.license;
-                if (editState.designer) updates.designer = editState.designer;
-                if (editState.isPrinted !== undefined) updates.isPrinted = editState.isPrinted;
-                if (editState.hidden !== undefined) updates.hidden = editState.hidden;
-                if (editState.notes !== undefined) updates.notes = editState.notes;
-                if (editState.source !== undefined) updates.source = editState.source;
+                // 1. Standard Fields (Dynamic flat copy)
+                const specialKeys = new Set(['tags', 'printSettings', 'collectionId', 'collectionAction', 'relatedPrimary', 'relatedHideOthers', 'relatedIncluded', 'relatedClearAll', 'price', 'printTime', 'filamentUsed', 'filamentUsage']);
+
+                Object.keys(editState).forEach((key) => {
+                    if (specialKeys.has(key)) return;
+                    const val = (editState as any)[key];
+                    if (val !== undefined) {
+                        updates[key] = val;
+                    }
+                });
+
+                // Explicit type parsing for number fields
                 if (editState.price !== undefined) updates.price = parseFloat(String(editState.price)) || 0;
-                if (editState.printTime !== undefined) updates.printTime = parseInt(editState.printTime) || 0;
-                if (editState.filamentUsed !== undefined) updates.filamentUsed = parseFloat(editState.filamentUsed) || 0;
+                if (editState.printTime !== undefined) updates.printTime = parseInt(String(editState.printTime)) || 0;
+                if (editState.filamentUsed !== undefined) updates.filamentUsage = parseFloat(String(editState.filamentUsed)) || 0;
                 // Deep merge printSettings to prevent overwriting existing keys with a partial update
                 if (editState.printSettings) {
                     updates.printSettings = {
@@ -157,7 +161,9 @@ export function useBulkOperations_DB({
                     if (editState.collectionAction === 'add' || !editState.collectionAction) {
                         updates.collectionId = editState.collectionId;
                     } else if (editState.collectionAction === 'remove') {
-                        updates.collectionId = null;
+                        // Prisma requires models to be in a collection, so "removing" from a collection
+                        // is unsupported unless we move them to a generic "Uncategorized" collection ID.
+                        // For now, we omit it to prevent Prisma crashes (500 errors).
                     }
                 }
 

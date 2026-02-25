@@ -1,4 +1,4 @@
-import { Model, TagInfo } from '@/types/model';
+import { Model, TagInfo } from '@/types/model_db';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -28,17 +28,19 @@ export function useTagManager_db({ models, onModelsUpdate, setSaveStatus, setSta
         setSaveStatus('saving');
         setStatusMessage(`Renaming tag "${oldTag}" to "${newTag.trim()}"...`);
 
+        // tags are ModelTag_db objects in DB mode — extract the name string for comparison
+        const getTagName = (t: any): string => typeof t === 'string' ? t : (t.tag?.name || t.name || '');
         const updatedModels = models.map(model => ({
             ...model,
-            tags: (model.tags || []).map(tag => tag === oldTag ? newTag.trim() : tag)
-        }));
+            tags: (model.tags || []).map((t: any) => getTagName(t) === oldTag ? { ...t, tag: { ...(t.tag || {}), name: newTag.trim() }, name: newTag.trim() } : t)
+        })) as typeof models;
 
         // Save each updated model to its JSON file
         let saveErrors = 0;
         for (const model of updatedModels) {
             // Only save models that had the tag changed
             const originalModel = models.find(m => m.id === model.id);
-            if (originalModel && (originalModel.tags || []).includes(oldTag)) {
+            if (originalModel && (originalModel.tags || []).some((t: any) => getTagName(t) === oldTag)) {
                 try {
                     let filePath;
                     if (model.modelUrl) {
@@ -52,7 +54,6 @@ export function useTagManager_db({ models, onModelsUpdate, setSaveStatus, setSta
                         continue;
                     }
 
-                    console.log(`[TagManager] Renaming tag "${oldTag}" to "${newTag}" for model ${model.id}. File: ${filePath}`);
 
                     const response = await fetch('/api/save-model', {
                         method: 'POST',
@@ -103,39 +104,19 @@ export function useTagManager_db({ models, onModelsUpdate, setSaveStatus, setSta
         setSaveStatus('saving');
         setStatusMessage(`Deleting tag "${tagToDelete}" from all models...`);
 
+        const getTagNameD = (t: any): string => typeof t === 'string' ? t : (t.tag?.name || t.name || '');
         const updatedModels = models.map(model => ({
             ...model,
-            tags: (Array.isArray(model.tags) ? model.tags : []).filter(tag => tag !== tagToDelete)
-        }));
+            tags: (Array.isArray(model.tags) ? model.tags : []).filter((t: any) => getTagNameD(t) !== tagToDelete)
+        })) as typeof models;
 
         let saveErrors = 0;
         for (const model of updatedModels) {
             const originalModel = models.find(m => m.id === model.id);
-            if (originalModel && Array.isArray(originalModel.tags) && originalModel.tags.includes(tagToDelete)) {
+            if (originalModel && Array.isArray(originalModel.tags) && originalModel.tags.some((t: any) => getTagNameD(t) === tagToDelete)) {
                 try {
-                    let filePath;
-                    if (model.modelUrl) {
-                        // FIX: Pass the relative path (e.g. "car.stl") and let the server resolve the munchie file
-                        // This ensures parity for STL/3MF handling on the backend
-                        filePath = model.modelUrl.replace(/^\/?models\//, '');
-                    } else if (model.filePath) {
-                        filePath = model.filePath;
-                    } else {
-                        console.error('No file path available for model:', model.name);
-                        saveErrors++;
-                        continue;
-                    }
-
-                    console.log(`[TagManager] Deleting tag "${tagToDelete}" from model ${model.id} (${model.name}). File: ${filePath}`);
-
-                    const response = await fetch('/api/save-model', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            filePath,
-                            id: model.id,
-                            tags: model.tags
-                        })
+                    const response = await fetch(`/api/models/${model.id}/tags/${encodeURIComponent(tagToDelete)}`, {
+                        method: 'DELETE',
                     });
 
                     const result = await response.json();

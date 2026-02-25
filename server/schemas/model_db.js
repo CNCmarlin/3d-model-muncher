@@ -31,8 +31,29 @@ const ModelSchema = z.object({
     isPrinted: BooleanSchema.default(false),
     isFavorite: BooleanSchema.default(false),
     isDeleted: BooleanSchema.default(false),
+    designer: OptionalStringSchema,
+    source: OptionalStringSchema,
+    notes: OptionalStringSchema,
+    // Promoted from metadata (Batch 1)
+    category: OptionalStringSchema,
+    modelUrl: OptionalStringSchema,
+    price: NonNegativeFloatSchema.nullable().optional(),
+    // Promoted from metadata (Batch 2 - print settings)
+    layerHeight: OptionalStringSchema,
+    infill: OptionalStringSchema,
+    nozzle: OptionalStringSchema,
+    printer: OptionalStringSchema,
+    material: OptionalStringSchema,
+    fileSize: OptionalStringSchema,
+    // Promoted from metadata (Batch 3 - G-code Analysis)
+    gcodeFilePath: OptionalStringSchema,
+    gcodePrintTime: OptionalStringSchema,
+    gcodeTotalWeight: OptionalStringSchema,
+    gcodeFilaments: OptionalStringSchema,
+
     pathHash: PathHashSchema,
-    coverImagePath: OptionalStringSchema,
+    thumbnailPath: OptionalStringSchema,
+    filePath: OptionalStringSchema,
     metadata: MetadataJsonSchema,
     createdAt: TimestampSchema,
     updatedAt: TimestampSchema,
@@ -50,8 +71,25 @@ const ModelFormSchema = z.object({
     filamentUsage: NonNegativeFloatSchema.nullable().optional(),
     isPrinted: BooleanSchema.optional(),
     isFavorite: BooleanSchema.optional(),
+    // Promoted from metadata (Batch 1)
+    category: OptionalStringSchema,
+    modelUrl: OptionalStringSchema,
+    price: NonNegativeFloatSchema.nullable().optional(),
+    // Promoted from metadata (Batch 2 - print settings)
+    layerHeight: OptionalStringSchema,
+    infill: OptionalStringSchema,
+    nozzle: OptionalStringSchema,
+    printer: OptionalStringSchema,
+    material: OptionalStringSchema,
+    fileSize: OptionalStringSchema,
+    // Promoted from metadata (Batch 3 - G-code Analysis)
+    gcodeFilePath: OptionalStringSchema,
+    gcodePrintTime: OptionalStringSchema,
+    gcodeTotalWeight: OptionalStringSchema,
+    gcodeFilaments: OptionalStringSchema,
+
     tags: StringArraySchema.optional(),
-    metadata: z.record(z.any()).optional(),
+    metadata: z.record(z.string(), z.any()).optional(),
 });
 
 // Model Update Schema (for PATCH - all fields optional, id comes from route param)
@@ -61,15 +99,39 @@ const ModelUpdateSchema = z.object({
     description: z.string().nullable().optional(),  // Can be null or undefined
     license: z.string().nullable().optional(),       // Can be null or undefined
     designer: z.string().nullable().optional(),      // Can be null or undefined
-    printTime: z.coerce.number().int().min(0).nullable().optional(), // Coerce string to number
-    filamentUsage: z.coerce.number().min(0).nullable().optional(),   // Coerce string to number
+    printTime: z.union([z.number(), z.string()]).nullable().optional(),
+    filamentUsage: z.union([z.number(), z.string()]).nullable().optional(),
     isPrinted: BooleanSchema.optional(),
     isFavorite: BooleanSchema.optional(),
     isDeleted: BooleanSchema.optional(),
     tags: StringArraySchema.optional(),
     // Fields stored in metadata JSON
     category: OptionalStringSchema,
-    notes: z.string().nullable().optional(),  // Add notes support
+    price: z.number().nullable().optional(),
+    source: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    filePath: z.string().nullable().optional(),
+    // Batch 2: Flat print setting columns
+    layerHeight: OptionalStringSchema,
+    infill: OptionalStringSchema,
+    nozzle: OptionalStringSchema,
+    printer: OptionalStringSchema,
+    material: OptionalStringSchema,
+    fileSize: OptionalStringSchema,
+    // Batch 3: Flat G-code data columns
+    gcodeFilePath: OptionalStringSchema,
+    gcodePrintTime: OptionalStringSchema,
+    gcodeTotalWeight: OptionalStringSchema,
+    gcodeFilaments: OptionalStringSchema,
+    // gcodeData group still accepted for backward compat (exploded in service layer)
+    gcodeData: z.object({
+        gcodeFilePath: OptionalStringSchema,
+        printTime: OptionalStringSchema,
+        totalFilamentWeight: OptionalStringSchema,
+        filaments: z.array(z.any()).optional(),
+    }).optional(),
+
+    // printSettings group still accepted for backward compat (exploded in service layer)
     printSettings: z.object({
         layerHeight: OptionalStringSchema,
         infill: OptionalStringSchema,
@@ -79,9 +141,15 @@ const ModelUpdateSchema = z.object({
     }).optional(),
     // Metadata: accept either object or JSON string, transform to object
     metadata: z.union([
-        z.record(z.any()),
+        z.record(z.string(), z.any()),
         z.string().transform(str => JSON.parse(str))
     ]).optional(),
+
+    // Legacy support for userDefined wrapper
+    userDefined: z.record(z.string(), z.any()).optional(),
+
+    // Legacy relation wrapper from ModelEdit hook
+    related_files: z.array(z.string()).optional(),
 });
 
 // Model Query Schema (uses coerced types for URL query parameters)
@@ -100,11 +168,13 @@ const ModelQuerySchema = CommonFiltersSchema.merge(SortOptionsSchema).extend({
 
 // Bulk Edit Schema
 const BulkEditSchema = z.object({
-    modelIds: z.array(CuidSchema).min(1, 'Must provide at least one model ID'),
+    modelIds: z.array(IdSchema).min(1, 'Must provide at least one model ID'),
     updates: z.object({
         category: NonEmptyStringSchema.optional(),
         license: OptionalStringSchema,
         designer: OptionalStringSchema,
+        description: OptionalStringSchema,
+        notes: OptionalStringSchema,
         source: OptionalStringSchema,
         price: NonNegativeFloatSchema.nullable().optional(),
         printTime: NonNegativeIntSchema.nullable().optional(),
@@ -112,11 +182,20 @@ const BulkEditSchema = z.object({
         isPrinted: BooleanSchema.optional(),
         isFavorite: BooleanSchema.optional(),
         hidden: BooleanSchema.optional(),
+        collectionId: z.string().nullable().optional(),
+        moveFiles: BooleanSchema.optional(),
+        printSettings: z.object({
+            layerHeight: OptionalStringSchema,
+            infill: OptionalStringSchema,
+            nozzle: OptionalStringSchema,
+            printer: OptionalStringSchema,
+            material: OptionalStringSchema,
+        }).optional(),
         tags: z.object({
             add: StringArraySchema.optional(),
             remove: StringArraySchema.optional(),
         }).optional(),
-        metadata: z.record(z.any()).optional(),
+        metadata: z.record(z.string(), z.any()).optional(),
     }),
 });
 

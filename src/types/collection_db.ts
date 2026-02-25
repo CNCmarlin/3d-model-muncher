@@ -26,15 +26,27 @@ export interface StrictCollection_db {
     };
 }
 
-export type Collection = StrictCollection_db & {
-    // Legacy Overrides (Phase 1 Migration Bridge)
-    buildPlates?: any[];
-    images?: Array<{ id: string; url: string; isCover?: boolean } | string>;
-    metadata?: any;
-    documents?: any[];
-    coverImagePath?: string | null;
-    type?: string;
+export type Collection = Omit<StrictCollection_db, 'name' | 'description' | 'coverImagePath' | 'type' | 'createdAt' | 'updatedAt'> & {
+    // Legacy Overrides & Permissive Types for Frontend
+    name: string;
+    description?: string;
+    modelIds?: string[];
+    childCollectionIds?: string[];
+    path?: string;
+    pathHash?: string | null;
+    parentId?: string | null;
+    createdAt?: Date;
+    updatedAt?: Date;
+    coverModelId?: string;
+    coverImage?: string | null;
+    images?: string[];
+    documents?: string[];
+    category?: string;
     tags?: string[];
+    type?: 'folder' | 'project' | 'standard';
+    buildPlates?: any[];
+    metadata?: any;
+    coverImagePath?: string | null;
 };
 
 export type collection_db = Collection;

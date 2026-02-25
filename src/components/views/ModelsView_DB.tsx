@@ -1,6 +1,6 @@
 import { ModelGrid_DB } from '@/components/models/ModelGrid_DB';
-import { Collection } from '@/types/collection';
-import { Model } from '@/types/model';
+import { Collection } from '@/types/collection_db';
+import { Model } from '@/types/model_db';
 import { SortKey, sortCollections } from '@/utils/sortUtils';
 
 interface ModelsViewProps {

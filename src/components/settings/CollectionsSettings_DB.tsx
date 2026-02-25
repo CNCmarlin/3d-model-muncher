@@ -3,9 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Category } from '@/types/category';
-import { Collection } from '@/types/collection';
-import { Model } from '@/types/model';
-import { adaptDbCollectionsToLegacy } from '@/utils/dbAdapter';
+import { Collection } from '@/types/collection_db';
+import { Model } from '@/types/model_db';
 import { Edit2, FolderOpen, Library, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -45,8 +44,7 @@ export function CollectionsSettings_DB({
             // Support both array response or { success: true, collections: [] }
             const listArray = Array.isArray(data) ? data : (data.collections || []);
 
-            // Only apply adapter if database mode (response is raw array, not wrapped object)
-            const list = Array.isArray(data) ? adaptDbCollectionsToLegacy(listArray) : listArray;
+            const list = listArray as Collection[];
 
             setCollectionsList(list);
         } catch (err) {

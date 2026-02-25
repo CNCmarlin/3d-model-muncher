@@ -23,7 +23,7 @@ import { TagsSection_DB } from "@/components/models/details/TagsSection_DB";
 import { ModelPreviewSection_DB } from '@/components/models/ModelPreviewSection_DB';
 import { ModelUploadDialog_DB } from "@/components/models/ModelUploadDialog_DB";
 import type { Collection } from "@/types/collection_db";
-import { downloadAllFiles, triggerDownload } from "@/utils/downloadUtils";
+import { downloadAllFiles_db, triggerDownload_db } from "@/utils/downloadUtils_db";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
 import {
   ArrowLeft,
@@ -112,16 +112,21 @@ export function ModelHubView_DB({
     console.log('[ModelHubView] Original printSettings:', (model as any).printSettings);
     console.log('[ModelHubView] Updated printSettings:', (updated as any).printSettings);
 
-    // Compare each field and only include if different
+    // Dynamically sync fields instead of using a hardcoded allowlist
+    const excludedKeys = new Set([
+      'id', 'createdAt', 'updatedAt', 'collection', 'images', 'thumbnail',
+      'parsedImages', 'files', // exclude internal or non-editable relation arrays
+      '_count', 'userDefined'
+    ]);
+
     Object.keys(updated).forEach((key) => {
+      if (excludedKeys.has(key)) return;
+
       const modelKey = key as keyof Model;
       const oldValue = (model as any)[modelKey];
       const newValue = (updated as any)[modelKey];
 
-      // Skip read-only fields that shouldn't be in PATCH
-      if (['id', 'createdAt', 'updatedAt', 'pathHash', 'coverImagePath', 'collectionId', 'files'].includes(key)) {
-        return;
-      }
+      if (newValue === undefined) return; // Prevent serialization crashes
 
       // Deep compare for objects/arrays
       if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
@@ -154,6 +159,7 @@ export function ModelHubView_DB({
   };
 
   const editLogic = useModelEdit_db({ model: model as any, onModelUpdate: handleEditComplete as any });
+  const [isSourceValid, setIsSourceValid] = useState(true);
 
   const galleryLogic = useModelGallery_db({
     model: model as any,
@@ -198,6 +204,10 @@ export function ModelHubView_DB({
 
   const activeCollection = useMemo(() => {
     if (!model) return null;
+    // Database mode: Find collection where model.collections includes collection.id
+    // Fallback to searching collections.modelIds if needed
+    const colId = model.collections?.[0] || (model as any).collectionId;
+    if (colId) return collections.find(c => c.id === colId);
     return collections.find(c => c.modelIds?.includes(model.id));
   }, [collections, model]);
 
@@ -225,11 +235,11 @@ export function ModelHubView_DB({
     if (!editLogic.editedModel) return;
     const currentTags = editLogic.editedModel.tags || [];
     const lowerTag = tag.toLowerCase();
-    if (currentTags.some(t => t.toLowerCase() === lowerTag)) return;
+    if (currentTags.some((t: any) => (typeof t === 'string' ? t : t?.tag?.name || '').toLowerCase() === lowerTag)) return;
 
     editLogic.setEditedModel({
       ...editLogic.editedModel,
-      tags: [...currentTags, tag]
+      tags: [...currentTags, tag as any]
     });
   };
 
@@ -273,14 +283,14 @@ export function ModelHubView_DB({
     if (activeModelNullable) {
       const toRelative = (p: string) => p ? p.replace(/^(\/)?models\//, '') : '';
       const mainPath = toRelative(activeModelNullable.modelUrl || activeModelNullable.filePath || '');
-      const relatedPaths = (activeModelNullable.related_files || []).map(p => toRelative(p));
+      const relatedPaths = (activeModelNullable.metadata?.related_files || []).map((p: string) => toRelative(p));
       const imagePaths = (galleryLogic.allImages || []).map(p => toRelative(p));
 
       if (!mainPath) {
         toast.error("Could not determine main file path.");
         return;
       }
-      downloadAllFiles(mainPath, relatedPaths, imagePaths, activeModelNullable.name);
+      downloadAllFiles_db(mainPath, relatedPaths, imagePaths, activeModelNullable.name);
     }
   };
 
@@ -292,8 +302,8 @@ export function ModelHubView_DB({
       if ((updates as any).printSettings) {
         next.printSettings = { ...((prev as any).printSettings || {}), ...((updates as any).printSettings) };
       }
-      if (updates.userDefined) {
-        next.userDefined = { ...(prev.userDefined || {}), ...updates.userDefined };
+      if (updates.metadata?.userDefined) {
+        next.metadata = { ...(prev.metadata || {}), userDefined: { ...((prev.metadata as any)?.userDefined || {}), ...(updates.metadata.userDefined) } };
       }
       return next as Model;
     });
@@ -305,57 +315,59 @@ export function ModelHubView_DB({
 
   // Derive display stuff
   const safePrintSettings = {
-    layerHeight: (activeModel as any).printSettings?.layerHeight || activeModel.userDefined?.printSettings?.layerHeight || 'Unknown',
-    infill: (activeModel as any).printSettings?.infill || activeModel.userDefined?.printSettings?.infill || 'Unknown',
-    nozzle: (activeModel as any).printSettings?.nozzle || activeModel.userDefined?.printSettings?.nozzle || 'Unknown',
+    layerHeight: (activeModel as any).printSettings?.layerHeight || (activeModel.metadata as any)?.userDefined?.printSettings?.layerHeight || 'Unknown',
+    infill: (activeModel as any).printSettings?.infill || (activeModel.metadata as any)?.userDefined?.printSettings?.infill || 'Unknown',
+    nozzle: (activeModel as any).printSettings?.nozzle || (activeModel.metadata as any)?.userDefined?.printSettings?.nozzle || 'Unknown',
     printer: (activeModel as any).printSettings?.printer || 'Unknown',
-    material: (activeModel as any).printSettings?.material || activeModel.userDefined?.printSettings?.material || 'Unknown'
+    material: (activeModel as any).printSettings?.material || (activeModel.metadata as any)?.userDefined?.printSettings?.material || 'Unknown'
   };
 
-  const isStlModel = (() => {
+  const canHavePrintSettings = (() => {
     try {
       const p = (activeModel.filePath || activeModel.modelUrl || '').toLowerCase();
-      return p.endsWith('.stl') || p.endsWith('-stl-munchie.json');
+      return p.endsWith('.stl') || p.endsWith('.3mf') || p.endsWith('.gcode') || p.endsWith('-munchie.json') || p.endsWith('-stl-munchie.json');
     } catch (_) { return false; }
   })();
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
       {/* HEADER */}
-      <div className="px-4 lg:px-6 py-3 border-b bg-card/30 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 h-8 text-[11px] font-bold uppercase tracking-wider">
+      <div className="px-4 lg:px-6 py-3 border-b bg-card/10 flex items-center justify-between shrink-0 z-20 gap-4">
+        {/* Left Section: Back + Breadcrumb */}
+        <div className="flex items-center gap-4 shrink-0">
+          <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 h-8 text-[11px] font-bold uppercase tracking-wider shrink-0">
             <ArrowLeft className="h-4 w-4" />
-            Back
+            <span className="hidden sm:inline">Back</span>
           </Button>
-          <div className="h-4 w-px bg-border mx-1" />
+          <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
           <div
-            className="flex items-center gap-2 cursor-pointer group"
+            className="flex items-center gap-2 cursor-pointer group truncate"
             onClick={() => activeCollection && onOpenCollection?.(activeCollection)}
           >
-            <Layers className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="text-sm font-semibold text-muted-foreground group-hover:text-foreground transition-colors">
+            <Layers className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+            <span className="text-sm font-semibold text-muted-foreground group-hover:text-foreground transition-colors truncate max-w-[200px]">
               {activeCollection?.name || "Library"}
             </span>
             {activeModel.category && (
-              <span className="text-[10px] text-muted-foreground/50 font-bold uppercase tracking-wider group-hover:text-muted-foreground transition-colors">
-                {activeModel.category}
+              <span className="text-[10px] text-muted-foreground/30 font-bold uppercase tracking-wider group-hover:text-muted-foreground transition-colors hidden md:inline shrink-0">
+                / {activeModel.category}
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Right Section: Actions */}
+        <div className="flex items-center gap-4 flex-1 justify-end shrink-0">
           {!editLogic.isEditing && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-2 opacity-50 hover:opacity-100"
+              className="h-8 gap-2 opacity-50 hover:opacity-100 transition-opacity"
               disabled={isMoving}
               onClick={() => setIsAssetDialogOpen(true)}
             >
               {isMoving ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" /> : <Upload className="h-3.5 w-3.5" />}
-              <span>{isMoving ? "Reorganizing..." : "Manage / Upload"}</span>
+              <span className="hidden lg:inline">{isMoving ? "Reorganizing..." : "Manage / Upload"}</span>
             </Button>
           )}
         </div>
@@ -452,17 +464,14 @@ export function ModelHubView_DB({
                   <RelatedFilesSection_DB
                     isEditing={editLogic.isEditing}
                     currentModel={activeModel as any}
-                    editedModel={editLogic.editedModel as any}
-                    setEditedModel={editLogic.setEditedModel as any}
                     active3DFile={galleryLogic.active3DFile}
                     setActive3DFile={galleryLogic.setActive3DFile}
-                    setFocusRelatedIndex={setFocusRelatedIndex as any}
                     relatedVerifyStatus={relatedVerifyStatus}
                     setRelatedVerifyStatus={setRelatedVerifyStatus}
                     invalidRelated={editLogic.invalidRelated as any}
                     serverRejectedRelated={[]} // Not using currently
                     onModelUpdate={handleModelUpdateParams as any}
-                    triggerDownload={triggerDownload}
+                    triggerDownload={triggerDownload_db}
                     deriveMunchieCandidate={relatedLogic.deriveMunchieCandidate}
                     availableRelatedMunchie={relatedLogic.availableRelatedMunchie}
                     detailsViewportRef={detailsViewportRef}
@@ -527,7 +536,7 @@ export function ModelHubView_DB({
               <section className="bg-card border rounded-2xl p-6 shadow-sm space-y-6">
                 <MetadataSection_DB
                   isEditing={editLogic.isEditing}
-                  isStlModel={isStlModel}
+                  canHavePrintSettings={canHavePrintSettings}
                   editedModel={editLogic.editedModel as any}
                   setEditedModel={editLogic.setEditedModel as any}
                   categories={categories}
@@ -569,6 +578,7 @@ export function ModelHubView_DB({
                       currentModel={activeModel as any}
                       editedModel={editLogic.editedModel as any}
                       setEditedModel={editLogic.setEditedModel as any}
+                      onValidationChange={setIsSourceValid}
                     />
                   </div>
                 )}
@@ -617,7 +627,7 @@ export function ModelHubView_DB({
               >
                 Cancel
               </Button>
-              <Button variant="default" size="sm" disabled={editLogic.invalidRelated.length > 0 || editLogic.isSaving}
+              <Button variant="default" size="sm" disabled={editLogic.invalidRelated.length > 0 || editLogic.isSaving || !isSourceValid}
                 className="h-8 px-3 text-[10px] font-black uppercase bg-primary shadow-lg shadow-primary/20 transition-all"
                 onClick={editLogic.saveChanges}
               >

@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { LICENSES } from '@/constants/licenses';
 import { Category } from '@/types/category';
 import { AppConfig } from '@/types/config';
-import { Model } from '@/types/model';
+import { Model } from '@/types/model_db';
 import { ConfigManager } from '@/utils/configManager';
 import { applyThemeColor } from '@/utils/themeUtils';
 import { Box, Download, Edit2, Eye, Loader2, Save, Trash2, X } from 'lucide-react';
@@ -283,6 +283,23 @@ export function GeneralSettings_DB({
                     <CardDescription>Configure default behavior and preferences.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                    {/* Library Name */}
+                    <div className="space-y-2 pb-4 border-b">
+                        <Label htmlFor="library-name" className="flex items-center gap-2 font-semibold">
+                            Library Name
+                        </Label>
+                        <Input
+                            id="library-name"
+                            value={localConfig.settings?.libraryName ?? ''}
+                            onChange={(e) => handleConfigFieldChange('settings.libraryName', e.target.value || undefined)}
+                            placeholder="3D Model Muncher"
+                            className="max-w-sm"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Displayed in the sidebar and top bar in place of "3D Model Muncher". Leave blank to use the default.
+                        </p>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Theme */}
                         <div className="space-y-2">

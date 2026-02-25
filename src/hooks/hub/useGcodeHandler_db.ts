@@ -1,6 +1,6 @@
+import { Model } from '@/types/model_db';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Model } from '@/types/model';
 
 interface UseGcodeHandlerProps {
     currentModel: Model | null;
@@ -39,7 +39,7 @@ export function useGcodeHandler_db({ currentModel, onModelUpdate }: UseGcodeHand
             // Create form data
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('modelFilePath', currentModel.filePath);
+            formData.append('filePath', currentModel?.filePath || '');
             // Send the actual model file path (from modelUrl) for G-code save location
             if (currentModel.modelUrl) {
                 formData.append('modelFileUrl', currentModel.modelUrl);
@@ -89,7 +89,7 @@ export function useGcodeHandler_db({ currentModel, onModelUpdate }: UseGcodeHand
                     gcodeData: result.gcodeData,
                     // Legacy fields
                     printTime: result.gcodeData.printTime || currentModel.printTime,
-                    filamentUsed: result.gcodeData.totalFilamentWeight || currentModel.filamentUsed
+                    filamentUsage: result.gcodeData.totalFilamentWeight || currentModel.filamentUsage
                 };
 
                 // Explicitly add printSettings to the changes so the UI updates immediately
@@ -118,11 +118,12 @@ export function useGcodeHandler_db({ currentModel, onModelUpdate }: UseGcodeHand
                     }
                 }
 
-                // Save updated model
-                const saveResp = await fetch('/api/save-model', {
-                    method: 'POST',
+                // Save updated model via DB-mode PATCH endpoint
+                const { id: modelId, ...saveData } = changes;
+                const saveResp = await fetch(`/api/models/${modelId}`, {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(changes)
+                    body: JSON.stringify(saveData)
                 });
 
                 if (saveResp.ok) {
@@ -162,7 +163,7 @@ export function useGcodeHandler_db({ currentModel, onModelUpdate }: UseGcodeHand
 
         try {
             const formData = new FormData();
-            formData.append('modelFilePath', currentModel!.filePath); // ! verified by earlier check? No, need check.
+            formData.append('modelFilePath', currentModel!.filePath || ''); // ! verified by earlier check? No, need check.
             if (!currentModel?.filePath) throw new Error("Model path missing");
 
             formData.append('gcodeFilePath', path);
@@ -193,7 +194,7 @@ export function useGcodeHandler_db({ currentModel, onModelUpdate }: UseGcodeHand
                     id: currentModel!.id,
                     gcodeData: result.gcodeData,
                     printTime: result.gcodeData.printTime || currentModel!.printTime,
-                    filamentUsed: result.gcodeData.totalFilamentWeight || currentModel!.filamentUsed
+                    filamentUsage: result.gcodeData.totalFilamentWeight || currentModel!.filamentUsage
                 };
 
                 if (result.gcodeData.printSettings) {
@@ -203,11 +204,12 @@ export function useGcodeHandler_db({ currentModel, onModelUpdate }: UseGcodeHand
                     };
                 }
 
-                // Call save-model
-                const saveResp = await fetch('/api/save-model', {
-                    method: 'POST',
+                // Save via DB-mode PATCH endpoint
+                const { id: modelId, ...saveData } = changes;
+                const saveResp = await fetch(`/api/models/${modelId}`, {
+                    method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(changes)
+                    body: JSON.stringify(saveData)
                 });
 
                 if (saveResp.ok) {
