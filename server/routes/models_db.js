@@ -562,31 +562,29 @@ router.post('/hash-check', async (req, res) => {
         const prisma = require('../../server-utils/db');
         const modelsDir = getAbsoluteModelsPath();
 
-        // Fetch all non-deleted models — one record per model.
-        // We do NOT include all ModelFile records here to avoid N*files results.
-        const models = await prisma.model.findMany({
-            where: { isDeleted: false },
+        // Query ModelFile records — these store the actual model file paths (.stl, .3mf)
+        const modelFiles = await prisma.modelFile.findMany({
+            where: {
+                filePath: { endsWith: ext },
+                model: { isDeleted: false },
+            },
             select: {
                 id: true,
-                name: true,
                 filePath: true,
-                modelUrl: true,
-                pathHash: true,
+                filename: true,
+                hash: true,
+                modelId: true,
+                model: { select: { id: true, name: true, pathHash: true } },
             }
         });
 
         const results = [];
 
-        for (const model of models) {
-            // Determine the candidate file path for this model and fileType.
-            // Priority: model.filePath (direct column) > model.modelUrl
-            const rawPath = model.filePath || model.modelUrl || null;
-            if (!rawPath || !rawPath.toLowerCase().endsWith(ext)) continue;
+        for (const mf of modelFiles) {
+            const rawPath = mf.filePath;
+            if (!rawPath) continue;
 
-            // Resolve to absolute path.
-            // Migration may have stored absolute paths (e.g. C:\Users\...\models\...).
-            // If it's already absolute and exists, use it directly.
-            // Otherwise, treat as relative to modelsDir.
+            // Resolve to absolute path
             let absPath;
             if (path.isAbsolute(rawPath)) {
                 absPath = rawPath;
@@ -598,20 +596,19 @@ router.post('/hash-check', async (req, res) => {
             }
 
             const displayPath = path.relative(modelsDir, absPath).replace(/\\/g, '/');
-            const baseName = path.basename(absPath, ext);
+            const baseName = mf.model?.name || path.basename(absPath, ext);
 
             let status, actualHash = null, details = null;
+            const storedHash = mf.hash || mf.model?.pathHash || null;
 
             if (!fs.existsSync(absPath)) {
                 status = 'missing';
                 details = `File not found on disk: ${displayPath}`;
-            } else if (model.pathHash) {
-                // Only compute hash when we have a stored hash to compare against.
-                // Reading large 3MF/STL files is expensive — skip when unnecessary.
+            } else if (storedHash) {
                 try {
                     const fileBuffer = fs.readFileSync(absPath);
                     actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-                    status = (model.pathHash === actualHash) ? 'ok' : 'hash_mismatch';
+                    status = (storedHash === actualHash) ? 'ok' : 'hash_mismatch';
                     if (status === 'hash_mismatch') {
                         details = 'File hash differs from stored record — file may have been updated on disk.';
                     }
@@ -627,10 +624,10 @@ router.post('/hash-check', async (req, res) => {
             const result = {
                 baseName,
                 hash: actualHash,
-                storedHash: model.pathHash || null,
+                storedHash,
                 status,
                 details,
-                modelId: model.id,
+                modelId: mf.modelId,
             };
 
             if (fileType === '3mf') result.threeMF = displayPath;

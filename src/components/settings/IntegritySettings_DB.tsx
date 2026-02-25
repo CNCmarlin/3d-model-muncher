@@ -132,255 +132,249 @@ export function IntegritySettings_DB({
     const toggleSection = (key: string) => setExpandedSection(prev => prev === key ? null : key);
 
     return (
-        <div className="space-y-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <ShieldCheck className="h-5 w-5" />
-                        File Integrity Check
-                    </CardTitle>
-                    <CardDescription>
-                        Verify that physical model files exist on disk and detect duplicate files by content hash.
-                        All metadata is managed by the database — no munchie files are written.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
+        <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5" />
+                    Library Health
+                </CardTitle>
+                <CardDescription>
+                    Verify file integrity, detect duplicates, and cross-reference the database against the filesystem.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
 
-                    {/* File type selectors + Run Check button */}
-                    <div className="space-y-3">
-                        <div>
-                            <Label className="text-sm font-medium">File Types to Check</Label>
-                            <div className="flex gap-4 mt-2">
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id="file-type-3mf"
-                                        checked={selectedFileTypes["3mf"]}
-                                        onCheckedChange={(checked) =>
-                                            setSelectedFileTypes(prev => ({ ...prev, "3mf": Boolean(checked) }))
-                                        }
-                                    />
-                                    <Label htmlFor="file-type-3mf" className="cursor-pointer">3MF</Label>
-                                </div>
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id="file-type-stl"
-                                        checked={selectedFileTypes["stl"]}
-                                        onCheckedChange={(checked) =>
-                                            setSelectedFileTypes(prev => ({ ...prev, "stl": Boolean(checked) }))
-                                        }
-                                    />
-                                    <Label htmlFor="file-type-stl" className="cursor-pointer">STL</Label>
-                                </div>
+                {/* ═══════ SECTION 1: Hash Check + Duplicates ═══════ */}
+                <div className="space-y-3">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                        <FileCheck className="h-4 w-4" />
+                        File Integrity Check
+                    </h3>
+                    <div>
+                        <Label className="text-sm font-medium">File Types to Check</Label>
+                        <div className="flex gap-4 mt-2">
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="file-type-3mf"
+                                    checked={selectedFileTypes["3mf"]}
+                                    onCheckedChange={(checked) =>
+                                        setSelectedFileTypes(prev => ({ ...prev, "3mf": Boolean(checked) }))
+                                    }
+                                />
+                                <Label htmlFor="file-type-3mf" className="cursor-pointer">3MF</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="file-type-stl"
+                                    checked={selectedFileTypes["stl"]}
+                                    onCheckedChange={(checked) =>
+                                        setSelectedFileTypes(prev => ({ ...prev, "stl": Boolean(checked) }))
+                                    }
+                                />
+                                <Label htmlFor="file-type-stl" className="cursor-pointer">STL</Label>
                             </div>
                         </div>
-
-                        <Button
-                            onClick={() => handleRunHashCheck()}
-                            disabled={isHashChecking || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
-                            className="gap-2"
-                        >
-                            {isHashChecking
-                                ? <RefreshCw className="h-4 w-4 animate-spin" />
-                                : <FileCheck className="h-4 w-4" />
-                            }
-                            {isHashChecking ? 'Checking…' : 'Run Check'}
-                        </Button>
                     </div>
 
-                    {/* Progress bar */}
-                    {isHashChecking && (
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                                <span>Progress</span>
-                                <span>{Math.round(hashCheckProgress)}%</span>
-                            </div>
-                            <Progress value={hashCheckProgress} className="w-full" />
-                        </div>
-                    )}
-
-                    {/* Summary stats */}
-                    {hashCheckResult && (
-                        <div className="flex flex-wrap gap-4">
-                            <div className="flex items-center gap-2">
-                                <FileCheck className="h-4 w-4 text-green-600" />
-                                <span className="text-sm">{hashCheckResult.verified} verified</span>
-                            </div>
-                            {hashCheckResult.corrupted > 0 && (
-                                <div className="flex items-center gap-2">
-                                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                                    <span className="text-sm text-red-600">{hashCheckResult.corrupted} issues</span>
-                                </div>
-                            )}
-                            {hashCheckResult.duplicateGroups?.length > 0 && (
-                                <div className="flex items-center gap-2">
-                                    <Files className="h-4 w-4 text-blue-600" />
-                                    <span className="text-sm">{hashCheckResult.duplicateGroups.length} duplicate groups</span>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Missing / mismatched files */}
-                    {hashCheckResult?.corruptedFiles && hashCheckResult.corruptedFiles.length > 0 && (
-                        <div className="space-y-4">
-                            <Separator />
-                            <h3 className="font-medium text-red-600">Files Requiring Attention</h3>
-                            <div className="space-y-2">
-                                {hashCheckResult.corruptedFiles.map((file, idx) => {
-                                    const modelData = corruptedModels[file.filePath];
-                                    const fallbackModel = models.find(m => {
-                                        const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
-                                        return norm(m.modelUrl ?? '') === norm(file.filePath) ||
-                                            norm(m.modelUrl ?? '') === `/models/${norm(file.filePath)}`;
-                                    });
-                                    const model = modelData || fallbackModel;
-                                    return (
-                                        <Alert key={`corrupt-${idx}`} variant="destructive">
-                                            <AlertTriangle className="h-4 w-4" />
-                                            <AlertTitle className="truncate">
-                                                {model ? getDisplayPath_db(model as any) : file.filePath.replace(/^[/\\]?models[/\\]?/, '')}
-                                            </AlertTitle>
-                                            <AlertDescription>
-                                                {file.error || (file.actualHash && file.expectedHash && file.actualHash !== file.expectedHash
-                                                    ? 'Hash mismatch — file may have changed on disk. Update the DB record to resolve.'
-                                                    : 'File missing or unreadable')}
-                                            </AlertDescription>
-                                        </Alert>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Duplicate groups */}
-                    {hashCheckResult?.duplicateGroups && hashCheckResult.duplicateGroups.length > 0 && (
-                        <div className="space-y-4">
-                            <Separator />
-                            <h3 className="font-medium">Duplicate Files</h3>
-                            <p className="text-sm text-muted-foreground">
-                                These files have identical content hashes. Keep one and delete the rest.
-                            </p>
-                            <div className="space-y-2">
-                                {hashCheckResult.duplicateGroups.map((group: any, idx: number) => (
-                                    <div
-                                        key={`dup-${idx}`}
-                                        className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800"
-                                    >
-                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
-                                            <span className="text-sm text-blue-600 dark:text-blue-400">
-                                                {group.models.length} copies · {group.totalSize}
-                                            </span>
-                                            <Dialog
-                                                open={openDuplicateGroupHash === group.hash}
-                                                onOpenChange={(open: boolean) => setOpenDuplicateGroupHash(open ? group.hash : null)}
-                                            >
-                                                <DialogTrigger asChild>
-                                                    <Button variant="outline" size="sm" className="gap-2">
-                                                        <Trash2 className="h-4 w-4" />
-                                                        Remove Duplicates
-                                                    </Button>
-                                                </DialogTrigger>
-                                                <DialogContent className="w-full max-w-2xl">
-                                                    <DialogHeader>
-                                                        <DialogTitle>Remove Duplicate Files</DialogTitle>
-                                                        <DialogDescription>
-                                                            Choose which file to keep. All other copies will be removed from the database.
-                                                            <strong className="text-destructive block mt-1">This action cannot be undone.</strong>
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-                                                    <ScrollArea className="max-h-[50vh]">
-                                                        <div className="space-y-2 p-1">
-                                                            {group.models.map((model: Model) => (
-                                                                <div
-                                                                    key={`dup-dialog-${group.hash}-${model.id}`}
-                                                                    className="flex items-center justify-between p-2 bg-muted rounded-md gap-2"
-                                                                >
-                                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                                        <ModelThumbnail model={model} name={model.name} />
-                                                                        <span className="text-sm truncate">{getDisplayPath_db(model as any)}</span>
-                                                                    </div>
-                                                                    <Button
-                                                                        variant="destructive"
-                                                                        size="sm"
-                                                                        className="shrink-0"
-                                                                        onClick={async () => {
-                                                                            const success = await handleRemoveDuplicates(group, model.id);
-                                                                            if (success) setOpenDuplicateGroupHash(null);
-                                                                        }}
-                                                                    >
-                                                                        Keep This
-                                                                    </Button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </ScrollArea>
-                                                    <DialogFooter>
-                                                        <Button variant="ghost" onClick={() => setOpenDuplicateGroupHash(null)}>
-                                                            Cancel
-                                                        </Button>
-                                                    </DialogFooter>
-                                                </DialogContent>
-                                            </Dialog>
-                                        </div>
-
-                                        {/* Quick list of paths */}
-                                        <div className="space-y-1">
-                                            {group.models.map((model: Model) => (
-                                                <div
-                                                    key={`dup-list-${group.hash}-${model.id}`}
-                                                    className="flex items-center justify-between"
-                                                >
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        <ModelThumbnail model={model} name={model.name} />
-                                                        <span className="text-sm truncate">{getDisplayPath_db(model as any)}</span>
-                                                    </div>
-                                                    <Button variant="ghost" size="sm" onClick={() => onModelClick?.(model)}>
-                                                        View
-                                                    </Button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Empty state after a clean check */}
-                    {hashCheckResult &&
-                        (!hashCheckResult.corruptedFiles || hashCheckResult.corruptedFiles.length === 0) &&
-                        (!hashCheckResult.duplicateGroups || hashCheckResult.duplicateGroups.length === 0) && (
-                            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-3">
-                                <ShieldCheck className="h-10 w-10 text-green-500 opacity-60" />
-                                <p className="text-sm">All files verified. No issues found.</p>
-                            </div>
-                        )
-                    }
-                </CardContent>
-            </Card>
-
-            {/* ═══════════════════════════════════════════════════════════════ */}
-            {/*  LIBRARY RESYNC — DB ↔ Filesystem Cross-Reference             */}
-            {/* ═══════════════════════════════════════════════════════════════ */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <FolderSync className="h-5 w-5" />
-                        Library Resync
-                    </CardTitle>
-                    <CardDescription>
-                        Compare the Prisma database against the physical filesystem. Detects orphaned files
-                        (on disk but missing from DB), ghost records (in DB but missing on disk), and model path mismatches.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                    <Button onClick={handleResync} disabled={isResyncing || isPurging} className="gap-2">
-                        {isResyncing
+                    <Button
+                        onClick={() => handleRunHashCheck()}
+                        disabled={isHashChecking || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
+                        variant="outline"
+                        className="gap-2"
+                    >
+                        {isHashChecking
                             ? <RefreshCw className="h-4 w-4 animate-spin" />
-                            : <FolderSync className="h-4 w-4" />
+                            : <FileCheck className="h-4 w-4" />
                         }
-                        {isResyncing ? 'Scanning…' : 'Run Resync Scan'}
+                        {isHashChecking ? 'Checking…' : 'Run Hash Check'}
                     </Button>
+                </div>
+
+                {/* Progress bar */}
+                {isHashChecking && (
+                    <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                            <span>Progress</span>
+                            <span>{Math.round(hashCheckProgress)}%</span>
+                        </div>
+                        <Progress value={hashCheckProgress} className="w-full" />
+                    </div>
+                )}
+
+                {/* Summary stats */}
+                {hashCheckResult && (
+                    <div className="flex flex-wrap gap-4">
+                        <div className="flex items-center gap-2">
+                            <FileCheck className="h-4 w-4 text-green-600" />
+                            <span className="text-sm">{hashCheckResult.verified} verified</span>
+                        </div>
+                        {hashCheckResult.corrupted > 0 && (
+                            <div className="flex items-center gap-2">
+                                <AlertTriangle className="h-4 w-4 text-red-600" />
+                                <span className="text-sm text-red-600">{hashCheckResult.corrupted} issues</span>
+                            </div>
+                        )}
+                        {hashCheckResult.duplicateGroups?.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <Files className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm">{hashCheckResult.duplicateGroups.length} duplicate groups</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Missing / mismatched files */}
+                {hashCheckResult?.corruptedFiles && hashCheckResult.corruptedFiles.length > 0 && (
+                    <div className="space-y-4">
+                        <h3 className="font-medium text-red-600">Files Requiring Attention</h3>
+                        <div className="space-y-2">
+                            {hashCheckResult.corruptedFiles.map((file, idx) => {
+                                const modelData = corruptedModels[file.filePath];
+                                const fallbackModel = models.find(m => {
+                                    const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+                                    return norm(m.modelUrl ?? '') === norm(file.filePath) ||
+                                        norm(m.modelUrl ?? '') === `/models/${norm(file.filePath)}`;
+                                });
+                                const model = modelData || fallbackModel;
+                                return (
+                                    <Alert key={`corrupt-${idx}`} variant="destructive">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <AlertTitle className="truncate">
+                                            {model ? getDisplayPath_db(model as any) : file.filePath.replace(/^[/\\]?models[/\\]?/, '')}
+                                        </AlertTitle>
+                                        <AlertDescription>
+                                            {file.error || (file.actualHash && file.expectedHash && file.actualHash !== file.expectedHash
+                                                ? 'Hash mismatch — file may have changed on disk. Update the DB record to resolve.'
+                                                : 'File missing or unreadable')}
+                                        </AlertDescription>
+                                    </Alert>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Duplicate groups */}
+                {hashCheckResult?.duplicateGroups && hashCheckResult.duplicateGroups.length > 0 && (
+                    <div className="space-y-4">
+                        <h3 className="font-medium">Duplicate Files</h3>
+                        <p className="text-sm text-muted-foreground">
+                            These files have identical content hashes. Keep one and delete the rest.
+                        </p>
+                        <div className="space-y-2">
+                            {hashCheckResult.duplicateGroups.map((group: any, idx: number) => (
+                                <div
+                                    key={`dup-${idx}`}
+                                    className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800"
+                                >
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 gap-2">
+                                        <span className="text-sm text-blue-600 dark:text-blue-400">
+                                            {group.models.length} copies · {group.totalSize}
+                                        </span>
+                                        <Dialog
+                                            open={openDuplicateGroupHash === group.hash}
+                                            onOpenChange={(open: boolean) => setOpenDuplicateGroupHash(open ? group.hash : null)}
+                                        >
+                                            <DialogTrigger asChild>
+                                                <Button variant="outline" size="sm" className="gap-2">
+                                                    <Trash2 className="h-4 w-4" />
+                                                    Remove Duplicates
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="w-full max-w-2xl">
+                                                <DialogHeader>
+                                                    <DialogTitle>Remove Duplicate Files</DialogTitle>
+                                                    <DialogDescription>
+                                                        Choose which file to keep. All other copies will be removed from the database.
+                                                        <strong className="text-destructive block mt-1">This action cannot be undone.</strong>
+                                                    </DialogDescription>
+                                                </DialogHeader>
+                                                <ScrollArea className="max-h-[50vh]">
+                                                    <div className="space-y-2 p-1">
+                                                        {group.models.map((model: Model) => (
+                                                            <div
+                                                                key={`dup-dialog-${group.hash}-${model.id}`}
+                                                                className="flex items-center justify-between p-2 bg-muted rounded-md gap-2"
+                                                            >
+                                                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                                    <ModelThumbnail model={model} name={model.name} />
+                                                                    <span className="text-sm truncate">{getDisplayPath_db(model as any)}</span>
+                                                                </div>
+                                                                <Button
+                                                                    variant="destructive"
+                                                                    size="sm"
+                                                                    className="shrink-0"
+                                                                    onClick={async () => {
+                                                                        const success = await handleRemoveDuplicates(group, model.id);
+                                                                        if (success) setOpenDuplicateGroupHash(null);
+                                                                    }}
+                                                                >
+                                                                    Keep This
+                                                                </Button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </ScrollArea>
+                                                <DialogFooter>
+                                                    <Button variant="ghost" onClick={() => setOpenDuplicateGroupHash(null)}>
+                                                        Cancel
+                                                    </Button>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </div>
+
+                                    {/* Quick list of paths */}
+                                    <div className="space-y-1">
+                                        {group.models.map((model: Model) => (
+                                            <div
+                                                key={`dup-list-${group.hash}-${model.id}`}
+                                                className="flex items-center justify-between"
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                    <ModelThumbnail model={model} name={model.name} />
+                                                    <span className="text-sm truncate">{getDisplayPath_db(model as any)}</span>
+                                                </div>
+                                                <Button variant="ghost" size="sm" onClick={() => onModelClick?.(model)}>
+                                                    View
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Empty state after a clean hash check */}
+                {hashCheckResult &&
+                    (!hashCheckResult.corruptedFiles || hashCheckResult.corruptedFiles.length === 0) &&
+                    (!hashCheckResult.duplicateGroups || hashCheckResult.duplicateGroups.length === 0) && (
+                        <div className="flex flex-col items-center justify-center py-6 text-muted-foreground gap-2">
+                            <ShieldCheck className="h-8 w-8 text-green-500 opacity-60" />
+                            <p className="text-sm">All files verified. No issues found.</p>
+                        </div>
+                    )
+                }
+
+                {/* ═══════ SECTION 2: Library Resync ═══════ */}
+                <Separator />
+
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium flex items-center gap-2">
+                            <FolderSync className="h-4 w-4" />
+                            DB ↔ Filesystem Resync
+                        </h3>
+                        <Button onClick={handleResync} disabled={isResyncing || isPurging} variant="outline" size="sm" className="gap-2">
+                            {isResyncing
+                                ? <RefreshCw className="h-4 w-4 animate-spin" />
+                                : <FolderSync className="h-4 w-4" />
+                            }
+                            {isResyncing ? 'Scanning…' : 'Run Resync Scan'}
+                        </Button>
+                    </div>
 
                     {resyncError && (
                         <Alert variant="destructive">
@@ -410,9 +404,9 @@ export function IntegritySettings_DB({
 
                             {/* All clean */}
                             {resyncResult.stats.orphanCount === 0 && resyncResult.stats.ghostCount === 0 && resyncResult.stats.modelGhostCount === 0 && (
-                                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground gap-3">
-                                    <ShieldCheck className="h-10 w-10 text-green-500 opacity-60" />
-                                    <p className="text-sm">Database and filesystem are in sync. No issues found.</p>
+                                <div className="flex flex-col items-center justify-center py-6 text-muted-foreground gap-2">
+                                    <ShieldCheck className="h-8 w-8 text-green-500 opacity-60" />
+                                    <p className="text-sm">Database and filesystem are in sync.</p>
                                 </div>
                             )}
 
@@ -433,18 +427,20 @@ export function IntegritySettings_DB({
                                     {expandedSection === 'orphans' && (
                                         <div className="border-t">
                                             <p className="px-4 pt-3 pb-2 text-xs text-muted-foreground">
-                                                These files exist on disk but have no database record. They may be manually added files or leftovers from deleted models.
+                                                These files exist on disk but have no database record. They may be non-primary model formats (.step, .obj, .gcode) or manually added files.
                                             </p>
-                                            <ScrollArea className="max-h-[300px]">
-                                                <div className="px-4 pb-4 space-y-1">
-                                                    {resyncResult.orphans.map((f, i) => (
-                                                        <div key={`orphan-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
-                                                            <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{f.path}</span>
-                                                            <span className="text-xs text-muted-foreground shrink-0">{f.sizeFormatted}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </ScrollArea>
+                                            <div className="h-[300px]">
+                                                <ScrollArea className="h-full">
+                                                    <div className="px-4 pb-4 space-y-1">
+                                                        {resyncResult.orphans.map((f, i) => (
+                                                            <div key={`orphan-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
+                                                                <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{f.path}</span>
+                                                                <span className="text-xs text-muted-foreground shrink-0">{f.sizeFormatted}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </ScrollArea>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -495,16 +491,18 @@ export function IntegritySettings_DB({
                                                     </AlertDialogContent>
                                                 </AlertDialog>
                                             </div>
-                                            <ScrollArea className="max-h-[300px]">
-                                                <div className="px-4 pb-4 space-y-1">
-                                                    {resyncResult.ghosts.map((g, i) => (
-                                                        <div key={`ghost-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
-                                                            <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{g.filePath}</span>
-                                                            <span className="text-xs text-muted-foreground shrink-0">{g.filename}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </ScrollArea>
+                                            <div className="h-[300px]">
+                                                <ScrollArea className="h-full">
+                                                    <div className="px-4 pb-4 space-y-1">
+                                                        {resyncResult.ghosts.map((g, i) => (
+                                                            <div key={`ghost-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
+                                                                <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{g.filePath}</span>
+                                                                <span className="text-xs text-muted-foreground shrink-0">{g.filename}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </ScrollArea>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -556,25 +554,27 @@ export function IntegritySettings_DB({
                                                     </AlertDialogContent>
                                                 </AlertDialog>
                                             </div>
-                                            <ScrollArea className="max-h-[300px]">
-                                                <div className="px-4 pb-4 space-y-1">
-                                                    {resyncResult.modelGhosts.map((m, i) => (
-                                                        <div key={`mg-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
-                                                            <Box className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                                            <span className="font-medium truncate min-w-0 text-xs">{m.name}</span>
-                                                            <span className="text-xs text-muted-foreground font-mono truncate shrink-0 max-w-[180px]" title={m.filePath}>{m.filePath}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </ScrollArea>
+                                            <div className="h-[300px]">
+                                                <ScrollArea className="h-full">
+                                                    <div className="px-4 pb-4 space-y-1">
+                                                        {resyncResult.modelGhosts.map((m, i) => (
+                                                            <div key={`mg-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
+                                                                <Box className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                                <span className="font-medium truncate min-w-0 text-xs">{m.name}</span>
+                                                                <span className="text-xs text-muted-foreground font-mono truncate shrink-0 max-w-[180px]" title={m.filePath}>{m.filePath}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </ScrollArea>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
                             )}
                         </>
                     )}
-                </CardContent>
-            </Card>
-        </div>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
