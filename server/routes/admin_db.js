@@ -759,6 +759,116 @@ router.get('/migration-status', async (req, res) => {
     }
 });
 
+// POST /api/admin/library-resync (read-only scan — compares filesystem vs Prisma DB)
+router.post('/library-resync', async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+        const modelsDir = getAbsoluteModelsPath();
+
+        if (!modelsDir || !fs.existsSync(modelsDir)) {
+            return res.status(400).json({ success: false, error: 'Models directory not found' });
+        }
+
+        // ── 1. Scan filesystem recursively for model files ──
+        const MODEL_EXTENSIONS = new Set(['.stl', '.3mf', '.obj', '.step', '.gcode', '.bgcode']);
+        const diskFiles = new Map(); // relPath → { absPath, size, ext }
+
+        function scanDir(dir) {
+            let entries;
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    scanDir(fullPath);
+                } else {
+                    const ext = path.extname(entry.name).toLowerCase();
+                    if (MODEL_EXTENSIONS.has(ext)) {
+                        const relPath = path.relative(modelsDir, fullPath).replace(/\\/g, '/');
+                        let size = 0;
+                        try { size = fs.statSync(fullPath).size; } catch { }
+                        diskFiles.set(relPath, { absPath: fullPath, size, ext });
+                    }
+                }
+            }
+        }
+        scanDir(modelsDir);
+
+        // ── 2. Query DB for all ModelFile records + Model.filePath ──
+        const [dbFiles, dbModels] = await Promise.all([
+            prisma.modelFile.findMany({ select: { id: true, filePath: true, modelId: true, filename: true } }),
+            prisma.model.findMany({ select: { id: true, name: true, filePath: true } }),
+        ]);
+
+        // Build lookup sets
+        const dbFilePathSet = new Set(dbFiles.map(f => f.filePath));
+        const dbModelPathSet = new Set(dbModels.filter(m => m.filePath).map(m => m.filePath));
+
+        // ── 3. Cross-reference: Orphans (on disk, no DB record) ──
+        const orphans = [];
+        for (const [relPath, info] of diskFiles) {
+            if (!dbFilePathSet.has(relPath)) {
+                // Also check if it matches a Model.filePath (some models use filePath as direct path)
+                if (!dbModelPathSet.has(relPath)) {
+                    orphans.push({
+                        path: relPath,
+                        size: info.size,
+                        ext: info.ext,
+                        sizeFormatted: info.size > 1048576
+                            ? `${(info.size / 1048576).toFixed(1)} MB`
+                            : `${(info.size / 1024).toFixed(1)} KB`,
+                    });
+                }
+            }
+        }
+
+        // ── 4. Cross-reference: Ghosts (DB record, no file on disk) ──
+        const ghosts = [];
+        for (const dbFile of dbFiles) {
+            const absPath = path.join(modelsDir, dbFile.filePath);
+            if (!fs.existsSync(absPath)) {
+                ghosts.push({
+                    id: dbFile.id,
+                    modelId: dbFile.modelId,
+                    filePath: dbFile.filePath,
+                    filename: dbFile.filename,
+                });
+            }
+        }
+
+        // ── 5. Cross-reference: Model path ghosts (Model.filePath missing on disk) ──
+        const modelGhosts = [];
+        for (const model of dbModels) {
+            if (!model.filePath) continue;
+            const absPath = path.join(modelsDir, model.filePath);
+            if (!fs.existsSync(absPath)) {
+                modelGhosts.push({
+                    id: model.id,
+                    name: model.name,
+                    filePath: model.filePath,
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            stats: {
+                totalDiskFiles: diskFiles.size,
+                totalDbFiles: dbFiles.length,
+                totalModels: dbModels.length,
+                orphanCount: orphans.length,
+                ghostCount: ghosts.length,
+                modelGhostCount: modelGhosts.length,
+            },
+            orphans,
+            ghosts,
+            modelGhosts,
+        });
+    } catch (err) {
+        console.error('Library Resync Error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // POST /api/admin/purge-thumbnails-preview (dry run — list files that would be deleted)
 router.post('/purge-thumbnails-preview', async (req, res) => {
     try {
