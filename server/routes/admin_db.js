@@ -869,6 +869,38 @@ router.post('/library-resync', async (req, res) => {
     }
 });
 
+// POST /api/admin/resync-purge-ghosts (delete ghost ModelFile records that have no file on disk)
+router.post('/resync-purge-ghosts', async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+        const { ids } = req.body; // Array of ModelFile IDs to delete
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, error: 'No IDs provided' });
+        }
+        const result = await prisma.modelFile.deleteMany({ where: { id: { in: ids } } });
+        res.json({ success: true, deleted: result.count });
+    } catch (err) {
+        console.error('Purge Ghosts Error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/admin/resync-purge-model-ghosts (delete Model records whose filePath points to missing files)
+router.post('/resync-purge-model-ghosts', async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+        const { ids } = req.body; // Array of Model IDs to delete
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, error: 'No IDs provided' });
+        }
+        const result = await prisma.model.deleteMany({ where: { id: { in: ids } } });
+        res.json({ success: true, deleted: result.count });
+    } catch (err) {
+        console.error('Purge Model Ghosts Error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // POST /api/admin/purge-thumbnails-preview (dry run — list files that would be deleted)
 router.post('/purge-thumbnails-preview', async (req, res) => {
     try {

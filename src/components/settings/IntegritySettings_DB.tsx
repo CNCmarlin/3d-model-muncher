@@ -5,6 +5,7 @@
  */
 import { ImageWithFallback_DB } from '@/components/common/ImageWithFallback_DB';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -68,6 +69,7 @@ export function IntegritySettings_DB({
     const [isResyncing, setIsResyncing] = useState(false);
     const [resyncError, setResyncError] = useState<string | null>(null);
     const [expandedSection, setExpandedSection] = useState<string | null>(null);
+    const [isPurging, setIsPurging] = useState(false);
 
     const handleResync = useCallback(async () => {
         setIsResyncing(true);
@@ -84,6 +86,48 @@ export function IntegritySettings_DB({
             setIsResyncing(false);
         }
     }, []);
+
+    const handlePurgeGhosts = useCallback(async () => {
+        if (!resyncResult?.ghosts.length) return;
+        setIsPurging(true);
+        try {
+            const ids = resyncResult.ghosts.map(g => g.id);
+            const resp = await fetch('/api/admin/resync-purge-ghosts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids }),
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+            // Re-run scan to refresh results
+            await handleResync();
+        } catch (err: any) {
+            setResyncError(err.message || 'Purge failed');
+        } finally {
+            setIsPurging(false);
+        }
+    }, [resyncResult, handleResync]);
+
+    const handlePurgeModelGhosts = useCallback(async () => {
+        if (!resyncResult?.modelGhosts.length) return;
+        setIsPurging(true);
+        try {
+            const ids = resyncResult.modelGhosts.map(m => m.id);
+            const resp = await fetch('/api/admin/resync-purge-model-ghosts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids }),
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error);
+            // Re-run scan to refresh results
+            await handleResync();
+        } catch (err: any) {
+            setResyncError(err.message || 'Purge failed');
+        } finally {
+            setIsPurging(false);
+        }
+    }, [resyncResult, handleResync]);
 
     const toggleSection = (key: string) => setExpandedSection(prev => prev === key ? null : key);
 
@@ -330,7 +374,7 @@ export function IntegritySettings_DB({
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <Button onClick={handleResync} disabled={isResyncing} className="gap-2">
+                    <Button onClick={handleResync} disabled={isResyncing || isPurging} className="gap-2">
                         {isResyncing
                             ? <RefreshCw className="h-4 w-4 animate-spin" />
                             : <FolderSync className="h-4 w-4" />
@@ -341,7 +385,7 @@ export function IntegritySettings_DB({
                     {resyncError && (
                         <Alert variant="destructive">
                             <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle>Scan Failed</AlertTitle>
+                            <AlertTitle>Error</AlertTitle>
                             <AlertDescription>{resyncError}</AlertDescription>
                         </Alert>
                     )}
@@ -372,92 +416,158 @@ export function IntegritySettings_DB({
                                 </div>
                             )}
 
-                            {/* Orphaned Files */}
+                            {/* ── Orphaned Files ── */}
                             {resyncResult.orphans.length > 0 && (
-                                <div className="rounded-lg border">
+                                <div className="rounded-lg border overflow-hidden">
                                     <button
                                         onClick={() => toggleSection('orphans')}
                                         className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors"
                                     >
-                                        <div className="flex items-center gap-2">
-                                            <HardDrive className="h-4 w-4 text-amber-500" />
-                                            <span className="font-medium text-sm">Orphaned Files</span>
-                                            <span className="text-xs text-muted-foreground">({resyncResult.orphans.length} files on disk with no DB record)</span>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <HardDrive className="h-4 w-4 text-amber-500 shrink-0" />
+                                            <span className="font-medium text-sm shrink-0">Orphaned Files</span>
+                                            <span className="text-xs text-muted-foreground truncate">({resyncResult.orphans.length} on disk, no DB record)</span>
                                         </div>
-                                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedSection === 'orphans' ? 'rotate-180' : ''}`} />
+                                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${expandedSection === 'orphans' ? 'rotate-180' : ''}`} />
                                     </button>
                                     {expandedSection === 'orphans' && (
-                                        <ScrollArea className="max-h-[300px]">
-                                            <div className="px-4 pb-4 space-y-1">
-                                                {resyncResult.orphans.map((f, i) => (
-                                                    <div key={`orphan-${i}`} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/30 text-sm font-mono">
-                                                        <span className="truncate flex-1 text-foreground/70">{f.path}</span>
-                                                        <span className="text-xs text-muted-foreground ml-2 shrink-0">{f.sizeFormatted}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </ScrollArea>
+                                        <div className="border-t">
+                                            <p className="px-4 pt-3 pb-2 text-xs text-muted-foreground">
+                                                These files exist on disk but have no database record. They may be manually added files or leftovers from deleted models.
+                                            </p>
+                                            <ScrollArea className="max-h-[300px]">
+                                                <div className="px-4 pb-4 space-y-1">
+                                                    {resyncResult.orphans.map((f, i) => (
+                                                        <div key={`orphan-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
+                                                            <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{f.path}</span>
+                                                            <span className="text-xs text-muted-foreground shrink-0">{f.sizeFormatted}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </ScrollArea>
+                                        </div>
                                     )}
                                 </div>
                             )}
 
-                            {/* Ghost Records */}
+                            {/* ── Ghost File Records ── */}
                             {resyncResult.ghosts.length > 0 && (
-                                <div className="rounded-lg border">
+                                <div className="rounded-lg border overflow-hidden">
                                     <button
                                         onClick={() => toggleSection('ghosts')}
                                         className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors"
                                     >
-                                        <div className="flex items-center gap-2">
-                                            <Ghost className="h-4 w-4 text-red-500" />
-                                            <span className="font-medium text-sm">Ghost File Records</span>
-                                            <span className="text-xs text-muted-foreground">({resyncResult.ghosts.length} DB records with no file on disk)</span>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <Ghost className="h-4 w-4 text-red-500 shrink-0" />
+                                            <span className="font-medium text-sm shrink-0">Ghost File Records</span>
+                                            <span className="text-xs text-muted-foreground truncate">({resyncResult.ghosts.length} DB records, no file on disk)</span>
                                         </div>
-                                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedSection === 'ghosts' ? 'rotate-180' : ''}`} />
+                                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${expandedSection === 'ghosts' ? 'rotate-180' : ''}`} />
                                     </button>
                                     {expandedSection === 'ghosts' && (
-                                        <ScrollArea className="max-h-[300px]">
-                                            <div className="px-4 pb-4 space-y-1">
-                                                {resyncResult.ghosts.map((g, i) => (
-                                                    <div key={`ghost-${i}`} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/30 text-sm">
-                                                        <span className="truncate flex-1 font-mono text-foreground/70">{g.filePath}</span>
-                                                        <span className="text-xs text-muted-foreground ml-2 shrink-0">{g.filename}</span>
-                                                    </div>
-                                                ))}
+                                        <div className="border-t">
+                                            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                                <p className="text-xs text-muted-foreground">
+                                                    These ModelFile records point to files that no longer exist on disk.
+                                                </p>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="destructive" size="sm" disabled={isPurging} className="gap-1.5 shrink-0">
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                            Purge All ({resyncResult.ghosts.length})
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Purge {resyncResult.ghosts.length} ghost file records?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This will permanently delete {resyncResult.ghosts.length} ModelFile database records
+                                                                that point to files no longer on disk. The models themselves will not be deleted.
+                                                                <strong className="text-destructive block mt-1">This action cannot be undone.</strong>
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction onClick={handlePurgeGhosts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                                Purge Ghost Records
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
                                             </div>
-                                        </ScrollArea>
+                                            <ScrollArea className="max-h-[300px]">
+                                                <div className="px-4 pb-4 space-y-1">
+                                                    {resyncResult.ghosts.map((g, i) => (
+                                                        <div key={`ghost-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
+                                                            <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{g.filePath}</span>
+                                                            <span className="text-xs text-muted-foreground shrink-0">{g.filename}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </ScrollArea>
+                                        </div>
                                     )}
                                 </div>
                             )}
 
-                            {/* Model Path Ghosts */}
+                            {/* ── Model Path Ghosts ── */}
                             {resyncResult.modelGhosts.length > 0 && (
-                                <div className="rounded-lg border">
+                                <div className="rounded-lg border overflow-hidden">
                                     <button
                                         onClick={() => toggleSection('modelGhosts')}
                                         className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors"
                                     >
-                                        <div className="flex items-center gap-2">
-                                            <AlertTriangle className="h-4 w-4 text-orange-500" />
-                                            <span className="font-medium text-sm">Model Path Ghosts</span>
-                                            <span className="text-xs text-muted-foreground">({resyncResult.modelGhosts.length} models pointing to missing files)</span>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0" />
+                                            <span className="font-medium text-sm shrink-0">Model Path Ghosts</span>
+                                            <span className="text-xs text-muted-foreground truncate">({resyncResult.modelGhosts.length} models → missing files)</span>
                                         </div>
-                                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${expandedSection === 'modelGhosts' ? 'rotate-180' : ''}`} />
+                                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${expandedSection === 'modelGhosts' ? 'rotate-180' : ''}`} />
                                     </button>
                                     {expandedSection === 'modelGhosts' && (
-                                        <ScrollArea className="max-h-[300px]">
-                                            <div className="px-4 pb-4 space-y-1">
-                                                {resyncResult.modelGhosts.map((m, i) => (
-                                                    <div key={`mg-${i}`} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted/30 text-sm">
-                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                            <Box className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                                            <span className="font-medium truncate">{m.name}</span>
-                                                        </div>
-                                                        <span className="text-xs text-muted-foreground ml-2 font-mono truncate max-w-[200px]">{m.filePath}</span>
-                                                    </div>
-                                                ))}
+                                        <div className="border-t">
+                                            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                                <p className="text-xs text-muted-foreground">
+                                                    These Model records have a filePath pointing to a non-existent file.
+                                                </p>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="destructive" size="sm" disabled={isPurging} className="gap-1.5 shrink-0">
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                            Purge All ({resyncResult.modelGhosts.length})
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Purge {resyncResult.modelGhosts.length} ghost models?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This will permanently delete {resyncResult.modelGhosts.length} Model records and all
+                                                                associated data (tags, images, related files). Only models whose filePath points to
+                                                                a missing file will be deleted.
+                                                                <strong className="text-destructive block mt-1">This action cannot be undone.</strong>
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction onClick={handlePurgeModelGhosts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                                Purge Ghost Models
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
                                             </div>
-                                        </ScrollArea>
+                                            <ScrollArea className="max-h-[300px]">
+                                                <div className="px-4 pb-4 space-y-1">
+                                                    {resyncResult.modelGhosts.map((m, i) => (
+                                                        <div key={`mg-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
+                                                            <Box className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                            <span className="font-medium truncate min-w-0 text-xs">{m.name}</span>
+                                                            <span className="text-xs text-muted-foreground font-mono truncate shrink-0 max-w-[180px]" title={m.filePath}>{m.filePath}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </ScrollArea>
+                                        </div>
                                     )}
                                 </div>
                             )}
