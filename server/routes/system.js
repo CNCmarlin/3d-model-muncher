@@ -46,6 +46,40 @@ router.get('/health', (req, res) => {
 
 // --- System Utilities ---
 
+// POST /api/system/wipe-and-scan
+// Query Param: ?dryRun=true
+router.post('/wipe-and-scan', async (req, res) => {
+    const isDryRun = req.query.dryRun === 'true';
+    console.log(`🔥 [System] Wipe & Scan Requested (DryRun: ${isDryRun})`);
+
+    try {
+        const prisma = require('../../server-utils/db'); // Lazy load
+
+        if (!isDryRun) {
+            // 1. Wipe DB (Transactions) - ONLY IN REAL RUN
+            await prisma.$transaction([
+                prisma.modelFile.deleteMany(),
+                prisma.modelTag.deleteMany(),
+                prisma.modelCollection.deleteMany(),
+                prisma.model.deleteMany(),
+                prisma.collection.deleteMany(),
+                prisma.tag.deleteMany(),
+            ]);
+            console.log("✅ [System] Database Wiped");
+        }
+
+        // 2. Trigger Migration
+        const MigrationEngine = require('../../server-utils/MigrationEngine');
+        const engine = new MigrationEngine();
+        const stats = await engine.run(isDryRun);
+
+        res.json({ success: true, stats, dryRun: isDryRun });
+    } catch (e) {
+        console.error("❌ [System] Wipe & Scan Failed:", e);
+        res.status(500).json({ success: false, error: e.stack });
+    }
+});
+
 // List folders in models directory (used by Auto-Import)
 router.get('/model-folders', (req, res) => {
     try {

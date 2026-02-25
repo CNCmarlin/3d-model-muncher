@@ -98,6 +98,38 @@ class LegacySourceScanner {
             type = 'PROJECT_PART';
         }
 
+        // --- EXTENSION COLLISION DETECTION ---
+        // Mirror heal function logic: detect if a sibling munchie exists for the same
+        // baseName but different extension (e.g. cam_bed-munchie.json + cam_bed-stl-munchie.json)
+        const isExplicitStl = filename.toLowerCase().includes('-stl-munchie.json');
+        const munchieBaseName = filename.replace(/(-stl)?-munchie\.json$/i, '');
+
+        const folderMunchies = fs.readdirSync(dir)
+            .filter(f => f.endsWith('munchie.json') && !f.endsWith('.bak') && f !== 'project.json');
+
+        const hasExtensionSibling = folderMunchies.some(f => {
+            if (f === filename) return false; // skip self
+            const otherBase = f.replace(/(-stl)?-munchie\.json$/i, '');
+            return otherBase.toLowerCase() === munchieBaseName.toLowerCase();
+        });
+
+        // --- NAME RECOVERY ---
+        // Fix models stuck with default "New Model" name from createInitialModelMetadata.
+        let resolvedName = data.name || munchieBaseName;
+        if (resolvedName === 'New Model' && data.filePath) {
+            resolvedName = path.basename(data.filePath, path.extname(data.filePath));
+        }
+
+        // --- NAME DISAMBIGUATION ---
+        if (hasExtensionSibling && data.filePath) {
+            const ext = path.extname(data.filePath).replace('.', '').toUpperCase();
+            const baseName = path.basename(data.filePath, path.extname(data.filePath));
+            // Only disambiguate if name matches baseName (avoid clobbering user-edited names)
+            if (resolvedName === baseName || resolvedName === munchieBaseName) {
+                resolvedName = `${baseName} (${ext})`;
+            }
+        }
+
         // Map Fields for Parity Check
         const galleryAssets = this._scanGalleryAssets(dir);
 
@@ -121,7 +153,7 @@ class LegacySourceScanner {
 
         const mapped = {
             id: data.id,
-            name: data.name || filename.replace(/-munchie\.json$/, ''),
+            name: resolvedName,
             // Promoted columns (Batch 1)
             category: data.category || null,
             modelUrl: data.modelUrl || null,
@@ -148,7 +180,7 @@ class LegacySourceScanner {
             gcodeFilaments: data.gcodeData?.filaments ? JSON.stringify(data.gcodeData.filaments) : null,
             isPrinted: data.isPrinted || false,
             isFavorite: data.favorite || false, // Note: legacy might call it 'favorite' or 'isFavorite'
-            thumbnailPath: this._findCoverImage(data, dir),  // Maps to `thumbnail_path` column
+            thumbnailPath: this._findCoverImage(data, dir, { isExplicitStl, munchieBaseName }),  // Maps to `thumbnail_path` column
             pathHash: this._generatePathHash(dir, filename),
             filePath: path.relative(this.modelsDir, fullPath).replace(/\\/g, '/'),
             // Complex objects stored in metadata (only userDefined remains after Batch 6)
@@ -232,8 +264,28 @@ class LegacySourceScanner {
         return isNaN(val) ? 0.0 : val;
     }
 
-    _findCoverImage(data, dir) {
+    _findCoverImage(data, dir, extContext = {}) {
+        const { isExplicitStl, munchieBaseName } = extContext;
         let candidates = [];
+
+        // 0. PRIORITY: Try extension-matched thumbnail first
+        // e.g. cam_bed.stl -> cam_bed.stl-thumb.png, cam_bed.3mf -> cam_bed.3mf-thumb.png
+        if (data.filePath) {
+            const modelFile = path.basename(data.filePath);
+            const expectedThumb = `${modelFile}-thumb.png`;
+            const thumbPath = path.join(dir, expectedThumb);
+            if (fs.existsSync(thumbPath) && fs.statSync(thumbPath).isFile()) {
+                return path.relative(this.modelsDir, thumbPath).replace(/\\/g, '/');
+            }
+
+            // Also check for embedded thumb
+            const baseName = path.basename(data.filePath, path.extname(data.filePath));
+            const embeddedThumb = `${baseName}-embedded-thumb.png`;
+            const embeddedPath = path.join(dir, embeddedThumb);
+            if (fs.existsSync(embeddedPath) && fs.statSync(embeddedPath).isFile()) {
+                return path.relative(this.modelsDir, embeddedPath).replace(/\\/g, '/');
+            }
+        }
 
         // 1. Gather Candidate Paths from JSON
         if (data.coverImage) candidates.push(data.coverImage);
@@ -247,6 +299,22 @@ class LegacySourceScanner {
         // Helper to resolve and verify file existence
         const tryResolve = (candidate) => {
             if (!candidate) return null;
+
+            // Extension filtering: don't resolve thumbnails belonging to the other extension variant
+            if (munchieBaseName) {
+                const candFile = path.basename(candidate).toLowerCase();
+                // If we're the STL munchie, skip 3MF resources (.3mf thumbs or embedded thumbs)
+                if (isExplicitStl && (candFile.includes('.3mf') || candFile.includes('-embedded-thumb'))) return null;
+                // If we're the non-STL munchie, skip .stl thumbnails (when sibling exists)
+                if (!isExplicitStl && extContext.munchieBaseName && candFile.includes('.stl')) {
+                    // Only skip if there's actually a STL sibling
+                    const hasStlSibling = fs.readdirSync(dir).some(f =>
+                        f.toLowerCase().includes('-stl-munchie.json') &&
+                        f.replace(/(-stl)?-munchie\.json$/i, '').toLowerCase() === munchieBaseName.toLowerCase()
+                    );
+                    if (hasStlSibling) return null;
+                }
+            }
 
             // Strategy A: Direct Join (Relative to Folder)
             let absPath = path.join(dir, candidate);
@@ -280,10 +348,9 @@ class LegacySourceScanner {
             const files = fs.readdirSync(dir);
             const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
-            // Prioritize "cover" or "thumbnail" naming? Maybe later. For now, just find one.
             const validImage = files.find(f => {
                 const ext = path.extname(f).toLowerCase();
-                return imageExtensions.includes(ext) && !f.endsWith('-thumb.png'); // Exclude generated thumbs if possible? Or include them?
+                return imageExtensions.includes(ext) && !f.endsWith('-thumb.png');
             });
 
             if (validImage) {

@@ -94,16 +94,13 @@ function getCollectionScanner() {
  * @returns {Router} Express router for system endpoints
  */
 function getSystemRoutes() {
-    if (isDatabaseMode()) {
-        console.log('📊 [RouteSelector] Loading DATABASE system routes (system_db.js)');
-        try {
-            return require('../server/routes/system_db');
-        } catch (error) {
-            console.warn('⚠️  [RouteSelector] system_db.js not found, falling back to legacy:', error.message);
-            return require('../server/routes/system');
-        }
-    } else {
-        console.log('📁 [RouteSelector] Loading LEGACY system routes (system.js)');
+    // ALWAYS force database system routes, since legacy mode now embeds the DB Migration tab
+    // which requires /api/system/wipe-and-scan and other DB endpoints.
+    console.log('📊 [RouteSelector] Loading DATABASE system routes (system_db.js)');
+    try {
+        return require('../server/routes/system_db');
+    } catch (error) {
+        console.warn('⚠️  [RouteSelector] system_db.js not found, falling back to legacy:', error.message);
         return require('../server/routes/system');
     }
 }

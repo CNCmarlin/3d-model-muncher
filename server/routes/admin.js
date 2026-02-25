@@ -308,7 +308,17 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                     ? path.basename(data.filePath, path.extname(data.filePath))
                     : modelBaseName;
 
-                // --- 4a. NAME DISAMBIGUATION ---
+                // --- 4a. NAME RECOVERY ---
+                // Fix models stuck with default "New Model" name from createInitialModelMetadata.
+                // Only recover if name is EXACTLY "New Model" — user-customized names are untouched.
+                if (data.name === 'New Model' && data.filePath) {
+                    const recoveredName = currentBaseName;
+                    proposal.modifications.push(`Name recovered: "New Model" → "${recoveredName}" (from filePath)`);
+                    data.name = recoveredName;
+                    hasChanged = true;
+                }
+
+                // --- 4b. NAME DISAMBIGUATION ---
                 // When same baseName exists for multiple extensions (cam_bed.stl + cam_bed.3mf),
                 // disambiguate names to prevent DB migration duplicates.
                 if ((hasStlSibling || hasNonStlSibling) && data.filePath) {
@@ -364,8 +374,9 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                         shouldClaim = true;
                     }
 
-                    // Fix for cam_bed-stl claiming cam_bed.3mf-thumb.png:
-                    if (isExplicitStl && lowerFile.includes('.3mf')) {
+                    // Fix for cam_bed-stl claiming cam_bed.3mf-thumb.png or embedded thumbnails:
+                    const modelExt = data.filePath ? path.extname(data.filePath).toLowerCase() : '';
+                    if ((isExplicitStl || modelExt === '.stl') && (lowerFile.includes('.3mf') || lowerFile.includes('-embedded-thumb'))) {
                         shouldClaim = false;
                     }
 
@@ -406,29 +417,41 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
 
                         // Check if we track it (either as a file reference or legacy base64)
                         const hasEmbeddedRef = data.parsedImages.some(img => img.includes('-embedded-thumb') || img.startsWith('data:image'));
-                        const physicalExists = siblings.includes(reliableName); // siblings is a list of filenames in the folder
+                        const physicalExists = fs.existsSync(embeddedPath); // Check actual disk, not just siblings array
 
-                        if (!hasEmbeddedRef && !physicalExists) {
-                            if (!isDryRun) {
-                                try {
-                                    const extracted = await extractEmbeddedThumbnail(absModelPath, embeddedPath);
-                                    if (extracted) {
-                                        console.log(`      -> Action: Rescued Embedded Thumbnail from ${path.basename(absModelPath)}`);
-                                        const newRel = path.relative(modelsDir, embeddedPath).replace(/\\/g, '/');
-                                        const newUrl = `/models/${newRel}`;
-                                        data.parsedImages.push(newUrl);
-                                        proposal.additions.push(`${reliableName} (Rescued from 3MF Metadata)`);
-                                        hasChanged = true;
-                                        // Update siblings so subsequent steps (like Scrubbing) see it
-                                        siblings.push(reliableName);
+                        if (physicalExists && !hasEmbeddedRef) {
+                            // File already extracted (from a previous heal run) but not tracked — just re-link it
+                            const newRel = path.relative(modelsDir, embeddedPath).replace(/\\/g, '/');
+                            const newUrl = `/models/${newRel}`;
+                            data.parsedImages.push(newUrl);
+                            proposal.additions.push(`${reliableName} (Re-linked existing embedded thumb)`);
+                            hasChanged = true;
+                            if (!siblings.includes(reliableName)) siblings.push(reliableName);
+                        } else if (!hasEmbeddedRef && !physicalExists) {
+                            // File doesn't exist at all — attempt extraction
+                            // FIRST: Check if the 3MF actually HAS an embedded thumbnail!
+                            if (hasEmbeddedThumbnail(absModelPath)) {
+                                if (!isDryRun) {
+                                    try {
+                                        const extracted = await extractEmbeddedThumbnail(absModelPath, embeddedPath);
+                                        if (extracted) {
+                                            console.log(`      -> Action: Rescued Embedded Thumbnail from ${path.basename(absModelPath)}`);
+                                            const newRel = path.relative(modelsDir, embeddedPath).replace(/\\/g, '/');
+                                            const newUrl = `/models/${newRel}`;
+                                            data.parsedImages.push(newUrl);
+                                            proposal.additions.push(`${reliableName} (Rescued from 3MF Metadata)`);
+                                            hasChanged = true;
+                                            siblings.push(reliableName);
+                                        }
+                                    } catch (e) {
+                                        console.warn("       Failed to rescue embedded thumb:", e.message);
                                     }
-                                } catch (e) {
-                                    console.warn("       Failed to rescue embedded thumb:", e.message);
+                                } else {
+                                    proposal.additions.push(`${reliableName} (Would Rescue from 3MF Metadata)`);
                                 }
-                            } else {
-                                proposal.additions.push(`${reliableName} (Would Rescue from 3MF Metadata)`);
                             }
                         }
+                        // else: hasEmbeddedRef is true → already tracked, nothing to do
                     }
                 }
 
@@ -499,6 +522,14 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                         proposal.deletions.push(`${imgUrl} (Wrong Path - Expected '${expectedFolderUrl}')`);
                         return false;
                     }
+
+                    // Check for STL improperly claiming 3MF resources
+                    const modelExt = data.filePath ? path.extname(data.filePath).toLowerCase() : '';
+                    if ((isExplicitStl || modelExt === '.stl') && (fileName.toLowerCase().includes('.3mf') || fileName.toLowerCase().includes('-embedded-thumb'))) {
+                        proposal.deletions.push(`${imgUrl} (Pollution - STL claiming 3MF resource)`);
+                        return false;
+                    }
+
                     if (!isLegit) {
                         proposal.deletions.push(`${imgUrl} (Name Mismatch - Expected start '${currentBaseName}')`);
                         return false;
