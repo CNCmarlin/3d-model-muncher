@@ -224,6 +224,19 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 // --- 4. PATH HEALING (STRICT) ---
                 const isExplicitStl = entry.name.toLowerCase().includes('-stl-munchie.json');
 
+                // EXTENSION COLLISION DETECTION: Does a sibling munchie exist for the same baseName
+                // but different extension? e.g. cam_bed-munchie.json AND cam_bed-stl-munchie.json
+                const hasStlSibling = !isExplicitStl && folderMunchies.some(m => {
+                    const siblingName = path.basename(m.path).toLowerCase();
+                    return siblingName.includes('-stl-munchie.json') &&
+                        siblingName.replace(/(-stl)?-munchie\.json$/i, '').toLowerCase() === munchieBaseName.toLowerCase();
+                });
+                const hasNonStlSibling = isExplicitStl && folderMunchies.some(m => {
+                    const siblingName = path.basename(m.path).toLowerCase();
+                    return !siblingName.includes('-stl-munchie.json') &&
+                        siblingName.replace(/-munchie\.json$/i, '').toLowerCase() === munchieBaseName.toLowerCase();
+                });
+
                 // MISMATCH DETECTION: Compare munchie filename to stored filePath.
                 // e.g. "cam_bed-stl-munchie.json" implies model should be "cam_bed.*"
                 // If filePath points to "c270_cam1.stl", that's a mismatch → corrupted.
@@ -249,6 +262,9 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
 
                         // Fix for cam_bed-stl claiming cam_bed.3mf:
                         if (isExplicitStl && !low.endsWith('.stl')) return false;
+
+                        // INVERSE: Non-STL munchie should prefer non-STL files when STL sibling exists
+                        if (hasStlSibling && low.endsWith('.stl')) return false;
 
                         // Match using munchie-derived name (ground truth), not corrupted filePath
                         // AND MUST START WITH NAME
@@ -291,6 +307,19 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 const currentBaseName = data.filePath
                     ? path.basename(data.filePath, path.extname(data.filePath))
                     : modelBaseName;
+
+                // --- 4a. NAME DISAMBIGUATION ---
+                // When same baseName exists for multiple extensions (cam_bed.stl + cam_bed.3mf),
+                // disambiguate names to prevent DB migration duplicates.
+                if ((hasStlSibling || hasNonStlSibling) && data.filePath) {
+                    const ext = path.extname(data.filePath).replace('.', '').toUpperCase();
+                    const expectedName = `${currentBaseName} (${ext})`;
+                    if (data.name === currentBaseName) {
+                        proposal.modifications.push(`Name disambiguated: "${data.name}" → "${expectedName}"`);
+                        data.name = expectedName;
+                        hasChanged = true;
+                    }
+                }
 
                 // --- 5. ASSET CLAIMING (SMART) ---
                 siblings.forEach(file => {
@@ -337,6 +366,11 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
 
                     // Fix for cam_bed-stl claiming cam_bed.3mf-thumb.png:
                     if (isExplicitStl && lowerFile.includes('.3mf')) {
+                        shouldClaim = false;
+                    }
+
+                    // INVERSE: Non-STL munchie shouldn't claim .stl assets when STL sibling exists
+                    if (hasStlSibling && (lowerFile.includes('.stl'))) {
                         shouldClaim = false;
                     }
 
