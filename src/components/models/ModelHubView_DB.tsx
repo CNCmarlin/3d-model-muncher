@@ -1,10 +1,10 @@
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { LICENSES, isKnownLicense } from '@/constants/licenses';
 import { Category } from "@/types/category";
@@ -468,8 +468,8 @@ export function ModelHubView_DB({
                     invalidRelated={editLogic.invalidRelated as any}
                     serverRejectedRelated={[]} // Not using currently
                     onModelUpdate={handleModelUpdateParams as any}
+                    onNavigate={onSelectModel as any}
                     triggerDownload={triggerDownload_db}
-                    deriveMunchieCandidate={relatedLogic.deriveMunchieCandidate}
                     availableRelatedMunchie={relatedLogic.availableRelatedMunchie}
                     detailsViewportRef={detailsViewportRef}
                     toast={toast}
@@ -703,12 +703,12 @@ function AddToCollectionDialog({ modelId, collections, onClose, updateCollection
       <div className="bg-card border rounded-xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-lg mb-4">Add to Collection</h3>
         <div className="space-y-4">
-          <Select value={target || ''} onValueChange={setTarget}>
-            <SelectTrigger><SelectValue placeholder="Select a collection" /></SelectTrigger>
-            <SelectContent>
-              {collections.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect_DB
+            value={target || ''}
+            onValueChange={setTarget}
+            placeholder="Select a collection"
+            options={collections.map(c => ({ value: c.id, label: c.name || 'Unnamed' }))}
+          />
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button disabled={!target || updateCollection.isPending} onClick={() => {
@@ -737,14 +737,12 @@ function RemoveFromCollectionDialog({ modelId, collections, onClose, updateColle
       <div className="bg-card border rounded-xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-lg mb-4 text-destructive">Remove from Collection</h3>
         <div className="space-y-4">
-          <Select value={target || ''} onValueChange={setTarget}>
-            <SelectTrigger><SelectValue placeholder="Select a collection" /></SelectTrigger>
-            <SelectContent>
-              {collections.filter(c => c.modelIds?.includes(modelId)).map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect_DB
+            value={target || ''}
+            onValueChange={setTarget}
+            placeholder="Select a collection"
+            options={collections.filter(c => c.modelIds?.includes(modelId)).map(c => ({ value: c.id, label: c.name || 'Unnamed' }))}
+          />
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button variant="destructive" disabled={!target || updateCollection.isPending} onClick={() => {

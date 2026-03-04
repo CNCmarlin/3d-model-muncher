@@ -13,12 +13,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SOURCE_CAD_EXTENSIONS } from '@/constants/fileExtensions';
 import { useModelMutations_DB } from '@/hooks/useModelMutations_DB';
 import { Model } from "@/types/model_db";
 import {
     Ban,
     Box,
     CheckCircle,
+    Cpu,
     Download, Eye,
     FileCode,
     FolderOpen,
@@ -40,14 +42,12 @@ function truncatePath(path: string, maxLength: number = 40) {
 
 const ModelFileCard = ({
     path,
-    deriveMunchieCandidate,
     isActive,
     onJump,
     onPromote,
     onDownload
 }: {
     path: string,
-    deriveMunchieCandidate: any,
     isActive: boolean,
     onJump: () => void,
     onPromote: () => void,
@@ -57,21 +57,26 @@ const ModelFileCard = ({
     const [isProjectMain, setIsProjectMain] = React.useState(false);
 
     React.useEffect(() => {
+        let mounted = true;
         const fetchData = async () => {
             try {
-                const candidate = deriveMunchieCandidate(path);
-                if (!candidate) return;
-                const resp = await fetch(`/models/${candidate}`, { cache: 'no-store' });
-                if (resp.ok) {
-                    const data = await resp.json();
+                // Determine search path (prefix with /models/ if absent to match database)
+                const searchPath = path.startsWith('/models/') ? path : `/models/${path}`;
 
-                    // 1. Determine "Main" status from the file's own JSON
-                    setIsProjectMain(data.isProjectRoot === true);
+                const resp = await fetch(`/api/models?modelUrl=${encodeURIComponent(searchPath)}`, { cache: 'no-store' });
+                if (resp.ok && mounted) {
+                    const parsed = await resp.json();
+                    const data = Array.isArray(parsed) ? parsed[0] : parsed?.data?.[0];
+
+                    if (!data) return;
+
+                    // 1. Determine "Main" status from database record
+                    setIsProjectMain(data.isMainModel === true);
 
                     // 2. Resolve Thumbnail pointer or direct URL
                     let rawThumb = data.userDefined?.thumbnail || data.thumbnail || (data.parsedImages?.[0]) || (data.images?.[0]);
 
-                    // NEW: Handle both 'parsed:' and 'user:' pointers safely
+                    // Legacy handle both 'parsed:' and 'user:' pointers safely
                     if (typeof rawThumb === 'string' && (rawThumb.startsWith('parsed:') || rawThumb.startsWith('user:'))) {
                         const [type, indexStr] = rawThumb.split(':');
                         const idx = parseInt(indexStr);
@@ -90,7 +95,8 @@ const ModelFileCard = ({
             } catch (e) { }
         };
         fetchData();
-    }, [path, deriveMunchieCandidate]);
+        return () => { mounted = false; };
+    }, [path]);
 
     return (
         <div
@@ -145,10 +151,10 @@ interface RelatedFilesSectionProps {
     currentModel: Model;
     availableRelatedMunchie: Record<number, boolean>;
     onModelUpdate: (model: Model) => void;
+    onNavigate?: (model: Model) => void;
     detailsViewportRef: React.RefObject<HTMLDivElement | null>;
     triggerDownload: (path: string, event: MouseEvent, name: string) => void;
     toast?: any;
-    deriveMunchieCandidate: (path: string) => string | null;
     active3DFile: string | null;
     setActive3DFile: (path: string | null) => void;
     handleViewDocument: (url: string) => void;
@@ -162,10 +168,10 @@ export const RelatedFilesSection_DB = ({
     setRelatedVerifyStatus,
     currentModel,
     onModelUpdate,
+    onNavigate,
     detailsViewportRef,
     triggerDownload,
     toast,
-    deriveMunchieCandidate,
     active3DFile,
     setActive3DFile,
     handleViewDocument,
@@ -181,7 +187,8 @@ export const RelatedFilesSection_DB = ({
         const categories = {
             models: [] as string[],
             docs: [] as string[],
-            gcode: [] as string[]
+            gcode: [] as string[],
+            source: [] as string[]
         };
 
         // 1. ALWAYS start the models list with the current main model
@@ -198,6 +205,8 @@ export const RelatedFilesSection_DB = ({
                 categories.models.push(path);
             } else if (['gcode', 'bgcode'].includes(ext)) {
                 categories.gcode.push(path);
+            } else if (SOURCE_CAD_EXTENSIONS.includes(ext)) {
+                categories.source.push(path);
             } else {
                 categories.docs.push(path);
             }
@@ -207,16 +216,25 @@ export const RelatedFilesSection_DB = ({
 
     const handleJumpToModel = async (path: string) => {
         try {
-            let candidate = deriveMunchieCandidate(path);
-            if (!candidate) return;
-
-            const resp = await fetch(`/models/${candidate}`, { cache: 'no-store' });
+            const resp = await fetch(`/api/models?modelUrl=${encodeURIComponent(path)}`, { cache: 'no-store' });
             if (!resp.ok) throw new Error('Not found');
 
             const parsed = await resp.json();
 
-            // 1. Update the metadata for the whole page
-            onModelUpdate(parsed as Model);
+            // Handle both legacy array response and paginated data wrapper
+            let targetModel = Array.isArray(parsed) ? parsed[0] : parsed?.data?.[0];
+
+            if (!targetModel) {
+                toast?.error?.('Component record not found in database.');
+                return;
+            }
+
+            // 1. Change the active model in the UI without triggering a database save
+            if (onNavigate) {
+                onNavigate(targetModel as Model);
+            } else {
+                onModelUpdate(targetModel as Model);
+            }
 
             // 2. [CRITICAL FIX] Update the 3D viewer to point to the new part's file
             // This prevents the Hero from trying to load the old project's file
@@ -235,18 +253,18 @@ export const RelatedFilesSection_DB = ({
             const oldMainPath = currentModel.filePath;
 
             // 1. Guard: Prevent self-demotion
-            if (oldMainPath === newPath && (currentModel as any).isProjectRoot) {
+            if (oldMainPath === newPath && (currentModel as any).isMainModel) {
                 toast?.info?.("This is already the Main Model.");
                 return;
             }
 
             // 2. Prepare the Payload
             // We now send the specific "changes" we want. 
-            // Note: isProjectRoot: true triggers the server's internal demotion scan.
+            // Note: isMainModel: true triggers the server's internal demotion scan.
             const promotionPayload = {
                 filePath: newPath,
                 changes: {
-                    isProjectRoot: true,
+                    isMainModel: true,
                     isRelatedPart: false,
                     // We strip these to ensure the subsequent Heal generates fresh paths
                     thumbnail: undefined,
@@ -315,6 +333,7 @@ export const RelatedFilesSection_DB = ({
             models: [] as { id: string, path: string, idx: number }[],
             docs: [] as { id: string, path: string, idx: number }[],
             gcode: [] as { id: string, path: string, idx: number }[],
+            source: [] as { id: string, path: string, idx: number }[]
         };
         files.forEach((rf, idx) => {
             const ext = rf.path.split('.').pop()?.toLowerCase() || '';
@@ -322,6 +341,8 @@ export const RelatedFilesSection_DB = ({
                 groups.models.push({ ...rf, idx });
             } else if (['gcode', 'bgcode'].includes(ext)) {
                 groups.gcode.push({ ...rf, idx });
+            } else if (SOURCE_CAD_EXTENSIONS.includes(ext)) {
+                groups.source.push({ ...rf, idx });
             } else {
                 groups.docs.push({ ...rf, idx });
             }
@@ -463,6 +484,14 @@ export const RelatedFilesSection_DB = ({
                         </>
                     )}
 
+                    {/* Source Files Section */}
+                    {editGroups.source.length > 0 && (
+                        <>
+                            {sectionHeader(<Cpu className="h-3 w-3 text-muted-foreground/40" />, "Source Files", editGroups.source.length)}
+                            {editGroups.source.map(renderFileRow)}
+                        </>
+                    )}
+
                     {/* G-Code Section */}
                     {editGroups.gcode.length > 0 && (
                         <>
@@ -516,7 +545,7 @@ export const RelatedFilesSection_DB = ({
         <div className="space-y-4">
             <Tabs defaultValue="models" className="w-full">
                 <TabsList className="flex w-full bg-muted/10 border border-border/40 p-1 h-auto gap-1 mb-6 rounded-xl overflow-hidden backdrop-blur-sm shadow-inner">
-                    {['models', 'docs', 'gcode'].map((key) => (
+                    {['models', 'docs', 'gcode', 'source'].map((key) => (
                         <TabsTrigger
                             key={key}
                             value={key}
@@ -532,7 +561,10 @@ export const RelatedFilesSection_DB = ({
                                 {key === 'models' && <Box className="h-3.5 w-3.5" />}
                                 {key === 'docs' && <Paperclip className="h-3.5 w-3.5" />}
                                 {key === 'gcode' && <FileCode className="h-3.5 w-3.5" />}
-                                <span className="hidden sm:inline">{key.replace('gcode', 'G-Code')}</span>
+                                {key === 'source' && <Cpu className="h-3.5 w-3.5" />}
+                                <span className="hidden sm:inline">
+                                    {key === 'gcode' ? 'G-Code' : key === 'source' ? 'Source Files' : key}
+                                </span>
                                 <span className="opacity-40 tabular-nums">({categories[key as keyof typeof categories].length})</span>
                             </div>
                         </TabsTrigger>
@@ -546,7 +578,6 @@ export const RelatedFilesSection_DB = ({
                             <ModelFileCard
                                 key={`${path}-${idx}`}
                                 path={path}
-                                deriveMunchieCandidate={deriveMunchieCandidate}
                                 isActive={active3DFile === path}
                                 onJump={() => handleJumpToModel(path)}
                                 onPromote={() => handleSetMainModel(path)}
@@ -559,8 +590,8 @@ export const RelatedFilesSection_DB = ({
                     </div>
                 </TabsContent>
 
-                {/* DOCS & GCODE - Lab Notebook Style */}
-                {['docs', 'gcode'].map((tabKey) => (
+                {/* DOCS, GCODE, SOURCE - Lab Notebook Style */}
+                {['docs', 'gcode', 'source'].map((tabKey) => (
                     <TabsContent key={tabKey} value={tabKey} className="mt-0 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
                         {categories[tabKey as keyof typeof categories].length > 0 ? (
                             categories[tabKey as keyof typeof categories].map((path, idx) => {

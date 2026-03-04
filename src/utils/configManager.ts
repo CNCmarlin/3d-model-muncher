@@ -32,6 +32,11 @@ export class ConfigManager {
       gcodeOverwriteBehavior: 'prompt',
       gcodeStorageBehavior: 'save-and-link',
       scanStrategy: 'smart',
+      buildPlatePresets: [
+        { name: 'Ender 3', width: 230, height: 230 },
+        { name: 'Prusa MK3', width: 250, height: 210 },
+        { name: 'Bambu Lab X1', width: 256, height: 256 }
+      ]
     },
     filters: {
       defaultCategory: "all",
@@ -121,6 +126,9 @@ export class ConfigManager {
           : this.defaultConfig.settings.modelDirectory,
         gcodeOverwriteBehavior: config?.settings?.gcodeOverwriteBehavior || this.defaultConfig.settings.gcodeOverwriteBehavior,
         gcodeStorageBehavior: config?.settings?.gcodeStorageBehavior || this.defaultConfig.settings.gcodeStorageBehavior,
+        buildPlatePresets: Array.isArray(config?.settings?.buildPlatePresets)
+          ? config.settings.buildPlatePresets.filter(p => p.name && typeof p.width === 'number' && typeof p.height === 'number')
+          : this.defaultConfig.settings.buildPlatePresets,
       },
       filters: {
         defaultCategory: typeof config?.filters?.defaultCategory === 'string' && config.filters.defaultCategory.trim() !== ''

@@ -32,7 +32,7 @@ export function adaptDbModelToLegacy(dbModel: DbModel): LegacyModel {
         // Identity
         id: dbModel.id,
         name: dbModel.name,
-        filePath: dbModel.filePath || dbModel.pathHash || '',
+        filePath: dbModel.modelUrl?.replace(/^\/models\//, '') || dbModel.pathHash || '',
 
         // Collections (KEY TRANSFORM: single → array)
         collections: dbModel.collectionId ? [dbModel.collectionId] : [],
@@ -58,8 +58,26 @@ export function adaptDbModelToLegacy(dbModel: DbModel): LegacyModel {
         // Images - Reconstruct from ModelImage relation (Batch 5), fall back to metadata
         thumbnail: parsedMetadata.thumbnail || (dbModel.thumbnailPath ? `/models/${dbModel.thumbnailPath}` : undefined),
         parsedImages: (() => {
-            // If we have ModelImage relations, the parsedImages concept is replaced
-            // Just fall back to metadata or thumbnailPath
+            // DB-first: build parsedImages from ModelImage rows (source: 'thumbnail') with embedded priority.
+            // '-embedded-thumb' in path = extracted from 3MF. Sort these first so resolveModelThumbnail
+            // returns the embedded image as parsedImages[0] (the cover thumbnail).
+            if (dbModel.images && dbModel.images.length > 0) {
+                const thumbImages = (dbModel.images as any[])
+                    .filter(img => img.source === 'thumbnail')
+                    .sort((a, b) => {
+                        const aIsEmbedded = (a.path || '').includes('-embedded-thumb');
+                        const bIsEmbedded = (b.path || '').includes('-embedded-thumb');
+                        if (aIsEmbedded && !bIsEmbedded) return -1; // embedded first
+                        if (!aIsEmbedded && bIsEmbedded) return 1;
+                        return a.order - b.order; // preserve insertion order otherwise
+                    });
+                if (thumbImages.length > 0) {
+                    return thumbImages.map(img =>
+                        img.path.startsWith('/') ? img.path : `/models/${img.path}`
+                    );
+                }
+            }
+            // Fallback: legacy parsedImages from JSON blob, then thumbnailPath column
             if (parsedMetadata.parsedImages?.length) return parsedMetadata.parsedImages;
             if (dbModel.thumbnailPath) return [`/models/${dbModel.thumbnailPath}`];
             return [];
@@ -118,7 +136,7 @@ export function adaptDbModelToLegacy(dbModel: DbModel): LegacyModel {
         price: dbModel.price ?? null,
         hidden: (dbModel as any).isHidden ?? false,
         isRelatedPart: (dbModel as any).isComponent ?? false,
-        isProjectRoot: !(dbModel as any).isComponent && dbModel.filePath?.includes('/'),
+        isProjectRoot: dbModel.isMainModel ?? (!(dbModel as any).isComponent && (dbModel.modelUrl?.replace(/^\/models\//, '') || '').includes('/')),
         related_files: dbModel.relatedFiles?.map((rf: any) => rf.path) || [],
 
         // Batch 5: Reconstruct gallery and thumbnails map from ModelImage relation

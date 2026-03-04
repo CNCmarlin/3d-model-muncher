@@ -119,7 +119,7 @@ class MutationServiceLegacy {
         if (!changes && (data.tags || data.userDefined || data.related_files || data.description)) {
             changes = { ...data };
             delete changes.id;
-            delete changes.filePath;
+            delete changes.primaryModelPath;
         }
 
         // ID Lookup Logic (Parity with Legacy PATCH)
@@ -195,14 +195,15 @@ class MutationServiceLegacy {
         } catch (e) { }
 
         // Project Root Handling (Demotion)
-        if (cleanChanges.isProjectRoot === true) {
+        if (cleanChanges.isMainModel === true || cleanChanges.isProjectRoot === true) {
             const parentDir = path.dirname(absoluteFilePath);
             try {
                 const peers = fs.readdirSync(parentDir).filter(f => f.endsWith('munchie.json') && path.join(parentDir, f) !== absoluteFilePath);
                 for (const p of peers) {
                     const pPath = path.join(parentDir, p);
                     const pData = JSON.parse(fs.readFileSync(pPath, 'utf8'));
-                    if (pData.isProjectRoot) {
+                    if (pData.isMainModel || pData.isProjectRoot) {
+                        pData.isMainModel = false;
                         pData.isProjectRoot = false;
                         pData.isRelatedPart = true;
                         pData.hidden = true;

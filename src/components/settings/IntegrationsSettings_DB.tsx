@@ -1,10 +1,10 @@
+import { SearchableSelect_DB } from '@/components/common/SearchableSelect_DB';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { AppConfig, PrinterConfig } from '@/types/config';
+import { AppConfig } from '@/types/config';
 import { CheckCircle2, Cloud, Cpu, ExternalLink, Loader2, Save, XCircle } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -43,7 +43,7 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
   const [ollamaModel, setOllamaModel] = useState('llava');
 
   // Printer Slot variables
-  const [activePrinterIndex, setActivePrinterIndex] = useState(0); // eslint-disable-line @typescript-eslint/no-unused-vars
+  // const [activePrinterIndex, setActivePrinterIndex] = useState(0); // eslint-disable-line @typescript-eslint/no-unused-vars
 
   // Sync with incoming config
   useEffect(() => {
@@ -155,6 +155,7 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
   };
 
   // --- PRINTER LOGIC ---
+  /*
   const _currentPrinterConfig: PrinterConfig = config.integrations?.printers?.[activePrinterIndex] || {
     type: 'moonraker',
     url: '',
@@ -184,6 +185,7 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
     };
     onConfigChange(newConfig);
   };
+  */
 
   const handleSaveAll = () => {
     const newConfig: AppConfig = {
@@ -263,17 +265,17 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
           <div className="flex gap-4 items-end">
             <div className="grid gap-2 flex-1">
               <Label>Active Provider</Label>
-              <Select value={aiProvider} onValueChange={(v: any) => setAiProvider(v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select AI Provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="google">Google Cloud (Gemini)</SelectItem>
-                  <SelectItem value="openai">OpenAI (GPT-4)</SelectItem>
-                  <SelectItem value="ollama">Ollama (Local)</SelectItem>
-                  <SelectItem value="none">Disabled</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect_DB
+                value={aiProvider}
+                onValueChange={(v: any) => setAiProvider(v)}
+                placeholder="Select AI Provider"
+                options={[
+                  { value: 'google', label: 'Google Cloud (Gemini)' },
+                  { value: 'openai', label: 'OpenAI (GPT-4)' },
+                  { value: 'ollama', label: 'Ollama (Local)' },
+                  { value: 'none', label: 'Disabled' }
+                ]}
+              />
             </div>
             {aiProvider !== 'none' && (
               <Button variant="outline" onClick={handleTestAI} disabled={aiTestStatus === 'loading'}>
@@ -287,13 +289,15 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
               <div className="space-y-4">
                 <div className="grid gap-2">
                   <Label>Connection Type</Label>
-                  <Select value={googleType} onValueChange={(v: any) => setGoogleType(v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="vertex">Vertex AI (Recommended)</SelectItem>
-                      <SelectItem value="studio">AI Studio (API Key)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect_DB
+                    value={googleType}
+                    onValueChange={(v: any) => setGoogleType(v)}
+                    placeholder="Select Connection Type"
+                    options={[
+                      { value: 'vertex', label: 'Vertex AI (Recommended)' },
+                      { value: 'studio', label: 'AI Studio (API Key)' }
+                    ]}
+                  />
                 </div>
                 {googleType === 'studio' ? (
                   <div className="grid gap-2">
@@ -380,21 +384,16 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
              <CardDescription>Configure up to 6 printers.</CardDescription>
           </div>
           
-          <Select 
+          <SearchableSelect_DB
             value={activePrinterIndex.toString()} 
             onValueChange={(v) => setActivePrinterIndex(parseInt(v))}
-          >
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="Select Printer" />
-            </SelectTrigger>
-            <SelectContent>
-              {[0, 1, 2, 3, 4, 5].map((i) => (
-                <SelectItem key={i} value={i.toString()}>
-                  Printer {i + 1}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            placeholder="Select Printer"
+            className="w-[140px]"
+            options={[0, 1, 2, 3, 4, 5].map((i) => ({
+                value: i.toString(),
+                label: `Printer ${i + 1}`
+            }))}
+          />
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -402,17 +401,15 @@ export const IntegrationsSettings_DB: React.FC<IntegrationsSettingsProps> = ({ c
             
             <div className="space-y-2">
               <Label>Printer Type</Label>
-              <Select
+              <SearchableSelect_DB
                 value={currentPrinterConfig.type || 'moonraker'}
                 onValueChange={(val) => handlePrinterUpdate('type', val)}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="moonraker">Klipper (Moonraker)</SelectItem>
-                  <SelectItem value="octoprint">OctoPrint</SelectItem>
-                  <SelectItem value="bambu">Bambu Lab</SelectItem>
-                </SelectContent>
-              </Select>
+                options={[
+                  { value: 'moonraker', label: 'Klipper (Moonraker)' },
+                  { value: 'octoprint', label: 'OctoPrint' },
+                  { value: 'bambu', label: 'Bambu Lab' }
+                ]}
+              />
             </div>
 
             <div className="space-y-2">

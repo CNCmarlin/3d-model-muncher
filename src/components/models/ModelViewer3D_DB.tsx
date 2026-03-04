@@ -58,7 +58,9 @@ export const ModelViewer3D_DB = memo(({ modelUrl, modelName = "3D Model", onCapt
   // capture when its value changes.
   // The actual prop value is read via arguments above (captureTrigger) via props.
 
-  const is3MF = modelUrl?.toLowerCase().endsWith('.3mf');
+  // 3MF files have embedded material colors; OBJ (without MTL) does not.
+  // Only hide the Palette toggle for 3MF since swapping materials destroys its color data.
+  const hasEmbeddedColors = modelUrl?.toLowerCase().endsWith('.3mf');
 
   // Reset states when component unmounts or model changes
   useEffect(() => {
@@ -251,7 +253,7 @@ export const ModelViewer3D_DB = memo(({ modelUrl, modelName = "3D Model", onCapt
           <TooltipContent sideOffset={8}>{isWireframe ? 'Solid view' : 'Wireframe view'}</TooltipContent>
         </Tooltip>
 
-        {!is3MF && (
+        {!hasEmbeddedColors && (
           <Tooltip>
             <TooltipTrigger>
               <Button

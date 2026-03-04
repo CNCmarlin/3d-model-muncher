@@ -1,4 +1,5 @@
 import { GenerateThumbnailsDialog } from '@/components/modals/GenerateThumbnailsDialog';
+import { DynamicCollectionModeDialog_DB } from '@/components/shared/DynamicCollectionModeDialog_DB';
 import { LastRunLabel } from '@/components/shared/LastRunLabel';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +50,9 @@ export function GeneralSettings({
     } | null>(null);
     const [progress, setProgress] = useState<{ total: number; current: number; status: string } | null>(null);
     const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+
+    const [showModeDialog, setShowModeDialog] = useState(false);
+    const collectionMode = localConfig?.settings?.collectionMode || 'strict';
 
     // Poll for progress when generating
     useEffect(() => {
@@ -426,6 +430,20 @@ export function GeneralSettings({
                             <div className="flex flex-col">
                                 <Label htmlFor="verbose-scan">Verbose Scan Logs</Label>
                                 <span className="text-xs text-muted-foreground">Show detailed output during library scans (useful for debugging)</span>
+                            </div>
+                        </div>
+
+                        {/* Database Dynamic Collection Mode */}
+                        <div className="md:col-span-2 space-y-2 mt-2">
+                            <Label htmlFor="collection-mode">Dynamic Collection Mode (Database)</Label>
+                            <div className="flex items-center gap-4">
+                                <Button variant="outline" size="sm" onClick={() => setShowModeDialog(true)} className="h-9 font-medium capitalize flex items-center gap-2 w-full md:w-1/2">
+                                    <Box className="h-4 w-4" />
+                                    Mode: {collectionMode === 'manual' ? 'Custom' : collectionMode}
+                                </Button>
+                                <p className="text-xs text-muted-foreground w-full md:w-1/2">
+                                    Controls how folders are structured and displayed in the Collections tab instantly on the frontend.
+                                </p>
                             </div>
                         </div>
 
@@ -1039,6 +1057,11 @@ export function GeneralSettings({
                     </div>
                 </CardContent>
             </Card>
-        </div >
+
+            <DynamicCollectionModeDialog_DB
+                open={showModeDialog}
+                onOpenChange={setShowModeDialog}
+            />
+        </div>
     );
 }

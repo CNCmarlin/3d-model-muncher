@@ -4,6 +4,7 @@ import { createElement, useMemo } from 'react';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader';
 // @ts-ignore
 import * as THREE from 'three';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader';
 
 interface ModelMeshProps {
@@ -14,16 +15,28 @@ interface ModelMeshProps {
   onBoundingBox?: (box: THREE.Box3 | null) => void;
 }
 
+type FileFormat = 'stl' | '3mf' | 'obj';
+
+function getFileFormat(url: string): FileFormat {
+  const ext = url.toLowerCase().split('.').pop();
+  if (ext === 'stl') return 'stl';
+  if (ext === 'obj') return 'obj';
+  return '3mf';
+}
+
+function getLoader(format: FileFormat) {
+  if (format === 'stl') return STLLoader;
+  if (format === 'obj') return OBJLoader;
+  return ThreeMFLoader;
+}
+
 export function ModelMesh_DB({ modelUrl, isWireframe, materialType = 'standard', customColor, onBoundingBox }: ModelMeshProps) {
-  // Determine the file type from the URL
-  const fileExtension = modelUrl.toLowerCase().split('.').pop();
-  const isSTL = fileExtension === 'stl';
+  const format = getFileFormat(modelUrl);
+  const isSTL = format === 'stl';
 
   // Load the model with the appropriate loader
-  const modelData = useLoader(isSTL ? STLLoader : ThreeMFLoader, modelUrl);
+  const modelData = useLoader(getLoader(format) as any, modelUrl);
 
-  // For STL files, we need to wrap the geometry in a mesh with a material
-  // For 3MF files, we get a Group object that can be used directly
   const group = useMemo(() => {
     const material = materialType === 'normal'
       ? new THREE.MeshNormalMaterial()
@@ -34,48 +47,46 @@ export function ModelMesh_DB({ modelUrl, isWireframe, materialType = 'standard',
       });
 
     if (isSTL) {
-      // STL loader returns a BufferGeometry, so we need to create a mesh
+      // STL loader returns a BufferGeometry — wrap in a mesh + group
       const geometry = modelData as THREE.BufferGeometry;
       const mesh = new THREE.Mesh(geometry, material);
-
-      // Create a group to contain the mesh (similar to 3MF structure)
-      const group = new THREE.Group();
-      group.add(mesh);
-      // Rotate the group to make the model upright (common for STL files)
-      group.rotation.x = -Math.PI / 2;
-      return group;
+      const grp = new THREE.Group();
+      grp.add(mesh);
+      grp.rotation.x = -Math.PI / 2;
+      return grp;
     } else {
-      // 3MF loader returns a Group object directly
-      const group = modelData as THREE.Group;
+      // 3MF and OBJ loaders both return a Group
+      const grp = (modelData as THREE.Group).clone();
       if (materialType === 'normal') {
-        // Apply normal material to all meshes in the 3MF group
-        group.traverse((child: any) => {
+        grp.traverse((child: any) => {
           if (child.isMesh) {
             child.material = material;
           }
         });
       } else if (customColor) {
-        // Tint existing materials with custom color
-        group.traverse((child: any) => {
+        grp.traverse((child: any) => {
           if (child.isMesh && child.material) {
             if (Array.isArray(child.material)) {
               child.material.forEach((mat: any) => {
-                if (mat.color) {
-                  mat.color.set(customColor);
-                }
+                if (mat.color) mat.color.set(customColor);
               });
             } else if (child.material.color) {
               child.material.color.set(customColor);
             }
           }
         });
+      } else if (format === 'obj') {
+        // OBJ files may not have materials — apply a default standard material
+        grp.traverse((child: any) => {
+          if (child.isMesh) {
+            child.material = material;
+          }
+        });
       }
-      // For 'standard' without customColor, keep original materials
-      // Rotate the group to make the model upright (consistent with STL)
-      group.rotation.x = -Math.PI / 2;
-      return group;
+      grp.rotation.x = -Math.PI / 2;
+      return grp;
     }
-  }, [modelData, isSTL, materialType, customColor]);
+  }, [modelData, isSTL, format, materialType, customColor]);
 
   // Recursively set wireframe on all mesh materials if needed
   useMemo(() => {
@@ -106,11 +117,8 @@ export function ModelMesh_DB({ modelUrl, isWireframe, materialType = 'standard',
     } else if (onBoundingBox) {
       onBoundingBox(null);
     }
-    // Only run when group or onBoundingBox changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group, onBoundingBox]);
 
-  // The loaded group is a THREE.Group, which can be rendered as a primitive
-  // Use createElement to bypass type checking for 'primitive'
   return createElement('primitive', { object: group });
 }

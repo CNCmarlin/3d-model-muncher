@@ -1,7 +1,7 @@
 
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AppConfig } from "@/types/config";
 import { applyThemeColor } from "@/utils/themeUtils";
 import { Check, Palette, Settings } from "lucide-react";
@@ -129,50 +129,47 @@ export function PhasePreferences_DB({ config, onUpdateConfig }: PhasePreferences
                     {/* Default View */}
                     <div className="space-y-2">
                         <Label>Default View</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={config.settings.defaultView || 'grid'}
                             onValueChange={(val) => updateSetting('defaultView', val)}
-                        >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="grid">Grid</SelectItem>
-                                <SelectItem value="list">List</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            placeholder="Select default view..."
+                            options={[
+                                { value: 'grid', label: 'Grid' },
+                                { value: 'list', label: 'List' }
+                            ]}
+                        />
                     </div>
 
                     {/* Grid Density */}
                     <div className="space-y-2">
                         <Label>Grid Density</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={String(config.settings.defaultGridDensity || 4)}
                             onValueChange={(val) => updateSetting('defaultGridDensity', parseInt(val))}
-                        >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="1">1 Column</SelectItem>
-                                <SelectItem value="2">2 Columns</SelectItem>
-                                <SelectItem value="3">3 Columns</SelectItem>
-                                <SelectItem value="4">4 Columns</SelectItem>
-                                <SelectItem value="5">5 Columns</SelectItem>
-                                <SelectItem value="6">6 Columns</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            placeholder="Select grid density..."
+                            options={[
+                                { value: '1', label: '1 Column' },
+                                { value: '2', label: '2 Columns' },
+                                { value: '3', label: '3 Columns' },
+                                { value: '4', label: '4 Columns' },
+                                { value: '5', label: '5 Columns' },
+                                { value: '6', label: '6 Columns' }
+                            ]}
+                        />
                     </div>
 
                     {/* Default Model View */}
                     <div className="space-y-2">
                         <Label>Model Viewer</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={config.settings.defaultModelView || '3d'}
                             onValueChange={(val) => updateSetting('defaultModelView', val)}
-                        >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="3d">Interactive 3D</SelectItem>
-                                <SelectItem value="images">Image Carousel</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            placeholder="Select model viewer..."
+                            options={[
+                                { value: '3d', label: 'Interactive 3D' },
+                                { value: 'images', label: 'Image Carousel' }
+                            ]}
+                        />
                     </div>
                 </div>
             </div>
@@ -183,65 +180,62 @@ export function PhasePreferences_DB({ config, onUpdateConfig }: PhasePreferences
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 border rounded-xl bg-card">
                     <div className="space-y-2">
                         <Label>Primary Field</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={config.settings.modelCardPrimary || 'none'}
                             onValueChange={(val) => updateSetting('modelCardPrimary', val)}
-                        >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">None</SelectItem>
-                                <SelectItem value="printTime">Print Time</SelectItem>
-                                <SelectItem value="filamentUsed">Filament Used</SelectItem>
-                                <SelectItem value="fileSize">File Size</SelectItem>
-                                <SelectItem value="category">Category</SelectItem>
-                                <SelectItem value="designer">Designer</SelectItem>
-                                <SelectItem value="layerHeight">Layer Height</SelectItem>
-                                <SelectItem value="nozzle">Nozzle Size</SelectItem>
-                                <SelectItem value="price">Price</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            placeholder="None"
+                            options={[
+                                { value: 'none', label: 'None' },
+                                { value: 'printTime', label: 'Print Time' },
+                                { value: 'filamentUsed', label: 'Filament Used' },
+                                { value: 'fileSize', label: 'File Size' },
+                                { value: 'category', label: 'Category' },
+                                { value: 'designer', label: 'Designer' },
+                                { value: 'layerHeight', label: 'Layer Height' },
+                                { value: 'nozzle', label: 'Nozzle Size' },
+                                { value: 'price', label: 'Price' }
+                            ]}
+                        />
                     </div>
 
                     <div className="space-y-2">
                         <Label>Secondary Field</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={config.settings.modelCardSecondary || 'none'}
                             onValueChange={(val) => updateSetting('modelCardSecondary', val)}
-                        >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">None</SelectItem>
-                                <SelectItem value="printTime">Print Time</SelectItem>
-                                <SelectItem value="filamentUsed">Filament Used</SelectItem>
-                                <SelectItem value="fileSize">File Size</SelectItem>
-                                <SelectItem value="category">Category</SelectItem>
-                                <SelectItem value="designer">Designer</SelectItem>
-                                <SelectItem value="layerHeight">Layer Height</SelectItem>
-                                <SelectItem value="nozzle">Nozzle Size</SelectItem>
-                                <SelectItem value="price">Price</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            placeholder="None"
+                            options={[
+                                { value: 'none', label: 'None' },
+                                { value: 'printTime', label: 'Print Time' },
+                                { value: 'filamentUsed', label: 'Filament Used' },
+                                { value: 'fileSize', label: 'File Size' },
+                                { value: 'category', label: 'Category' },
+                                { value: 'designer', label: 'Designer' },
+                                { value: 'layerHeight', label: 'Layer Height' },
+                                { value: 'nozzle', label: 'Nozzle Size' },
+                                { value: 'price', label: 'Price' }
+                            ]}
+                        />
                     </div>
 
                     <div className="space-y-2">
                         <Label>Tertiary Field</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={config.settings.modelCardTertiary || 'none'}
                             onValueChange={(val) => updateSetting('modelCardTertiary', val)}
-                        >
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">None</SelectItem>
-                                <SelectItem value="printTime">Print Time</SelectItem>
-                                <SelectItem value="filamentUsed">Filament Used</SelectItem>
-                                <SelectItem value="fileSize">File Size</SelectItem>
-                                <SelectItem value="category">Category</SelectItem>
-                                <SelectItem value="designer">Designer</SelectItem>
-                                <SelectItem value="layerHeight">Layer Height</SelectItem>
-                                <SelectItem value="nozzle">Nozzle Size</SelectItem>
-                                <SelectItem value="price">Price</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            placeholder="None"
+                            options={[
+                                { value: 'none', label: 'None' },
+                                { value: 'printTime', label: 'Print Time' },
+                                { value: 'filamentUsed', label: 'Filament Used' },
+                                { value: 'fileSize', label: 'File Size' },
+                                { value: 'category', label: 'Category' },
+                                { value: 'designer', label: 'Designer' },
+                                { value: 'layerHeight', label: 'Layer Height' },
+                                { value: 'nozzle', label: 'Nozzle Size' },
+                                { value: 'price', label: 'Price' }
+                            ]}
+                        />
                     </div>
                 </div>
             </div>

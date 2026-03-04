@@ -11,9 +11,9 @@ import { BulkEditSection_DB } from "./BulkEditSection_DB";
 import { BulkTagEditor_DB } from "./BulkTagEditor_DB";
 
 // UI Components
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // Constants
 import { LICENSES } from '@/constants/licenses';
@@ -78,12 +78,13 @@ export function BulkOperationsPanel_DB({
                             <div className="space-y-2">
                                 <Label>Target Collection</Label>
                                 <div className="flex gap-2">
-                                    <Select value={editState.collectionId || ''} onValueChange={setCollectionId}>
-                                        <SelectTrigger className="flex-1"><SelectValue placeholder="Select collection" /></SelectTrigger>
-                                        <SelectContent>
-                                            {collectionsList.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
+                                    <SearchableSelect_DB
+                                        value={editState.collectionId || ''}
+                                        onValueChange={setCollectionId}
+                                        placeholder="Select collection"
+                                        className="flex-1"
+                                        options={collectionsList.map(c => ({ value: c.id, label: c.name || 'Unnamed' }))}
+                                    />
                                     {onOpenCollectionCreator && (
                                         <Button
                                             variant="outline"
@@ -98,13 +99,13 @@ export function BulkOperationsPanel_DB({
                             </div>
                             <div className="space-y-2">
                                 <Label>Operation</Label>
-                                <Select value={editState.collectionAction || 'none'} onValueChange={(v: any) => setCollectionAction(v)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="add">Move to collection</SelectItem>
-                                        {/* <SelectItem value="remove">Remove from collection</SelectItem> -- TODO: Verify if this is valid for single-parent */}
-                                    </SelectContent>
-                                </Select>
+                                <SearchableSelect_DB
+                                    value={editState.collectionAction || 'none'}
+                                    onValueChange={(v: any) => setCollectionAction(v)}
+                                    options={[
+                                        { value: "add", label: "Move to collection" }
+                                    ]}
+                                />
                             </div>
                         </div>
                     </BulkEditSection_DB>

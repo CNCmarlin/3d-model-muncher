@@ -129,7 +129,7 @@ export const downloadMultipleModels = async (models: Model_db[]) => {
       const safeModelName = model.name.replace(/[^a-z0-9\-_ ]/gi, '').trim() || model.id;
 
       // 1. Add Main File (Root)
-      const mainPath = normalizeModelPath(model.modelUrl || model.filePath);
+      const mainPath = normalizeModelPath((model as any).primaryModelPath || model.modelUrl);
       if (mainPath) {
         const blob = await fetchFileBlob(mainPath);
         if (blob) {

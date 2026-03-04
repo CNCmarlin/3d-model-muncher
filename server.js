@@ -214,6 +214,9 @@ app.use('/api', modelsRouter); // Models Router
 const tagsRouter = routeSelector.getTagRoutes();
 app.use('/api', tagsRouter);
 
+// Database-centric Projects feature
+app.use('/api', routeSelector.getProjectRoutes());
+
 // [FIX] Explicitly serve the capture.html file for Puppeteer
 app.get('/capture.html', (req, res) => {
   const publicPath = path.join(__dirname, 'public', 'capture.html');
@@ -226,6 +229,7 @@ app.get('/capture.html', (req, res) => {
 // Serve static files from the build directory
 app.use(express.static(path.join(__dirname, 'build')));
 app.use('/data/covers', express.static(path.join(process.cwd(), 'data', 'covers')));
+app.use('/data/images', express.static(path.join(process.cwd(), 'data', 'images')));
 
 // Error handler for multipart/form-data upload errors (Multer)
 app.use(function (err, req, res, next) {

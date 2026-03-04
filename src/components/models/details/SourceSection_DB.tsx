@@ -1,7 +1,7 @@
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Model } from "@/types/model_db";
 import { AlertCircle, ExternalLink, Globe } from 'lucide-react';
@@ -91,15 +91,16 @@ export const SourceSection_DB = ({ isEditing, currentModel, editedModel, setEdit
                 <div className="space-y-2">
                     <Label htmlFor="edit-source">Source URL</Label>
                     <div className="flex gap-0">
-                        <Select value={protocol} onValueChange={handleProtocolChange}>
-                            <SelectTrigger className="w-[100px] rounded-r-none border-r-0 h-9 text-xs shrink-0">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="https://">https://</SelectItem>
-                                <SelectItem value="http://">http://</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect_DB
+                            value={protocol}
+                            onValueChange={handleProtocolChange}
+                            placeholder="Protocol"
+                            className="w-[100px] rounded-r-none border-r-0 h-9 text-xs shrink-0"
+                            options={[
+                                { value: "https://", label: "https://" },
+                                { value: "http://", label: "http://" }
+                            ]}
+                        />
                         <Input
                             id="edit-source"
                             type="text" // Use text to avoid browser natively choking on split protocols

@@ -11,7 +11,7 @@ import {
     SheetTitle,
 } from "@/components/ui/sheet";
 import { Info, Loader2, RefreshCw, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 // --- Types ---
@@ -316,7 +316,7 @@ export const MigrationStatus_DB = () => {
                         </thead>
                         <tbody className="divide-y divide-border">
                             {Object.entries(fieldBatches).map(([batchKey, fields]) => (
-                                <>
+                                <React.Fragment key={batchKey}>
                                     <tr key={`batch-header-${batchKey}`}>
                                         <td colSpan={4} className="bg-muted/60 px-3 py-1.5">
                                             <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -358,7 +358,7 @@ export const MigrationStatus_DB = () => {
                                             </tr>
                                         );
                                     })}
-                                </>
+                                </React.Fragment>
                             ))}
                         </tbody>
                     </table>

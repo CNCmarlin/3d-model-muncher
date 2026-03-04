@@ -11,7 +11,9 @@ import { toast } from 'sonner';
 
 // External Components
 import { CollectionEditorDialog_DB } from '@/components/collections/CollectionEditorDialog_DB';
-import { AutoImportDialog_DB } from '@/components/shared/AutoImportDialog_DB'; // Wrapper handles imports if needed, assumes likely exists or I need to find it
+import { DynamicCollectionModeDialog_DB } from '@/components/shared/DynamicCollectionModeDialog_DB';
+import { useConfig } from "@/context/AppConfigContext";
+import { getDynamicModelCount } from '@/utils/collectionUtils_db';
 
 interface CollectionsSettingsProps {
     models: Model[]; // Needed for counts and editor
@@ -20,7 +22,6 @@ interface CollectionsSettingsProps {
 }
 
 export function CollectionsSettings_DB({
-    models,
     categories,
     onCollectionCreatedForBulkEdit
 }: CollectionsSettingsProps) {
@@ -34,6 +35,9 @@ export function CollectionsSettings_DB({
     // Status State (Local to this tab now)
     // const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [statusMessage, setStatusMessage] = useState('');
+
+    const { appConfig } = useConfig();
+    const collectionMode = appConfig?.settings?.collectionMode || 'strict';
 
     // --- EFFECTS (From settings_collections.spec.md) ---
     const fetchCollections = async () => {
@@ -200,14 +204,26 @@ export function CollectionsSettings_DB({
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
+
+                    {/* Database Dynamic Collection Mode */}
+                    <div className="flex flex-col sm:flex-row gap-4 sm:items-center justify-between p-4 bg-muted/30 rounded-lg border mb-6">
+                        <div>
+                            <h3 className="font-medium text-sm">Dynamic Collection Display Mode</h3>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Controls how folders are structured and displayed instantly on the frontend.
+                                Currently set to: <strong className="capitalize">{collectionMode}</strong>
+                            </p>
+                        </div>
+                        <Button variant="outline" onClick={() => setShowImportDialog(true)}>
+                            <FolderOpen className="mr-2 h-4 w-4" />
+                            Dynamic Collection Mode
+                        </Button>
+                    </div>
+
                     <div className="flex flex-wrap gap-2 mb-4">
                         <Button onClick={() => handleCreateCollection('folder')} className="gap-2">
                             <Plus className="h-4 w-4" />
                             Add Collection
-                        </Button>
-                        <Button variant="outline" onClick={() => setShowImportDialog(true)}>
-                            <FolderOpen className="mr-2 h-4 w-4" />
-                            Auto-Import
                         </Button>
 
                         {/* Spacer pushes Delete to the right */}
@@ -244,7 +260,7 @@ export function CollectionsSettings_DB({
                                     <div className="flex flex-col min-w-0">
                                         <span className="font-medium truncate">{collection.name}</span>
                                         <span className="text-xs text-muted-foreground truncate">
-                                            Models: {(collection as any).totalModels ?? collection.modelIds?.length ?? 0} | Category: {(collection as any).category || 'None'}
+                                            Models: {getDynamicModelCount(collection as any, collectionsList, collectionMode)} | Category: {(collection as any).category || 'None'}
                                         </span>
                                     </div>
                                     <Button variant="ghost" size="sm" className="ml-4 flex-shrink-0">
@@ -259,15 +275,13 @@ export function CollectionsSettings_DB({
             </Card>
 
             {/* Dependent Dialogs */}
-            {/* Verify AutoImportDialog_DB exists in imports. If not, this will error in build, but logic is correct. */}
-            <AutoImportDialog_DB
+            <DynamicCollectionModeDialog_DB
                 open={showImportDialog}
                 onOpenChange={setShowImportDialog}
             />
             <CollectionEditorDialog_DB
                 collection={editorCollection}
                 categories={categories}
-                models={models}
                 onSave={handleSaveCollection}
                 onDelete={handleDeleteCollection}
                 open={isEditorOpen}

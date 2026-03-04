@@ -63,7 +63,7 @@ function createInitialModelMetadata(overrides) {
         related_files: overrides.related_files || [],
         hidden: overrides.hidden ?? true,
         isRelatedPart: overrides.isRelatedPart ?? false,
-        isProjectRoot: overrides.isProjectRoot ?? false,
+        isMainModel: overrides.isMainModel ?? false,
         price: 0,
         userDefined: {
             thumbnail: "parsed:0",
@@ -123,13 +123,14 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
             return { path: p, data: d, mtime: fs.statSync(p).mtime };
         });
 
-        const roots = folderMunchies.filter(m => m.data.isProjectRoot === true);
+        const roots = folderMunchies.filter(m => m.data.isMainModel === true || m.data.isProjectRoot === true);
 
         if (roots.length > 1) {
             console.log(`⚠️ Multiple Roots found in ${dir}. Enforcing single King...`);
             // Keep the most recently modified "King"
             roots.sort((a, b) => b.mtime - a.mtime);
             roots.slice(1).forEach(peer => {
+                peer.data.isMainModel = false;
                 peer.data.isProjectRoot = false;
                 // NEW: If we demote a king, it should now become a hidden related part
                 peer.data.hidden = true;
@@ -173,7 +174,7 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 const isGlobalRoot = normalizedCurrentDir === '' || normalizedCurrentDir === '.';
 
                 if (isGlobalRoot) {
-                    const shouldBeHidden = !data.isProjectRoot;
+                    const shouldBeHidden = !data.isMainModel;
                     if (data.hidden !== shouldBeHidden) {
                         data.hidden = shouldBeHidden;
                         hasChanged = true;
@@ -306,7 +307,7 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                     // RELAXED MATCHING (Project Mode): Claim everything in the folder
                     // If this is a Project, and we are the Project Root, we claim all orphans.
                     // If we are just a part in a project, we only claim name-matched stuff to avoid stealing from Root.
-                    const isProjectAndRoot = isProject && data.isProjectRoot;
+                    const isProjectAndRoot = isProject && data.isMainModel;
 
                     // COLLISION CHECK: Is there a "Better" (Longer) match in this folder?
                     // e.g. We are "cam_bed", file is "cam_bed_bottom.stl".
@@ -331,7 +332,7 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                     if (lowerFile.endsWith('munchie.json')) return;
 
                     // If it's a generic name (thumbnail.png), and we are the ONLY model or it's a project root, maybe claim it?
-                    if (isGenericThumb && data.isProjectRoot) {
+                    if (isGenericThumb && data.isMainModel) {
                         shouldClaim = true;
                     }
 
@@ -467,7 +468,7 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                     // If we are in a Project, we assume the user put these images here for a reason.
                     // We only scrub if they are physically missing or explicitly wrong path.
                     // We DO NOT scrub for name mismatch in projects.
-                    const isLegit = isNameMatch || (data.isProjectRoot && isGenericThumb) || isProject;
+                    const isLegit = isNameMatch || (data.isMainModel && isGenericThumb) || isProject;
 
                     if (!isPhysicallyHere) {
                         proposal.deletions.push(`${imgUrl} (Stale - Not found in folder)`);
@@ -713,6 +714,23 @@ router.post('/library-revert', async (req, res) => {
     }
 });
 
+// POST /api/admin/db-heal
+// DB-native heal: extract 3MF embedded thumbnails, claim gallery images, scrub stale ModelImage rows.
+// Body: { dryRun?: boolean }
+router.post('/db-heal', async (req, res) => {
+    const { dryRun = false } = req.body;
+    console.log(`➡️ DB Heal requested (dryRun=${dryRun})`);
+    try {
+        const { heal } = require('../services/healService_db');
+        const report = await heal(Boolean(dryRun));
+        console.log(`✅ DB Heal complete. embedded=${report.embedded.extracted}, gallery=${report.gallery.added}, stale=${report.stale.removed}`);
+        res.json({ success: true, report });
+    } catch (err) {
+        console.error('DB Heal error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // GET /api/admin/library-check-backups
 router.get('/library-check-backups', async (req, res) => {
     const modelsDir = getAbsoluteModelsPath();
@@ -789,9 +807,16 @@ router.post('/library-resync', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Models directory not found' });
         }
 
-        // ── 1. Scan filesystem recursively for model files ──
-        const MODEL_EXTENSIONS = new Set(['.stl', '.3mf', '.obj', '.step', '.gcode', '.bgcode']);
+        // ── 1. Scan filesystem recursively for model & source files ──
+        const MODEL_EXTENSIONS = new Set(['.stl', '.3mf', '.obj', '.gcode', '.bgcode']);
+        const SOURCE_EXTENSIONS = new Set([
+            '.f3d', '.f3z', '.step', '.stp', '.iges', '.igs',
+            '.fcstd', '.blend', '.skp', '.dxf', '.dwg',
+            '.x3d', '.dae', '.c4d', '.lwo', '.lws', '.scad', '.amf', '.ply'
+        ]);
+
         const diskFiles = new Map(); // relPath → { absPath, size, ext }
+        const diskSourceFiles = new Map();
 
         function scanDir(dir) {
             let entries;
@@ -802,42 +827,66 @@ router.post('/library-resync', async (req, res) => {
                     scanDir(fullPath);
                 } else {
                     const ext = path.extname(entry.name).toLowerCase();
-                    if (MODEL_EXTENSIONS.has(ext)) {
+                    if (MODEL_EXTENSIONS.has(ext) || SOURCE_EXTENSIONS.has(ext)) {
                         const relPath = path.relative(modelsDir, fullPath).replace(/\\/g, '/');
                         let size = 0;
                         try { size = fs.statSync(fullPath).size; } catch { }
-                        diskFiles.set(relPath, { absPath: fullPath, size, ext });
+
+                        if (MODEL_EXTENSIONS.has(ext)) {
+                            diskFiles.set(relPath, { absPath: fullPath, size, ext });
+                        } else {
+                            diskSourceFiles.set(relPath, { absPath: fullPath, size, ext });
+                        }
                     }
                 }
             }
         }
         scanDir(modelsDir);
 
-        // ── 2. Query DB for all ModelFile records + Model.filePath ──
-        const [dbFiles, dbModels] = await Promise.all([
+        // ── 2. Query DB for ModelFile, Model.modelUrl, and ModelRelatedFile ──
+        const [dbFiles, dbModels, dbRelatedFiles] = await Promise.all([
             prisma.modelFile.findMany({ select: { id: true, filePath: true, modelId: true, filename: true } }),
-            prisma.model.findMany({ select: { id: true, name: true, filePath: true } }),
+            prisma.model.findMany({ select: { id: true, name: true, modelUrl: true } }),
+            prisma.modelRelatedFile.findMany({ select: { id: true, path: true } }),
         ]);
 
         // Build lookup sets
         const dbFilePathSet = new Set(dbFiles.map(f => f.filePath));
-        const dbModelPathSet = new Set(dbModels.filter(m => m.filePath).map(m => m.filePath));
+        // Derive relative path from modelUrl (strips /models/ prefix) for orphan cross-reference
+        const dbModelPathSet = new Set(
+            dbModels
+                .filter(m => m.modelUrl)
+                .map(m => m.modelUrl.replace(/^\/models\//, ''))
+        );
+        const dbRelatedPathSet = new Set(dbRelatedFiles.map(f => f.path));
 
         // ── 3. Cross-reference: Orphans (on disk, no DB record) ──
         const orphans = [];
         for (const [relPath, info] of diskFiles) {
-            if (!dbFilePathSet.has(relPath)) {
-                // Also check if it matches a Model.filePath (some models use filePath as direct path)
-                if (!dbModelPathSet.has(relPath)) {
-                    orphans.push({
-                        path: relPath,
-                        size: info.size,
-                        ext: info.ext,
-                        sizeFormatted: info.size > 1048576
-                            ? `${(info.size / 1048576).toFixed(1)} MB`
-                            : `${(info.size / 1024).toFixed(1)} KB`,
-                    });
-                }
+            if (!dbFilePathSet.has(relPath) && !dbModelPathSet.has(relPath)) {
+                orphans.push({
+                    path: relPath,
+                    size: info.size,
+                    ext: info.ext,
+                    sizeFormatted: info.size > 1048576
+                        ? `${(info.size / 1048576).toFixed(1)} MB`
+                        : `${(info.size / 1024).toFixed(1)} KB`,
+                });
+            }
+        }
+
+        const sourceOrphans = [];
+        for (const [relPath, info] of diskSourceFiles) {
+            // Source files are tracked primarily as ModelRelatedFiles
+            if (!dbRelatedPathSet.has(relPath)) {
+                sourceOrphans.push({
+                    path: relPath,
+                    size: info.size,
+                    ext: info.ext,
+                    sizeFormatted: info.size > 1048576
+                        ? `${(info.size / 1048576).toFixed(1)} MB`
+                        : `${(info.size / 1024).toFixed(1)} KB`,
+                });
             }
         }
 
@@ -855,16 +904,18 @@ router.post('/library-resync', async (req, res) => {
             }
         }
 
-        // ── 5. Cross-reference: Model path ghosts (Model.filePath missing on disk) ──
+        // ── 5. Cross-reference: Model path ghosts (modelUrl path missing on disk) ──
+        // modelUrl format: /models/relative/path.stl — strip prefix for filesystem check.
         const modelGhosts = [];
         for (const model of dbModels) {
-            if (!model.filePath) continue;
-            const absPath = path.join(modelsDir, model.filePath);
+            if (!model.modelUrl) continue; // No URL set — skip
+            const relPath = model.modelUrl.replace(/^\/models\//, '');
+            const absPath = path.join(modelsDir, relPath);
             if (!fs.existsSync(absPath)) {
                 modelGhosts.push({
                     id: model.id,
                     name: model.name,
-                    filePath: model.filePath,
+                    filePath: relPath, // keep key name for API compat
                 });
             }
         }
@@ -876,10 +927,12 @@ router.post('/library-resync', async (req, res) => {
                 totalDbFiles: dbFiles.length,
                 totalModels: dbModels.length,
                 orphanCount: orphans.length,
+                sourceOrphanCount: sourceOrphans.length,
                 ghostCount: ghosts.length,
                 modelGhostCount: modelGhosts.length,
             },
             orphans,
+            sourceOrphans,
             ghosts,
             modelGhosts,
         });
@@ -987,6 +1040,105 @@ router.post('/resync-link-orphans', async (req, res) => {
         res.json({ success: true, linked, skipped, errors: errors.length > 0 ? errors : undefined });
     } catch (err) {
         console.error('Link Orphans Error:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// POST /api/admin/resync-apply-batch
+// Master endpoint to apply multiple resync resolutions at once
+router.post('/resync-apply-batch', async (req, res) => {
+    try {
+        const prisma = require('../../server-utils/db');
+        const modelsDir = getAbsoluteModelsPath();
+        const { purgeGhostIds, purgeModelGhostIds, linkOrphanPaths, linkSourceOrphanPaths, applyHeal } = req.body;
+
+        const results = {
+            ghostsPurged: 0,
+            modelGhostsPurged: 0,
+            orphansLinked: 0,
+            sourceOrphansLinked: 0,
+            healReport: null,
+            errors: []
+        };
+
+        // 1. Purge Ghosts
+        if (purgeGhostIds && Array.isArray(purgeGhostIds) && purgeGhostIds.length > 0) {
+            try {
+                const result = await prisma.modelFile.deleteMany({ where: { id: { in: purgeGhostIds } } });
+                results.ghostsPurged = result.count;
+            } catch (e) {
+                results.errors.push(`Failed to purge ghosts: ${e.message}`);
+            }
+        }
+
+        // 2. Purge Model Ghosts
+        if (purgeModelGhostIds && Array.isArray(purgeModelGhostIds) && purgeModelGhostIds.length > 0) {
+            try {
+                const result = await prisma.model.deleteMany({ where: { id: { in: purgeModelGhostIds } } });
+                results.modelGhostsPurged = result.count;
+            } catch (e) {
+                results.errors.push(`Failed to purge model ghosts: ${e.message}`);
+            }
+        }
+
+        // 3. Link Orphans & Source Orphans
+        // Combine them for processing, but track metrics separately if needed
+        const allPathsToLink = [
+            ...(Array.isArray(linkOrphanPaths) ? linkOrphanPaths.map(p => ({ path: p, isSource: false })) : []),
+            ...(Array.isArray(linkSourceOrphanPaths) ? linkSourceOrphanPaths.map(p => ({ path: p, isSource: true })) : [])
+        ];
+
+        if (allPathsToLink.length > 0) {
+            // Re-use logic from resync-link-orphans
+            const allModelFiles = await prisma.modelFile.findMany({ select: { filePath: true, modelId: true } });
+            const dirToModelId = new Map();
+            for (const mf of allModelFiles) {
+                if (!mf.filePath) continue;
+                const dir = mf.filePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
+                if (dir && !dirToModelId.has(dir)) {
+                    dirToModelId.set(dir, mf.modelId);
+                }
+            }
+
+            for (const item of allPathsToLink) {
+                const normalizedPath = item.path.replace(/\\/g, '/');
+                const dir = normalizedPath.split('/').slice(0, -1).join('/');
+                const modelId = dirToModelId.get(dir);
+
+                if (!modelId) continue;
+
+                // Check existence
+                const existing = await prisma.modelRelatedFile.findFirst({
+                    where: { modelId, path: normalizedPath },
+                });
+
+                if (!existing) {
+                    try {
+                        await prisma.modelRelatedFile.create({
+                            data: { modelId, path: normalizedPath },
+                        });
+                        if (item.isSource) results.sourceOrphansLinked++;
+                        else results.orphansLinked++;
+                    } catch (e) {
+                        results.errors.push(`Failed to link ${normalizedPath}: ${e.message}`);
+                    }
+                }
+            }
+        }
+
+        // 4. Apply Heal
+        if (applyHeal) {
+            try {
+                const { heal } = require('../services/healService_db');
+                results.healReport = await heal(false); // false = not a dry run
+            } catch (e) {
+                results.errors.push(`Failed to apply heal: ${e.message}`);
+            }
+        }
+
+        res.json({ success: true, results });
+    } catch (err) {
+        console.error('Batch Resync Error:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -1263,7 +1415,6 @@ router.post('/generate-thumbnails', async (req, res) => {
     try {
         const { modelIds, force = false } = req.body;
         const modelsDir = getAbsoluteModelsPath();
-        // Assume port 3001 or standard PORT env (legacy used explicit port)
         const PORT = process.env.PORT || 3001;
         const baseUrl = `http://127.0.0.1:${PORT}`;
 
@@ -1272,51 +1423,51 @@ router.post('/generate-thumbnails', async (req, res) => {
         }
 
         const config = ConfigManager.loadConfig();
-        const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#6366f1';
-
-
+        const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#dddddd';
 
         let processed = 0;
         let errors = [];
         let skipped = 0;
         let targets = [];
 
-        // Reset Status
-        activeThumbnailStatus = { total: 0, current: 0, status: 'scanning', startTime: Date.now() };
+        activeThumbnailStatus = { total: 0, current: 0, status: 'querying', startTime: Date.now() };
 
-        function findTargets(dir) {
-            if (signal.aborted) return;
-            let entries = [];
-            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { }
-            for (const entry of entries) {
-                const fullPath = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    findTargets(fullPath);
-                } else if (entry.name.endsWith('-munchie.json') || entry.name.endsWith('-stl-munchie.json')) {
-                    try {
-                        const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-                        if (modelIds && modelIds.length > 0 && !modelIds.includes(data.id)) continue;
-                        let sourceFile;
-                        if (entry.name.endsWith('-stl-munchie.json')) {
-                            sourceFile = fullPath.replace('-stl-munchie.json', '.stl');
-                            if (!fs.existsSync(sourceFile)) sourceFile = fullPath.replace('-stl-munchie.json', '.STL');
-                        } else {
-                            sourceFile = fullPath.replace('-munchie.json', '.3mf');
-                        }
-                        if (fs.existsSync(sourceFile)) {
-                            targets.push({ jsonPath: fullPath, sourcePath: sourceFile, data });
-                        }
-                    } catch (e) { }
-                }
+        const prisma = require('../../server-utils/db');
+
+        let queryArgs = {
+            where: {
+                modelUrl: { not: null },
+                OR: [
+                    { modelUrl: { endsWith: '.stl' } },
+                    { modelUrl: { endsWith: '.STL' } },
+                    { modelUrl: { endsWith: '.3mf' } },
+                    { modelUrl: { endsWith: '.3MF' } }
+                ]
+            }
+        };
+
+        if (modelIds && modelIds.length > 0) {
+            queryArgs.where.id = { in: modelIds };
+        }
+
+        const models = await prisma.model.findMany(queryArgs);
+
+        // Collect collections that need cover updates
+        let affectedCollections = new Set();
+        for (const model of models) {
+            // Un-web the URL to get the absolute path
+            let relativePath = model.modelUrl.replace(/^\/models\//i, '').replace(/^\/models\\/i, '');
+            let sourcePath = path.join(modelsDir, relativePath);
+            if (fs.existsSync(sourcePath)) {
+                targets.push({ id: model.id, sourcePath: sourcePath, data: model });
+                if (model.collectionId) affectedCollections.add(model.collectionId);
             }
         }
-        findTargets(modelsDir);
 
-        // Update Status with Total
         activeThumbnailStatus.total = targets.length;
         activeThumbnailStatus.status = 'generating';
 
-        console.log(`📸 Starting photo shoot for ${targets.length} models...`);
+        console.log(`📸 Starting photo shoot for ${targets.length} models via DB...`);
         const MAX_CONSECUTIVE_ERRORS = 5;
         let consecutiveErrors = 0;
 
@@ -1332,35 +1483,109 @@ router.post('/generate-thumbnails', async (req, res) => {
             try {
                 const thumbName = path.basename(target.sourcePath) + '-thumb.png';
                 const thumbPath = path.join(path.dirname(target.sourcePath), thumbName);
-                const relativeThumbUrl = '/models/' + path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
+                let relativeThumbPath = path.relative(modelsDir, thumbPath).replace(/\\/g, '/');
+                let webThumbUrl = `/models/${relativeThumbPath}`;
 
                 if (fs.existsSync(thumbPath) && !force) {
                     skipped++;
+                    processed++;
+                    activeThumbnailStatus.current = processed;
                     continue;
                 }
 
-                const modelColor = target.data.userDefined?.color || target.data.color || globalDefaultColor;
-                await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir, signal);
+                // [RESTORED] "Use Embedded" Logic (formerly skipEmbedded)
+                let extractionSuccess = false;
+                let finalThumbPath = thumbPath; // Default to standard -thumb.png
+                const { reqSkipEmbedded = req.body.skipEmbedded } = req.body;
+                // Default to true if not specified
+                const shouldSkipEmbedded = reqSkipEmbedded !== undefined ? reqSkipEmbedded : true;
 
-                let json = target.data;
-                let changed = false;
-                if (!json.images) json.images = [];
-                if (!json.images.includes(relativeThumbUrl)) {
-                    json.images.unshift(relativeThumbUrl);
-                    changed = true;
+                if (shouldSkipEmbedded) {
+                    const isStl = target.sourcePath.toLowerCase().endsWith('.stl');
+                    // STLs don't have embedded thumbnails.
+                    if (!isStl) {
+                        const embeddedName = path.basename(target.sourcePath) + '-embedded-thumb.png';
+                        const embeddedPath = path.join(path.dirname(target.sourcePath), embeddedName);
+
+                        try {
+                            extractionSuccess = await extractEmbeddedThumbnail(target.sourcePath, embeddedPath);
+                            if (extractionSuccess && fs.existsSync(embeddedPath)) {
+                                finalThumbPath = embeddedPath;
+                            } else {
+                                extractionSuccess = false;
+                            }
+                        } catch (err) {
+                            console.warn(`    -> Failed to extract embedded thumb for ${path.basename(target.sourcePath)}:`, err.message);
+                            extractionSuccess = false;
+                        }
+                    }
                 }
-                if (changed) {
-                    fs.writeFileSync(target.jsonPath, JSON.stringify(json, null, 2));
+
+                if (!extractionSuccess) {
+                    const modelColor = globalDefaultColor;
+                    await generateThumbnail(target.sourcePath, thumbPath, baseUrl, modelColor, modelsDir, signal);
+                    finalThumbPath = thumbPath;
                 }
+
+                // Recalculate relative path in case it changed to embedded
+                relativeThumbPath = path.relative(modelsDir, finalThumbPath).replace(/\\/g, '/');
+                webThumbUrl = `/models/${relativeThumbPath}`;
+
+                if (fs.existsSync(finalThumbPath)) {
+                    // Update Database Instead of munchie.json
+                    const existingImg = await prisma.modelImage.findFirst({
+                        where: { modelId: target.id, path: relativeThumbPath }
+                    });
+
+                    if (!existingImg) {
+                        // Push new thumb as primary in images array
+                        // Need to shift existing image orders down
+                        await prisma.modelImage.updateMany({
+                            where: { modelId: target.id },
+                            data: { order: { increment: 1 } }
+                        });
+
+                        await prisma.modelImage.create({
+                            data: {
+                                modelId: target.id,
+                                path: relativeThumbPath,
+                                source: 'thumbnail',
+                                sourceFile: path.basename(finalThumbPath),
+                                order: 0
+                            }
+                        });
+                    }
+
+                    // Update primary thumbnailPath column
+                    await prisma.model.update({
+                        where: { id: target.id },
+                        data: { thumbnailPath: relativeThumbPath }
+                    });
+                }
+
                 processed++;
-                activeThumbnailStatus.current = processed; // Update Progress
+                activeThumbnailStatus.current = processed;
                 consecutiveErrors = 0;
             } catch (err) {
                 if (err.message && err.message.includes('cancelled')) break;
                 console.error("Thumbnail error:", err);
-                errors.push({ id: target.data.id, error: err.message });
+                errors.push({ id: target.id, error: err.message });
                 consecutiveErrors++;
             }
+        }
+
+        // --- 📸 Background Cover Regeneration 📸 ---
+        if (affectedCollections.size > 0 && processed > 0) {
+            const { generateCoverForCollection } = require('../../server-utils/coverGenerator_db');
+            const idsList = Array.from(affectedCollections);
+            console.log(`[Auto-Cover] Firing background cover generation for ${idsList.length} affected collections...`);
+            Promise.allSettled(idsList.map(cid => generateCoverForCollection(cid)))
+                .then(results => {
+                    const successes = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+                    if (successes > 0) {
+                        console.log(`[Auto-Cover] Generated ${successes} new collection covers in the background`);
+                    }
+                });
         }
 
         activeThumbnailJob = null;
@@ -1637,5 +1862,77 @@ router.post('/restore-db', restoreUpload.single('backupFile'), async (req, res) 
     }
 });
 
-module.exports = router;
+// --- Auto-Backup (Safe Restore) Routes ---
 
+// GET /api/admin/db-safe-restores
+// Lists all available safeRestore.bak.X files returning metadata so we can show them in UI
+router.get('/db-safe-restores', async (req, res) => {
+    try {
+        const prismaDir = path.join(process.cwd(), 'prisma');
+        const files = fs.readdirSync(prismaDir).filter(f => f.startsWith('safeRestore.bak.'));
+
+        const backups = files.map(file => {
+            const stat = fs.statSync(path.join(prismaDir, file));
+            return {
+                name: file,
+                size: stat.size,
+                timestamp: stat.mtime.toISOString(),
+            };
+        }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        res.json({ success: true, backups });
+    } catch (e) {
+        console.error('Error listing DB safe restores:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/admin/db-safe-restore/:filename
+// Overwrites dev.db with the selected backup and cleans up WAL/SHM files
+router.post('/db-safe-restore/:filename', async (req, res) => {
+    const filename = req.params.filename;
+    // Basic security check to prevent directory traversal
+    if (!filename.match(/^safeRestore\.bak\.[1-9]$/)) {
+        return res.status(400).json({ success: false, error: 'Invalid backup filename.' });
+    }
+
+    try {
+        const prismaDir = path.join(process.cwd(), 'prisma');
+        const sourceFile = path.join(prismaDir, filename);
+        const targetDb = path.join(prismaDir, 'dev.db');
+
+        if (!fs.existsSync(sourceFile)) {
+            return res.status(404).json({ success: false, error: 'Backup file not found.' });
+        }
+
+        console.log(`[DB Admin] Starting safe restore from ${filename}...`);
+
+        // Safely disconnect Prisma to release file locks
+        const prisma = require('../../server-utils/db');
+        await prisma.$disconnect();
+
+        // Perform the copy
+        fs.copyFileSync(sourceFile, targetDb);
+
+        // Clean up write-ahead logs to avoid corruption across completely swapped DB states
+        const shmPath = path.join(prismaDir, 'dev.db-shm');
+        const walPath = path.join(prismaDir, 'dev.db-wal');
+        if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+        if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
+
+        console.log(`[DB Admin] Safe restore from ${filename} complete. Restarting process to ensure clean Prisma connection.`);
+
+        res.json({ success: true, message: 'Database restored successfully! The server is restarting.' });
+
+        // Give the response 100ms to send before we kill the process to allow the manager (pm2/nodemon) to boot us back up
+        setTimeout(() => {
+            process.exit(0);
+        }, 100);
+
+    } catch (e) {
+        console.error(`[DB Admin] Safe restore error:`, e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+module.exports = router;

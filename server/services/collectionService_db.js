@@ -9,6 +9,23 @@ const { getAbsoluteModelsPath } = require('../../server-utils/dataAccess');
  * Collections represent folder structure for organizing models
  */
 
+// Helper to unpack metadata for frontend parity
+function unpackCollectionMetadata(c) {
+  let meta = {};
+  if (c.metadata) {
+    try {
+      meta = typeof c.metadata === 'string' ? JSON.parse(c.metadata) : c.metadata;
+    } catch (e) { }
+  }
+  return {
+    ...c,
+    modelIds: c.models ? c.models.map(m => m.id) : [],
+    images: c.images || meta.images || [],
+    documents: c.documents || meta.documents || [],
+    metadata: meta
+  };
+}
+
 /**
  * Get all collections with optional hierarchy flattening
  * @param {Object} options - Query options
@@ -44,11 +61,7 @@ async function getAllCollections(options = {}) {
       orderBy: { name: 'asc' }
     });
 
-    // Map models relation to modelIds array
-    return collections.map(c => ({
-      ...c,
-      modelIds: c.models ? c.models.map(m => m.id) : []
-    }));
+    return collections.map(unpackCollectionMetadata);
   }
 
   // Return collections filtered by parent
@@ -64,11 +77,7 @@ async function getAllCollections(options = {}) {
     orderBy: { name: 'asc' }
   });
 
-  // Map models relation to modelIds array
-  return collections.map(c => ({
-    ...c,
-    modelIds: c.models ? c.models.map(m => m.id) : []
-  }));
+  return collections.map(unpackCollectionMetadata);
 }
 
 /**
@@ -77,7 +86,7 @@ async function getAllCollections(options = {}) {
  * @returns {Promise<Collection|null>}
  */
 async function getCollectionById(id) {
-  return await prisma.collection.findUnique({
+  const c = await prisma.collection.findUnique({
     where: { id },
     include: {
       models: true,
@@ -90,6 +99,7 @@ async function getCollectionById(id) {
       _count: { select: { models: true } }
     }
   });
+  return c ? unpackCollectionMetadata(c) : null;
 }
 
 /**
@@ -101,14 +111,18 @@ async function getCollectionTree(parentId = null) {
   // Single query: fetch ALL collections, then build tree in memory
   const allCollections = await prisma.collection.findMany({
     include: {
+      models: { select: { id: true } },
       _count: { select: { models: true } }
     },
     orderBy: { name: 'asc' }
   });
 
+  // Map models relation to modelIds array and unpack metadata
+  const mappedCollections = allCollections.map(unpackCollectionMetadata);
+
   // Build lookup map: parentId -> children[]
   const childrenMap = new Map();
-  for (const col of allCollections) {
+  for (const col of mappedCollections) {
     const key = col.parentId || null;
     if (!childrenMap.has(key)) childrenMap.set(key, []);
     childrenMap.get(key).push(col);

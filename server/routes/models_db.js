@@ -78,10 +78,11 @@ router.get('/models', async (req, res) => {
             throw new Error('modelService returned undefined models');
         }
 
-        // 2. Database-First Transformation: Extract thumbnail from metadata
-        dbLog('[DB API] Extracting thumbnails from metadata...');
+        // 2. Database-First Transformation: Resolve thumbnail from ModelImage relation.
+        // m.images is already fetched by modelService (images: { orderBy: { order: 'asc' } }).
+        dbLog('[DB API] Resolving thumbnails from ModelImage relation (DB-first)...');
         const enrichedModels = models.map(m => {
-            // Parse metadata if it's a string
+            // Parse metadata as legacy fallback only
             let meta = {};
             try {
                 meta = typeof m.metadata === 'string' ? JSON.parse(m.metadata) : (m.metadata || {});
@@ -89,27 +90,68 @@ router.get('/models', async (req, res) => {
                 dbLog(`[DB API] Failed to parse metadata for model ${m.id}`);
             }
 
-            // Extract thumbnail (prefer metadata, fallback to thumbnailPath)
-            const thumbnail = meta.thumbnail || (m.thumbnailPath ? `/models/${m.thumbnailPath}` : undefined);
+            // ── DB-First: Build parsedImages from ModelImage rows ──────────────────────
+            // Prefer embedded thumbnails ('-embedded-thumb' in path) over generated ones.
+            const dbImages = Array.isArray(m.images) ? m.images : [];
+            const dbThumbImages = dbImages
+                .filter(img => img.source === 'thumbnail' || img.path.includes('-thumb.png'))
+                .sort((a, b) => {
+                    const aEmb = (a.path || '').includes('-embedded-thumb');
+                    const bEmb = (b.path || '').includes('-embedded-thumb');
+                    if (aEmb && !bEmb) return -1;
+                    if (!aEmb && bEmb) return 1;
+                    return a.order - b.order;
+                });
+
+            const parsedImages = dbThumbImages.length > 0
+                ? dbThumbImages.map(img => img.path.startsWith('/') ? img.path : `/models/${img.path}`)
+                : (meta.parsedImages || (m.thumbnailPath ? [`/models/${m.thumbnailPath}`] : []));
+
+            // ── Resolve cover thumbnail ────────────────────────────────────────────────
+            // parsedImages[0] is already embedded-first if DB rows exist.
+            // Fall back to legacy pointer resolution only for metadata-based models.
+            let thumbnail = parsedImages[0];
+            if (!thumbnail) {
+                // Legacy pointer handling for un-migrated models (parsed:N / user:N)
+                const legacyDesc = meta.thumbnail;
+                if (typeof legacyDesc === 'string' && (legacyDesc.startsWith('parsed:') || legacyDesc.startsWith('user:'))) {
+                    const [type, idxStr] = legacyDesc.split(':');
+                    const idx = parseInt(idxStr, 10);
+                    const resolved = type === 'parsed'
+                        ? (meta.parsedImages || [])[idx]
+                        : (meta.userDefined?.images || [])[idx]?.data || (meta.userDefined?.images || [])[idx];
+                    thumbnail = (typeof resolved === 'string' && !resolved.startsWith('parsed:') && !resolved.startsWith('user:'))
+                        ? resolved
+                        : (meta.parsedImages?.[0] || undefined);
+                } else {
+                    thumbnail = legacyDesc || (m.thumbnailPath ? `/models/${m.thumbnailPath}` : undefined);
+                }
+            }
+
+            // ── Gallery and thumbnails map ─────────────────────────────────────────────
+            const gallery = dbImages.filter(img => img.source === 'gallery')
+                .sort((a, b) => a.order - b.order)
+                .map(img => img.path.startsWith('/') ? img.path : `/models/${img.path}`);
+
+            const thumbnailsMap = {};
+            for (const img of dbImages.filter(img => img.source === 'thumbnail' && img.sourceFile)) {
+                if (!thumbnailsMap[img.sourceFile]) thumbnailsMap[img.sourceFile] = [];
+                thumbnailsMap[img.sourceFile].push(img.path.startsWith('/') ? img.path : `/models/${img.path}`);
+            }
 
             return {
                 ...m,
                 thumbnail,
-                // Also extract other commonly needed fields from metadata
-                parsedImages: meta.parsedImages || [],
-                gallery: meta.gallery || [], // Orphan gallery images still in metadata
-                thumbnails: meta.thumbnails || {}, // Functional thumbnails still in metadata
+                parsedImages,
+                gallery: gallery.length > 0 ? gallery : (meta.gallery || []),
+                thumbnails: Object.keys(thumbnailsMap).length > 0 ? thumbnailsMap : (meta.thumbnails || {}),
                 userDefined: meta.userDefined,
-                // Promoted columns — use DB first, metadata fallback for unmigrated data only
                 category: m.category || meta.category || '',
                 notes: m.notes || meta.notes || undefined,
-                // Flatten tags from ModelTag relation to string array
                 tags: Array.isArray(m.tags)
                     ? m.tags.map(t => typeof t === 'string' ? t : t?.tag?.name || t?.name || '').filter(Boolean)
                     : [],
-                // Removed flatten logic – DB-first components now use the actual relatedFiles objects
-                related_files: [], // Kept as empty to avoid undefined errors in stale hooks
-                // Reconstruct gcodeData nested object from promoted DB columns
+                related_files: [],
                 gcodeData: (m.gcodeFilePath || m.gcodePrintTime) ? {
                     gcodeFilePath: m.gcodeFilePath,
                     printTime: m.gcodePrintTime,
@@ -122,6 +164,7 @@ router.get('/models', async (req, res) => {
             };
         });
         dbLog('[DB API] Thumbnail extraction complete');
+
 
         // 3. Serialization (BigInt handling)
         dbLog('[DB API] Serializing response...');
@@ -237,9 +280,22 @@ router.get('/models/:id', async (req, res) => {
             dbLog(`[DB API] Failed to parse metadata for model ${serializedModel.id}`);
         }
 
+        let thumbnail = meta.thumbnail;
+        if (typeof thumbnail === 'string' && (thumbnail.startsWith('parsed:') || thumbnail.startsWith('user:'))) {
+            const [type, idxStr] = thumbnail.split(':');
+            const idx = parseInt(idxStr, 10);
+            const resolved = type === 'parsed'
+                ? (meta.parsedImages || [])[idx]
+                : (meta.userDefined?.images || [])[idx]?.data || (meta.userDefined?.images || [])[idx];
+            thumbnail = (typeof resolved === 'string' && !resolved.startsWith('parsed:') && !resolved.startsWith('user:'))
+                ? resolved
+                : (meta.parsedImages?.[0] || undefined);
+        }
+        if (!thumbnail) thumbnail = meta.parsedImages?.[0] || (serializedModel.thumbnailPath ? `/models/${serializedModel.thumbnailPath}` : undefined);
+
         const enrichedModel = {
             ...serializedModel,
-            thumbnail: meta.thumbnail || (serializedModel.thumbnailPath ? `/models/${serializedModel.thumbnailPath}` : undefined),
+            thumbnail,
             parsedImages: meta.parsedImages || [],
             gallery: meta.gallery || [],
             thumbnails: meta.thumbnails || {},
@@ -553,8 +609,8 @@ router.post('/hash-check', async (req, res) => {
     const crypto = require('crypto');
     const { fileType } = req.body;
 
-    if (!fileType || !['3mf', 'stl'].includes(fileType)) {
-        return res.status(400).json({ success: false, error: 'fileType must be "3mf" or "stl"' });
+    if (!fileType || !['3mf', 'stl', 'obj'].includes(fileType)) {
+        return res.status(400).json({ success: false, error: 'fileType must be "3mf", "stl", or "obj"' });
     }
 
     const ext = '.' + fileType;
@@ -563,11 +619,10 @@ router.post('/hash-check', async (req, res) => {
         const prisma = require('../../server-utils/db');
         const modelsDir = getAbsoluteModelsPath();
 
-        // Query only PRIMARY ModelFile records — one per model.
-        // Without this filter, every component/variant file is checked separately (35k+ records).
+        // Query only PRIMARY ModelFile records by fileType — indexed exact match (faster than filePath suffix scan)
         const modelFiles = await prisma.modelFile.findMany({
             where: {
-                filePath: { endsWith: ext },
+                fileType: fileType,
                 isPrimary: true,
                 model: { isDeleted: false },
             },
@@ -639,7 +694,7 @@ router.post('/hash-check', async (req, res) => {
             };
 
             if (fileType === '3mf') result.threeMF = displayPath;
-            else result.stl = displayPath;
+            else result.stl = displayPath; // covers 'stl' and 'obj'
 
             results.push(result);
         }
@@ -662,7 +717,7 @@ router.post('/rehash', async (req, res) => {
         const where = {
             isPrimary: true,
             model: { isDeleted: false },
-            ...(ext ? { filePath: { endsWith: ext } } : {}),
+            ...(fileType !== 'all' ? { fileType } : {}),
         };
 
         const modelFiles = await prisma.modelFile.findMany({

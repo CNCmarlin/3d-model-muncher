@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ProjectService } from './ProjectService';
+import { ProjectService_db } from './ProjectService_db';
 
 // Helper to sanitize filenames
 const sanitize = (name: string) => name.replace(/[^a-z0-9\.\-]/gi, '_');
@@ -26,6 +26,7 @@ export class ThingiverseImporter {
     const limit = res.headers.get('X-RateLimit-Limit');
     const remaining = res.headers.get('X-RateLimit-Remaining');
     if (remaining) {
+      console.log(`[Thingiverse API] Quota: ${remaining}/${limit} remaining`);
     }
     if (!res.ok) {
       if (res.status === 401) throw new Error('Invalid Thingiverse Token');
@@ -50,7 +51,8 @@ export class ThingiverseImporter {
     fs.writeFileSync(destPath, Buffer.from(arrayBuffer));
   }
 
-  async importThing(thingId: string, modelsRoot: string, targetFolder: string = 'imported') {
+  async importThing(thingId: string, modelsRoot: string, targetFolder: string = 'imported', collectionId: string | null = null) {
+    console.log(`[Thingiverse] Starting import for ID: ${thingId} to ${targetFolder} with collectionId: ${collectionId}`);
 
     // 1. Fetch Metadata
     const meta = await this.fetchTV(`/things/${thingId}`);
@@ -68,8 +70,17 @@ export class ThingiverseImporter {
 
     // 3. Create Directory (Sanitized Thing Name)
     const thingName = sanitize(meta.name).substring(0, 64);
-    const destRelPath = path.join(targetFolder, thingName);
-    const destDir = path.join(modelsRoot, destRelPath);
+
+    let destDir: string;
+    let destRelPath: string;
+
+    if (path.isAbsolute(targetFolder)) {
+      destDir = path.join(targetFolder, thingName);
+      destRelPath = path.relative(modelsRoot, destDir).replace(/\\/g, '/');
+    } else {
+      destRelPath = [targetFolder, thingName].filter(Boolean).join('/');
+      destDir = path.join(modelsRoot, destRelPath);
+    }
 
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
@@ -79,6 +90,8 @@ export class ThingiverseImporter {
     for (const file of validFiles) {
       const cleanName = sanitize(file.name);
       const dest = path.join(destDir, cleanName);
+
+      console.log(`[Thingiverse] Downloading ${cleanName}...`);
       await this.downloadFile(file.download_url, dest);
       importedFiles.push(cleanName);
     }
@@ -102,6 +115,8 @@ export class ThingiverseImporter {
       const baseImgName = sanitize(imgData.name || 'view').replace(/\.(jpg|jpeg|png|gif)$/i, '');
       const imgFileName = `image_${i}_${baseImgName}.jpg`;
       const dest = path.join(destDir, imgFileName);
+
+      console.log(`[Thingiverse] Downloading High-Res Image ${i + 1}/${realPhotosCount}...`);
       await this.downloadFile(imgUrl, dest);
       localImagePaths.push(`${relativeWebFolder}/${imgFileName}`);
     }
@@ -113,13 +128,14 @@ export class ThingiverseImporter {
     }
 
     // Replace Sections 6, 7, and 8 with:
-    return await ProjectService.finalizeProject({
+    return await ProjectService_db.finalizeProject({
       mode: 'thingiverse',
       destDir,
       modelsRoot,
       importedFiles,
       localImagePaths,
       targetFolder,
+      collectionId,
       meta: {
         id: thingId,
         name: meta.name,

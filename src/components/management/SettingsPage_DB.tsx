@@ -268,6 +268,10 @@ export function SettingsPage_DB({
               handleCreateBackup={backups.handleCreateBackup}
               handleRestoreFromFile={backups.handleRestoreFromFile}
               handleBackupFileRestore={backups.handleBackupFileRestore}
+              safeRestores={backups.safeRestores}
+              isFetchingSafeRestores={backups.isFetchingSafeRestores}
+              triggerSafeRestore={backups.triggerSafeRestore}
+              fetchSafeRestores={backups.fetchSafeRestores}
               models={models}
               configSettings={configSettings}
             />

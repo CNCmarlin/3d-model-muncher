@@ -1,13 +1,15 @@
+import { SearchableSelect_DB } from '@/components/common/SearchableSelect_DB';
 import TagsInput from '@/components/common/TagsInput_DB';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useConfig } from '@/context/AppConfigContext';
 import { Model } from '@/types/model_db';
-import { ConfigManager } from '@/utils/configManager';
 import { Separator } from '@radix-ui/react-select';
 import { Box, FolderPlus, RefreshCw, Tag, Trash, Upload } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -26,7 +28,7 @@ interface ModelUploadDialogProps {
 const needsIsolation = (model: Model) => {
   // 1. THE PROJECT MARKER CHECK (Deterministic)
   // If it's a Root or a Related Part, it's already "Organized".
-  if ((model as any).isProjectRoot || (model as any).isRelatedPart) {
+  if ((model as any).isMainModel || (model as any).isRelatedPart) {
     return false;
   }
 
@@ -47,18 +49,18 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
   const [isUploading, setIsUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const [folders, setFolders] = useState<string[]>(['uploads']);
-
-  const [isGroupUpload, setIsGroupUpload] = useState(false);
-  const [autoTagFolder, setAutoTagFolder] = useState(true);
-  const [newCollectionName, setNewCollectionName] = useState('');
+  // Collection Grouping State
+  const [collectionAction, setCollectionAction] = useState<'none' | 'existing'>('none');
   const [collectionsList, setCollectionsList] = useState<any[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('new');
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
+
+  // Physical Organization State
   const [createPhysicalFolder, setCreatePhysicalFolder] = useState(false);
-  const [parentFolder, setParentFolder] = useState('uploads');
+  const [optionalFolderName, setOptionalFolderName] = useState('');
+  const [autoTagFolder, setAutoTagFolder] = useState(true);
 
   const [generatePreviews, setGeneratePreviews] = useState<boolean>(true);
-  const [availableCategories, setAvailableCategories] = useState<string[]>(['Uncategorized']);
+  const { categories } = useConfig();
   const [selectedCategory, setSelectedCategory] = useState<string>('Uncategorized');
   const [applyTags, setApplyTags] = useState<string[]>([]);
   const [primaryModelFile, setPrimaryModelFile] = useState<string | null>(null);
@@ -187,33 +189,47 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
         const fd = new FormData();
         files.forEach(f => fd.append('files', f));
 
-        const cleanName = newCollectionName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
-
         if (createPhysicalFolder) {
-          // MODE: Asset Folder - Thingiverse Style
-          const folderName = cleanName || `Import_${Date.now()} `;
-          const targetPath = `${parentFolder}/${folderName}`;
+          // MODE: Model Folder - Thingiverse Style
+          // If the user specified a custom folder name, prioritize it. 
+          // Otherwise default to Import_Timestamp
+          // If the user specified a custom folder name, prioritize it. 
+          // Otherwise default to the primary model file name, the collection name, or Import_Timestamp
+          let folderName = optionalFolderName.trim();
+
+          if (!folderName) {
+            folderName = primaryModelFile ? primaryModelFile.replace(/\.[^/.]+$/, "") : "";
+          }
+
+          if (!folderName && selectedCollectionId && collectionAction === 'existing') {
+            const selectedCol = collectionsList.find(c => c.id === selectedCollectionId);
+            if (selectedCol) folderName = selectedCol.name;
+          }
+
+          if (!folderName) {
+            folderName = `Import_${Date.now()}`;
+          }
+          // Sanitize final folder name
+          folderName = folderName.replace(/[^a-zA-Z0-9_\- ]/g, '').trim() || `Import_${Date.now()}`;
+
+          const targetPath = `uploads/${folderName}`;
           fd.append('destinations', JSON.stringify(files.map(() => targetPath)));
-          fd.append('isProjectFolder', 'true');
+          fd.append('isModelFolder', 'true');
           fd.append('projectName', folderName);
 
-          // UPDATED: Pass the user's manual primary model selection to the backend
+          // Pass the user's manual primary model selection to the backend
           if (primaryModelFile) {
             fd.append('primaryModelFile', primaryModelFile);
           }
         } else {
           // MODE: Individual Models
-          fd.append('destinations', JSON.stringify(files.map(() => parentFolder)));
+          fd.append('destinations', JSON.stringify(files.map(() => 'uploads')));
         }
 
         // Logic for Collection grouping (can be applied to either physical mode)
-        if (isGroupUpload) {
+        if (collectionAction === 'existing' && selectedCollectionId) {
           fd.append('createCollection', 'true');
-          if (selectedCollectionId === 'new') {
-            fd.append('collectionName', cleanName || 'New Uploads');
-          } else {
-            fd.append('collectionId', selectedCollectionId);
-          }
+          fd.append('collectionId', selectedCollectionId);
         }
 
         fd.append('category', selectedCategory);
@@ -239,46 +255,33 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
     if (!isOpen) return;
     setFiles([]);
     setPrimaryModelFile(null);
-    setSelectedCollectionId(initialCollectionId || 'new');
-    setNewCollectionName('');
-    setIsGroupUpload(!!initialCollectionId);
-    setSelectedCategory('Uncategorized');
-    setApplyTags([]);
-
+    setOptionalFolderName('');
     if (initialCollectionId) {
-      setIsGroupUpload(true);
+      setCollectionAction('existing');
       setSelectedCollectionId(initialCollectionId);
     } else {
-      setIsGroupUpload(false);
-      setSelectedCollectionId('new');
+      setCollectionAction('none');
+      setSelectedCollectionId('');
     }
+
+    setSelectedCategory('Uncategorized');
+    setApplyTags([]);
 
     (async () => {
       try {
         const resp = await fetch('/api/collections');
         if (resp.ok) {
           const data = await resp.json();
-          if (data && data.success) setCollectionsList(data.collections);
+          // DB Mode returns an array, Legacy Mode returns { collections: [...] }
+          if (Array.isArray(data)) {
+            setCollectionsList(data);
+          } else if (data && data.collections) {
+            setCollectionsList(data.collections);
+          }
         }
       } catch (e) { console.error("Failed to load collections", e); }
     })();
-
-    (async () => {
-      try {
-        const resp = await fetch('/api/model-folders');
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data && Array.isArray(data.folders)) setFolders(Array.from(new Set(['uploads', ...data.folders])));
-        }
-      } catch (e) { }
-    })();
-
-    try {
-      const cfg = ConfigManager.loadConfig();
-      const cats = Array.isArray(cfg?.categories) ? cfg.categories.map((c: any) => c?.label || c?.id).filter(Boolean) : [];
-      setAvailableCategories(Array.from(new Set(['Uncategorized', ...cats])));
-    } catch { }
-  }, [isOpen]);
+  }, [isOpen, initialCollectionId]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -341,36 +344,35 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
                 <div className="space-y-4">
                   {/* Step 1: Logical Grouping (Always Available) */}
                   <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="group-upload"
-                        checked={isGroupUpload}
-                        onCheckedChange={(v) => setIsGroupUpload(!!v)}
-                      />
-                      <Label htmlFor="group-upload" className="text-sm font-semibold cursor-pointer">Group into Collection</Label>
-                    </div>
+                    <Label className="text-[10px] font-bold uppercase tracking-widest opacity-50">Collection Grouping</Label>
 
-                    {isGroupUpload && (
-                      <div className="pl-6 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                        <Select value={selectedCollectionId} onValueChange={setSelectedCollectionId}>
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Select a collection..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="new">+ Create New Collection</SelectItem>
-                            {collectionsList.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                        {selectedCollectionId === 'new' && (
-                          <Input
-                            placeholder="New Collection Name"
-                            className="h-8 text-xs"
-                            value={newCollectionName}
-                            onChange={(e) => setNewCollectionName(e.target.value)}
-                          />
-                        )}
+                    <RadioGroup
+                      value={collectionAction}
+                      onValueChange={(v) => setCollectionAction(v as 'none' | 'existing')}
+                      className="flex space-x-6 mb-2"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="none" id="col-none" />
+                        <Label htmlFor="col-none" className="text-sm font-semibold cursor-pointer">Main Grid</Label>
                       </div>
-                    )}
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="existing" id="col-existing" />
+                        <Label htmlFor="col-existing" className="text-sm font-semibold cursor-pointer">Add to Existing</Label>
+                      </div>
+                    </RadioGroup>
+
+                    <div className="pl-6 space-y-3">
+                      {collectionAction === 'existing' && (
+                        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                          <SearchableSelect_DB
+                            value={selectedCollectionId}
+                            onValueChange={setSelectedCollectionId}
+                            placeholder="Select a collection..."
+                            options={collectionsList.map(c => ({ value: c.id, label: c.name }))}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <Separator />
@@ -395,41 +397,33 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
                         className={`p-3 border rounded-lg text-left transition-all ${createPhysicalFolder ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'opacity-60'}`}
                       >
                         <FolderPlus className="h-4 w-4 mb-2 text-primary" />
-                        <div className="font-bold text-xs">Asset Folder</div>
+                        <div className="font-bold text-xs">Model Folder</div>
                         <div className="text-[10px] text-muted-foreground leading-tight">Thingiverse Style: One folder for all files.</div>
                       </button>
                     </div>
                   </div>
 
-                  {/* Step 3: Base Directory */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">Base Directory</Label>
+                  {/* Notification for Primary Model Selection & Optional Naming */}
+                  {!isAssetMode && createPhysicalFolder && (
+                    <div className="space-y-3 pl-2 border-l-2 border-blue-500/50 ml-1 animate-in fade-in slide-in-from-top-1">
+                      <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-lg flex gap-3 items-center">
+                        <FolderPlus className="h-5 w-5 text-blue-500 shrink-0" />
+                        <p className="text-xs text-blue-700 dark:text-blue-400">
+                          <strong>Important:</strong> You must select which file is the <strong>Main</strong> model in the queue above. The backend will automatically link the other files as components.
+                        </p>
+                      </div>
 
-                      {/* NEW: Manual Suggestion Link (Appears only when out of sync) */}
-                      {!isAssetMode && selectedCollectionId !== 'new' && (() => {
-                        try {
-                          const b64 = selectedCollectionId.substring(4);
-                          const colPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-                          if (parentFolder !== colPath) {
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => setParentFolder(colPath)}
-                                className="text-[10px] text-primary hover:underline flex items-center gap-1 animate-in fade-in slide-in-from-right-1"
-                              >
-                                <RefreshCw className="h-2.5 w-2.5" /> Use Collection Path
-                              </button>
-                            );
-                          }
-                        } catch (e) { return null; }
-                      })()}
+                      <div className="space-y-1">
+                        <Label className="text-xs">Model Name (Optional)</Label>
+                        <Input
+                          placeholder="Leave blank to use main file name or collection name"
+                          className="h-8 text-xs"
+                          value={optionalFolderName}
+                          onChange={(e) => setOptionalFolderName(e.target.value)}
+                        />
+                      </div>
                     </div>
-                    <Select value={parentFolder} onValueChange={setParentFolder}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>{folders.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
@@ -449,10 +443,12 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
                 {!isAssetMode && (
                   <div className="space-y-2">
                     <Label>Category</Label>
-                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{availableCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <SearchableSelect_DB
+                      value={selectedCategory}
+                      onValueChange={setSelectedCategory}
+                      placeholder="Select category..."
+                      options={(categories || []).map(c => ({ value: c.label, label: c.label }))}
+                    />
                   </div>
                 )}
                 <div className="space-y-2">
@@ -480,8 +476,8 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
                           {isAssetMode
                             ? (targetModel?.name || 'Model Name')
                             : createPhysicalFolder
-                              ? (primaryModelFile ? primaryModelFile.replace(/\.(stl|3mf)$/i, '') : (newCollectionName || 'Project Name'))
-                              : (parentFolder.split('/').pop() || parentFolder)
+                              ? (optionalFolderName || primaryModelFile?.replace(/\.(stl|3mf)$/i, '') || 'Project Name')
+                              : 'Model File Name'
                           }
                         </div>
                       </div>
@@ -499,9 +495,28 @@ export const ModelUploadDialog_DB: React.FC<ModelUploadDialogProps> = ({ isOpen,
 
         <DialogFooter className="bg-muted/20 p-4 border-t -mx-6 -mb-6 rounded-b-lg">
           <Button variant="ghost" onClick={onClose} disabled={isUploading}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={isUploading || files.length === 0} className="px-8">
-            {isUploading ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Processing...</> : (isAssetMode ? 'Add to Project' : 'Start Import')}
-          </Button>
+
+          {!isAssetMode && createPhysicalFolder && !primaryModelFile && files.length > 0 ? (
+            <TooltipProvider>
+              <Tooltip delayDuration={100}>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="focus:outline-none">
+                    <Button disabled className="px-8 pointer-events-none">
+                      Start Upload
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="bg-destructive text-destructive-foreground border-destructive max-w-[200px] text-center">
+                  <p className="font-bold text-xs uppercase mb-1">Action Locked</p>
+                  <p className="text-xs">Please select a <strong>Main</strong> model in the queue above first.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button onClick={handleSubmit} disabled={isUploading || files.length === 0} className="px-8 flex items-center justify-center">
+              {isUploading ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Processing...</> : (isAssetMode ? 'Add to Project' : 'Start Upload')}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

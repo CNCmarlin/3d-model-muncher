@@ -6,6 +6,7 @@ const { z } = require('zod');
 const sharp = require('sharp'); // Needed for generate-covers
 const collectionService = require('../services/collectionService_db');
 const { generateCollections } = require('../../server-utils/collectionScanner_db');
+const { generateCoverForCollection } = require('../../server-utils/coverGenerator_db');
 const { getAbsoluteModelsPath } = require('../../server-utils/dataAccess');
 const { dbLog } = require('../../server-utils/configHelper');
 
@@ -211,7 +212,7 @@ router.post('/collections/auto-import', async (req, res) => {
 // Generate covers for all collections or a specific one
 router.post('/collections/generate-covers', async (req, res) => {
     try {
-        const { collectionId } = req.body;
+        const { collectionId, force } = req.body;
         console.log(`[DB Covers] Generating covers${collectionId ? ` for ${collectionId}` : ' for all collections'}...`);
 
         // 1. Get collections
@@ -223,87 +224,34 @@ router.post('/collections/generate-covers', async (req, res) => {
             targets = await collectionService.getAllCollections({ includeModels: true });
         }
 
-        let updatedCount = 0;
-        const modelsDir = getAbsoluteModelsPath();
+        let processed = 0;
+        let skipped = 0;
 
         // 2. Process each collection
         for (const col of targets) {
-            // Skip if already has cover (unless force? logic typically skips)
-            if (col.coverImagePath) continue;
-
-            // Need at least 4 models
-            // Check relations first (DB way)
-            const modelIds = col.models ? col.models.map(m => m.id) : (col.modelIds || []);
-            if (modelIds.length < 4) continue;
-
-            const candidates = modelIds.slice(0, 4);
-            const imageBuffers = [];
-
-            // 3. Fetch models to get image paths
-            for (const mid of candidates) {
-                const prisma = require('../../server-utils/db');
-                const model = await prisma.model.findUnique({ where: { id: mid } });
-
-                if (!model) continue;
-
-                // Determine image path
-                let imgRelPath = model.coverImagePath;
-                if (!imgRelPath) {
-                    try {
-                        const meta = JSON.parse(model.metadata || '{}');
-                        if (meta.thumbnail) imgRelPath = meta.thumbnail;
-                        else if (meta.images && meta.images.length > 0) imgRelPath = meta.images[0];
-                    } catch (e) { }
-                }
-
-                if (!imgRelPath) continue;
-
-                // Resolve path
-                const cleanRel = imgRelPath.replace(/^\/models\//, '').replace(/^models\//, '');
-                const absImgPath = path.join(modelsDir, cleanRel);
-
-                if (fs.existsSync(absImgPath)) {
-                    try {
-                        const buffer = await sharp(absImgPath)
-                            .resize(400, 400, { fit: 'cover', position: 'center' })
-                            .toBuffer();
-                        imageBuffers.push(buffer);
-                    } catch (e) {
-                        console.warn(`[DB Covers] Failed to resize image for model ${mid}:`, e.message);
-                    }
-                }
+            // Skip if already has cover, unless forced
+            // (Note: The inner service also prevents overwriting manual user uploads)
+            if (col.coverImagePath && !force) {
+                skipped++;
+                continue;
             }
 
-            if (imageBuffers.length >= 4) {
-                // Composite
-                const composite = await sharp({
-                    create: { width: 800, height: 800, channels: 3, background: { r: 20, g: 20, b: 20 } }
-                })
-                    .composite([
-                        { input: imageBuffers[0], top: 0, left: 0 },
-                        { input: imageBuffers[1], top: 0, left: 400 },
-                        { input: imageBuffers[2], top: 400, left: 0 },
-                        { input: imageBuffers[3], top: 400, left: 400 },
-                    ])
-                    .jpeg({ quality: 90 })
-                    .toBuffer();
+            const modelIds = col.models ? col.models.map(m => m.id) : (col.modelIds || []);
+            if (modelIds.length < 4) {
+                skipped++;
+                continue;
+            }
 
-                // Save
-                const filename = `${col.id}_cover.jpg`;
-                const outputDir = path.join(process.cwd(), 'data', 'covers');
-                if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-
-                const outputPath = path.join(outputDir, filename);
-                fs.writeFileSync(outputPath, composite);
-
-                // Update DB
-                await collectionService.updateCollection(col.id, { coverImagePath: `/data/covers/${filename}` });
-                updatedCount++;
-                console.log(`[DB Covers] Generated cover for ${col.name}`);
+            const result = await generateCoverForCollection(col.id, force);
+            if (result.success) {
+                processed++;
+            } else {
+                skipped++;
+                console.log(`[DB Covers] Skipping ${col.name}: ${result.reason}`);
             }
         }
 
-        res.json({ success: true, message: `Generated ${updatedCount} covers` });
+        res.json({ success: true, processed, skipped, message: `Generated ${processed} covers` });
     } catch (error) {
         console.error('[DB Covers] Error:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -332,7 +280,7 @@ router.post('/collections/:id/images', upload.single('image'), async (req, res) 
         const relativePath = publicPath.replace('/api/images/collections/', 'images/collections/');
         const finalPath = relativePath;
 
-        // Update metadata.images
+        // Update metadata.images AND set coverImagePath
         const oldCol = await collectionService.getCollectionById(req.params.id);
         let images = [];
         let existingMetadata = {};
@@ -346,6 +294,7 @@ router.post('/collections/:id/images', upload.single('image'), async (req, res) 
         images.push(finalPath);
 
         await collectionService.updateCollection(req.params.id, {
+            coverImagePath: finalPath,
             metadata: { ...existingMetadata, images }
         });
 
@@ -444,44 +393,64 @@ router.post('/collections/purge-covers-preview', async (req, res) => {
     try {
         dbLog('[DB Covers] Preview Purge');
         const prisma = require('../../server-utils/db');
-        const count = await prisma.collection.count({
-            where: {
-                coverImagePath: { not: null }
-            }
+        const collections = await prisma.collection.findMany({
+            where: { coverImagePath: { not: null } },
+            select: { name: true, coverImagePath: true }
         });
-        res.json({ count });
+
+        const processCwd = process.cwd();
+        let totalSize = 0;
+        const files = [];
+
+        for (const col of collections) {
+            if (col.coverImagePath && col.coverImagePath.startsWith('/data/covers/')) {
+                const relPath = col.coverImagePath.substring(1);
+                const absPath = path.join(processCwd, relPath);
+
+                if (fs.existsSync(absPath)) {
+                    const stats = fs.statSync(absPath);
+                    totalSize += stats.size;
+                    files.push({
+                        collectionName: col.name,
+                        filename: path.basename(absPath),
+                        size: stats.size
+                    });
+                }
+            }
+        }
+
+        res.json({ success: true, totalCount: files.length, totalSize, files });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
 // --- POST /api/collections/purge-covers ---
-// Delete all collection covers
+// Delete all collection covers (auto-generated only)
 router.post('/collections/purge-covers', async (req, res) => {
     try {
         dbLog('[DB Covers] Purging All Covers');
         const prisma = require('../../server-utils/db');
 
-        // 1. Find all collections with covers
+        // 1. Find all collections with auto-generated covers
         const targets = await prisma.collection.findMany({
-            where: { coverImagePath: { not: null } },
+            where: { coverImagePath: { startsWith: '/data/covers/' } },
             select: { id: true, coverImagePath: true }
         });
 
         // 2. Delete files
         let deletedCount = 0;
-        const processCwd = process.cwd(); // Do not use relative paths blindly
+        const processCwd = process.cwd();
 
         for (const col of targets) {
-            if (col.coverImagePath && col.coverImagePath.startsWith('/data/covers/')) {
-                // Construct absolute path
-                // coverImagePath is like "/data/covers/xyz.jpg"
-                const relPath = col.coverImagePath.substring(1); // "data/covers/xyz.jpg"
+            if (col.coverImagePath) {
+                const relPath = col.coverImagePath.substring(1);
                 const absPath = path.join(processCwd, relPath);
 
                 if (fs.existsSync(absPath)) {
                     try {
                         fs.unlinkSync(absPath);
+                        deletedCount++;
                     } catch (e) {
                         console.warn(`[DB Purge] Failed to delete ${absPath}:`, e.message);
                     }
@@ -489,13 +458,13 @@ router.post('/collections/purge-covers', async (req, res) => {
             }
         }
 
-        // 3. Update DB
+        // 3. Update DB (always unlink even if file was already missing)
         const updateResult = await prisma.collection.updateMany({
-            where: { coverImagePath: { not: null } },
+            where: { coverImagePath: { startsWith: '/data/covers/' } },
             data: { coverImagePath: null }
         });
 
-        res.json({ success: true, count: updateResult.count });
+        res.json({ success: true, deleted: deletedCount, collectionsUpdated: updateResult.count });
     } catch (error) {
         console.error('[DB Purge] Error:', error);
         res.status(500).json({ success: false, error: error.message });

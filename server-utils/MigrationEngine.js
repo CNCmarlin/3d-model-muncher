@@ -394,23 +394,62 @@ class MigrationEngine {
     _generateCollectionId(folderPath) {
         const rel = path.relative(this.modelsDir, folderPath);
         const normalized = rel.replace(/\\/g, '/');
-        if (!normalized) return 'root';
+        if (!normalized) return null; // Used to be 'root', changed to null for loose model support
         return `col_${Buffer.from(normalized).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')}`;
     }
 
     async _ensureCollection(col) {
         try {
+            // Check if a generated cover exists for this collection ID (prefer newest PNG format)
+            const potentialCoverPathPng = `/data/covers/${encodeURIComponent(col.id)}_cover.png`;
+            const absoluteCoverPathPng = path.join(process.cwd(), 'data', 'covers', `${encodeURIComponent(col.id)}_cover.png`);
+
+            const potentialCoverPathJpg = `/data/covers/${encodeURIComponent(col.id)}_cover.jpg`;
+            const absoluteCoverPathJpg = path.join(process.cwd(), 'data', 'covers', `${encodeURIComponent(col.id)}_cover.jpg`);
+
+            let coverImagePath = null;
+            if (fs.existsSync(absoluteCoverPathPng)) {
+                coverImagePath = potentialCoverPathPng;
+            } else if (fs.existsSync(absoluteCoverPathJpg)) {
+                coverImagePath = potentialCoverPathJpg;
+            }
+
+            // Optional: Pull existing legacy data from collections.json if it exists
+            let legacyMeta = { description: '', images: [], buildPlates: [] };
+            try {
+                const legacyPath = path.join(process.cwd(), 'data', 'collections.json');
+                if (fs.existsSync(legacyPath)) {
+                    const legacyColls = JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
+                    const legacyCol = legacyColls.find(c => c.id === col.id);
+                    if (legacyCol) {
+                        if (legacyCol.coverImagePath) coverImagePath = legacyCol.coverImagePath;
+                        if (legacyCol.description) legacyMeta.description = legacyCol.description;
+                        if (legacyCol.images) legacyMeta.images = legacyCol.images;
+                    }
+                }
+            } catch (e) {
+                console.warn(`[MigrationEngine] Failed to parse legacy collections.json for ${col.id}: ${e.message}`);
+            }
+
             await prisma.collection.upsert({
                 where: { id: col.id },
                 create: {
                     id: col.id,
                     name: col.name,
                     type: 'folder',
-                    parentId: col.parentId
+                    parentId: col.parentId,
+                    pathHash: col.folderPath ? Buffer.from(col.folderPath).toString('base64') : null,
+                    coverImagePath: coverImagePath,
+                    metadata: JSON.stringify(legacyMeta)
                 },
                 update: {
                     name: col.name,
-                    parentId: col.parentId
+                    parentId: col.parentId,
+                    pathHash: col.folderPath ? Buffer.from(col.folderPath).toString('base64') : null,
+                    // Note: Don't strictly overwrite metadata if it exists unless we're forcing a wipe, 
+                    // but migration usually implies a wipe. We will set it to ensure parity.
+                    coverImagePath: coverImagePath,
+                    metadata: JSON.stringify(legacyMeta)
                 }
             });
             this.stats.actions.collections.created++;
@@ -522,10 +561,24 @@ class MigrationEngine {
         const insertedPaths = new Set(); // Track paths to avoid duplicates
 
         // 2. Per-file thumbnails (keyed by model filename) — insert FIRST
+        // Within each sourceFile, embedded thumbs ('-embedded-thumb' in path) take order priority
+        // over generated thumbnails. This means dbAdapter will see embedded first in parsedImages.
         if (metadata.thumbnails && typeof metadata.thumbnails === 'object') {
             for (const [sourceFile, thumbPaths] of Object.entries(metadata.thumbnails)) {
                 if (Array.isArray(thumbPaths)) {
-                    for (const thumbPath of thumbPaths) {
+                    // Sort: embedded first, then generated
+                    const sorted = [...thumbPaths].sort((a, b) => {
+                        const aEmb = a.includes('-embedded-thumb');
+                        const bEmb = b.includes('-embedded-thumb');
+                        if (aEmb && !bEmb) return -1;
+                        if (!aEmb && bEmb) return 1;
+                        return 0;
+                    });
+                    for (let thumbPath of sorted) {
+                        thumbPath = thumbPath.replace(/\\/g, '/');
+                        if (thumbPath.startsWith('models/')) thumbPath = '/' + thumbPath;
+                        if (!thumbPath.startsWith('/models/')) thumbPath = '/models/' + thumbPath;
+
                         rows.push({ modelId, path: thumbPath, source: 'thumbnail', sourceFile, order: order++ });
                         insertedPaths.add(thumbPath.toLowerCase());
                     }
@@ -539,8 +592,12 @@ class MigrationEngine {
         const gallerySource = metadata.gallery || [];
 
         if (Array.isArray(gallerySource)) {
-            for (const imgPath of gallerySource) {
+            for (let imgPath of gallerySource) {
                 if (!insertedPaths.has(imgPath.toLowerCase())) {
+                    imgPath = imgPath.replace(/\\/g, '/');
+                    if (imgPath.startsWith('models/')) imgPath = '/' + imgPath;
+                    if (!imgPath.startsWith('/models/')) imgPath = '/models/' + imgPath;
+
                     rows.push({ modelId, path: imgPath, source: 'gallery', order: order++ });
                     insertedPaths.add(imgPath.toLowerCase());
                 }
@@ -562,10 +619,15 @@ class MigrationEngine {
         // 2. Create new records
         if (relatedFiles.length > 0) {
             await prisma.modelRelatedFile.createMany({
-                data: relatedFiles.map(path => ({
-                    modelId: modelId,
-                    path: path
-                }))
+                data: relatedFiles.map(path => {
+                    let strictPath = path.replace(/\\/g, '/');
+                    if (strictPath.startsWith('models/')) strictPath = '/' + strictPath;
+                    if (!strictPath.startsWith('/models/')) strictPath = '/models/' + strictPath;
+                    return {
+                        modelId: modelId,
+                        path: strictPath
+                    };
+                })
             });
         }
     }
@@ -654,6 +716,7 @@ class MigrationEngine {
                         data: {
                             filename: fileName,
                             filePath: this._getRelativePath(absPath),
+                            fileType: ext,
                             size: BigInt(fs.statSync(absPath).size),
                             modelId: mapped.id,
                             isPrimary: isPrimary,
@@ -766,7 +829,6 @@ class MigrationEngine {
                     gcodePrintTime: true, // Batch 3
                     notes: true,          // Batch 4
                     source: true,         // Batch 4
-                    filePath: true,       // Batch 4
                     relatedFiles: { select: { id: true } }, // Batch 4
                     images: { select: { id: true, source: true } } // Batch 5
                 }
@@ -814,7 +876,7 @@ class MigrationEngine {
                 // Batch 3: Promoted Fields
                 if (m.gcodeFilePath || m.gcodePrintTime) this.stats.summary.current.withGcode++;
                 // Batch 4: Promoted Fields
-                if (m.source || m.notes || m.filePath || (m.relatedFiles && m.relatedFiles.length > 0)) {
+                if (m.source || m.notes || (m.relatedFiles && m.relatedFiles.length > 0)) {
                     this.stats.summary.current.withFilesIdentity++;
                 }
                 // Batch 5: Images

@@ -1,3 +1,4 @@
+import { useConfig } from "@/context/AppConfigContext";
 import { useNavigation } from "@/context/NavigationContext";
 import { Collection } from "@/types/collection";
 import { Model_db } from "@/types/model_db";
@@ -33,6 +34,9 @@ export function useFilteredModels_db({
         activeCollection,
         setActiveCollection
     } = useNavigation();
+
+    const { appConfig } = useConfig();
+    const collectionMode = appConfig?.settings?.collectionMode || 'strict';
 
     // State
     const [filteredModels, setFilteredModels] = useState<Model_db[]>([]);
@@ -95,17 +99,15 @@ export function useFilteredModels_db({
 
     const collectionBaseModels = useMemo(() => {
         if (activeCollection) {
-            if (hasActiveFilters) {
-                // ── FILTER MODE: expand scope to entire descendant tree ──────────
-                // Any active filter → include models from this collection AND all
-                // nested child collections so you can search/filter across the whole
-                // sub-tree without manually drilling into each sub-folder.
+            // In Top-Level Aggregation, or when Filtering, we need the entire sub-tree of models.
+            const needsDescendants = hasActiveFilters || collectionMode === 'top-level';
+
+            if (needsDescendants) {
+                // ── EXPANDED SCOPE: entire descendant tree ──────────
                 const idSet = getRecursiveModelIds(activeCollection, collections, models);
                 return models.filter(m => idSet.has(m.id));
             } else {
-                // ── BROWSE MODE: direct members only ────────────────────────────
-                // No active filters → show only models directly in this collection.
-                // Sub-collections appear as folder tiles to drill into.
+                // ── STRICT MODE: direct members only ────────────────────────────
                 return models.filter(m =>
                     (m as any).collectionId === activeCollection.id ||
                     m.collections?.some((cid: string) => cid === activeCollection.id)
@@ -113,7 +115,7 @@ export function useFilteredModels_db({
             }
         }
         return models;
-    }, [models, activeCollection, collections, hasActiveFilters]);
+    }, [models, activeCollection, collections, hasActiveFilters, collectionMode]);
 
 
     // [REFACTOR] Centralized Filtering Logic

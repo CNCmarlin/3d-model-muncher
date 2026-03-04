@@ -1,10 +1,10 @@
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
@@ -173,22 +173,23 @@ export function BulkEditDrawer({
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label>Collection</Label>
-                  <Select value={editState.collectionId || ''} onValueChange={setCollectionId}>
-                    <SelectTrigger><SelectValue placeholder="Select collection" /></SelectTrigger>
-                    <SelectContent>
-                      {collectionsList.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect_DB
+                    value={editState.collectionId || ''}
+                    onValueChange={setCollectionId}
+                    placeholder="Select collection"
+                    options={collectionsList.map(c => ({ value: c.id, label: c.name || 'Unnamed' }))}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Action</Label>
-                  <Select value={editState.collectionAction || 'none'} onValueChange={(v: any) => setCollectionAction(v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="add">Add to collection</SelectItem>
-                      <SelectItem value="remove">Remove from collection</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect_DB
+                    value={editState.collectionAction || 'none'}
+                    onValueChange={(v: any) => setCollectionAction(v)}
+                    options={[
+                      { value: "add", label: "Add to collection" },
+                      { value: "remove", label: "Remove from collection" }
+                    ]}
+                  />
                 </div>
               </div>
             </BulkEditSection_DB>
@@ -203,14 +204,15 @@ export function BulkEditDrawer({
               onToggle={() => handleFieldToggle('category')}
             >
               <div className="space-y-2">
-                <Select value={editState.category || ''} onValueChange={(v) => {
-                  // Find label to ensure case consistency
-                  const found = categories.find(c => c.label === v || c.id === v);
-                  setCategory(found ? found.label : v);
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>{(categories || []).map(c => <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>)}</SelectContent>
-                </Select>
+                <SearchableSelect_DB
+                  value={editState.category || ''}
+                  onValueChange={(v) => {
+                    const found = categories.find(c => c.label === v || c.id === v);
+                    setCategory(found ? found.label : v);
+                  }}
+                  placeholder="Select category"
+                  options={(categories || []).map(c => ({ value: c.label, label: c.label }))}
+                />
                 {commonValues.category && <p className="text-xs text-muted-foreground">Current: {commonValues.category}</p>}
               </div>
             </BulkEditSection_DB>
@@ -243,10 +245,12 @@ export function BulkEditDrawer({
               checked={fieldSelection.license}
               onToggle={() => handleFieldToggle('license')}
             >
-              <Select value={editState.license as string || ''} onValueChange={setLicense}>
-                <SelectTrigger><SelectValue placeholder="Select license" /></SelectTrigger>
-                <SelectContent>{LICENSES.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
-              </Select>
+              <SearchableSelect_DB
+                value={editState.license as string || ''}
+                onValueChange={setLicense}
+                placeholder="Select license"
+                options={LICENSES.map(l => ({ value: l, label: l }))}
+              />
               {commonValues.license && <p className="text-xs text-muted-foreground">Current: {commonValues.license}</p>}
             </BulkEditSection_DB>
 

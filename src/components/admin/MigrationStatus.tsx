@@ -326,7 +326,7 @@ export const MigrationStatus = () => {
                                                     </thead>
                                                     <tbody className="divide-y">
                                                         {[
-                                                            { label: 'Project Roots', key: 'projectRoots' },
+                                                            { label: 'Main Models', key: 'mainModels' },
                                                             { label: 'Project Parts', key: 'projectParts' },
                                                             { label: 'Has Description', key: 'withDescription' },
                                                             { label: 'Has Tags', key: 'withTags' },

@@ -133,6 +133,7 @@ function generateCollections(scanRoot, modelsDir, options = { strategy: 'smart' 
       collections.push({
         id: myColId,
         name: folderName,
+        folderPath: currentDir,
         modelIds: allModelsForThisCollection,
         parentId: strategy === 'strict' ? parentColId : null,
         category: 'Auto-Imported'

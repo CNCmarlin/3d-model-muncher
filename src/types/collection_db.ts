@@ -43,7 +43,8 @@ export type Collection = Omit<StrictCollection_db, 'name' | 'description' | 'cov
     documents?: string[];
     category?: string;
     tags?: string[];
-    type?: 'folder' | 'project' | 'standard';
+    isModelFolder?: boolean;
+    type?: string; // 'Manual' or 'Auto-Imported'
     buildPlates?: any[];
     metadata?: any;
     coverImagePath?: string | null;

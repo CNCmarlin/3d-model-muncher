@@ -33,6 +33,7 @@ async function getFilesForModel(modelId) {
  */
 async function upsertFile(fileData) {
     const { modelId, filename, filePath, size, isPrimary, isSupported } = fileData;
+    const fileType = filename ? filename.split('.').pop()?.toLowerCase() ?? null : null;
 
     const existing = await prisma.modelFile.findFirst({
         where: { modelId, filename }
@@ -44,6 +45,7 @@ async function upsertFile(fileData) {
             data: {
                 size: size ? BigInt(size) : null,
                 filePath,
+                fileType: fileType ?? existing.fileType,
                 isSupported: isSupported !== undefined ? !!isSupported : existing.isSupported
             }
         });
@@ -54,6 +56,7 @@ async function upsertFile(fileData) {
             modelId,
             filename,
             filePath,
+            fileType,
             size: size ? BigInt(size) : null,
             isPrimary: !!isPrimary,
             isSupported: !!isSupported
@@ -92,12 +95,14 @@ async function syncFilesForModel(syncData) {
         // 3. Upsert incoming
         for (const file of files) {
             const existing = existingFiles.find(f => f.filename === file.filename);
+            const fileExt = file.filename ? file.filename.split('.').pop()?.toLowerCase() ?? null : null;
             const fileData = {
                 modelId,
                 filename: file.filename,
                 filePath: file.filePath,
+                fileType: fileExt,
                 size: file.size ? BigInt(file.size) : null,
-                isSupported: file.filename.toLowerCase().endsWith('.stl') || file.filename.toLowerCase().endsWith('.3mf') // Simple logic
+                isSupported: ['stl', '3mf', 'obj'].includes(fileExt ?? '')
             };
 
             if (existing) {

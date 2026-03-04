@@ -35,7 +35,7 @@ interface ModelMetadata {
     images?: string[];
     imageOrder?: string[];
   };
-  isProjectRoot?: boolean;
+  isMainModel?: boolean;
   isRelatedPart?: boolean;
   hidden?: boolean;
   created?: string;
@@ -432,7 +432,7 @@ export async function scanDirectory(dir: string, fileType: "3mf" | "stl" = "3mf"
                 // --- LOCK DOWN CRITICAL IDENTITY FIELDS ---
                 // We never want the scanner to reset these to defaults if they exist
                 id: existing.id || freshMetadata.id,
-                isProjectRoot: existing.isProjectRoot ?? freshMetadata.isProjectRoot,
+                isMainModel: existing.isMainModel ?? freshMetadata.isMainModel,
                 isRelatedPart: existing.isRelatedPart ?? freshMetadata.isRelatedPart,
                 hidden: existing.hidden ?? freshMetadata.hidden,
                 category: (existing.category && existing.category !== "Uncategorized")

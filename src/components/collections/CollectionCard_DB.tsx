@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useConfig } from "@/context/AppConfigContext";
 import { useDialog_db } from "@/hooks/useDialog_db";
 import type { Category } from "@/types/category";
 import type { Collection } from "@/types/collection_db";
+import { getDynamicModelCount } from "@/utils/collectionUtils_db";
 import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -23,19 +25,33 @@ export interface CollectionCardProps {
   models?: any[];
 }
 
-export function CollectionCard_DB({ collection, categories, collections, onOpen, onChanged, onDeleted, fallbackImage, models = [] }: CollectionCardProps) {
+export const CollectionCard_DB = ({ collection, collections, categories, onOpen, onChanged, onDeleted, fallbackImage }: CollectionCardProps) => {
   const editDialog = useDialog_db(false);
   const deleteDialog = useDialog_db(false);
   const [deletePhysicalFiles, setDeletePhysicalFiles] = useState(false);
+  const { appConfig } = useConfig();
+  const collectionMode = appConfig?.settings?.collectionMode || 'strict';
 
   /* Restore Logic Variables */
   if (fallbackImage) console.log(`[CardRender] '${collection.name}' received fallback:`, fallbackImage);
 
-  const coverSrc = collection.coverImage
-    ? collection.coverImage
-    : (collection.images && collection.images.length > 0)
-      ? collection.images[0]
-      : fallbackImage || null;
+  const getCoverUrl = (path: string | undefined | null) => {
+    if (!path) return null;
+    if (path.startsWith('/data/') || path.startsWith('/api/') || path.startsWith('http')) return path;
+    if (path.startsWith('/models/')) return path;
+    if (path.startsWith('models/')) return `/${path}`;
+    return `/models/${path}`;
+  };
+
+  const coverSrc = getCoverUrl(
+    collection.coverImagePath
+      ? collection.coverImagePath
+      : collection.coverImage
+        ? collection.coverImage
+        : (collection.images && collection.images.length > 0)
+          ? collection.images[0]
+          : fallbackImage
+  );
 
   const handleSaved = (_updated: any) => {
     // Ask parent to refresh collections list
@@ -69,8 +85,7 @@ export function CollectionCard_DB({ collection, categories, collections, onOpen,
   };
 
   // Runtime guard
-  // Runtime guard
-  const modelCount = collection?.modelIds ? collection.modelIds.length : 0;
+  const modelCount = getDynamicModelCount(collection, collections, collectionMode);
 
   const collectionId = collection?.id;
 
@@ -124,9 +139,9 @@ export function CollectionCard_DB({ collection, categories, collections, onOpen,
         {collection?.description && (
           <p className="text-sm text-muted-foreground line-clamp-5 leading-snug">{collection.description}</p>
         )}
-        <div className="text-muted-foreground space-y-0.5 mt-1 text-xs">
-          {/* Legacy Card has simpler metadata or none */}
-          <span>{collection.modelIds?.length || 0} items</span>
+        <div className="text-muted-foreground space-y-0.5 mt-1 text-xs flex justify-between">
+          <span>{modelCount} items</span>
+          {collection.category && <span>{collection.category}</span>}
         </div>
       </CardContent>
       <CardFooter className="p-2 pt-0 mt-auto">
@@ -142,7 +157,6 @@ export function CollectionCard_DB({ collection, categories, collections, onOpen,
           onOpenChange={editDialog.setIsOpen}
           collection={collection ?? null}
           collections={collections}
-          models={models}
           categories={categories}
           onSave={async (c) => {
             // Adapt to promise interface if needed, legacy might expect void

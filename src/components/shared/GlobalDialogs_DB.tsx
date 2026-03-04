@@ -26,8 +26,8 @@ interface GlobalDialogsProps {
     setIsUploadDialogOpen: (v: boolean) => void;
     uploadTargetFolder?: string;
     setUploadTargetFolder: (v: string | undefined) => void;
-    uploadTargetCollectionName?: string;
-    setUploadTargetCollectionName: (v: string | undefined) => void;
+    uploadTargetCollectionId?: string;
+    setUploadTargetCollectionId: (v: string | undefined) => void;
     onUploadComplete: () => void;
 
     // Import
@@ -63,8 +63,8 @@ export function GlobalDialogs_DB({
     setIsUploadDialogOpen,
     uploadTargetFolder,
     setUploadTargetFolder,
-    uploadTargetCollectionName,
-    setUploadTargetCollectionName,
+    uploadTargetCollectionId,
+    setUploadTargetCollectionId,
     onUploadComplete,
     isImportOpen,
     setIsImportOpen,
@@ -93,7 +93,6 @@ export function GlobalDialogs_DB({
                     setImportTargetFolder(undefined);
                 }}
                 defaultCollectionId={importTargetCollectionId}
-                defaultFolder={importTargetFolder}
                 onImportComplete={onImportComplete}
             />
 
@@ -199,11 +198,11 @@ export function GlobalDialogs_DB({
                 onClose={() => {
                     setIsUploadDialogOpen(false)
                     setUploadTargetFolder(undefined);
-                    setUploadTargetCollectionName(undefined);
+                    setUploadTargetCollectionId(undefined);
                 }}
                 onUploaded={onUploadComplete}
                 initialFolder={uploadTargetFolder}
-                initialCollectionId={uploadTargetCollectionName}
+                initialCollectionId={uploadTargetCollectionId}
             />
 
             {/* Move Confirmation Dialog */}

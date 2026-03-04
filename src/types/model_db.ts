@@ -17,7 +17,8 @@ export interface ModelFile_db {
     modelId: string;
     fileName: string;
     filePath: string;
-    fileType: 'stl' | '3mf' | 'obj' | 'gcode' | 'image' | 'other';
+    fileType: string | null; // Lowercase extension: stl | 3mf | obj | gcode | image | other
+    fileType_legacy?: 'stl' | '3mf' | 'obj' | 'gcode' | 'image' | 'other'; // For backward compat with old enum usage
     size: number;
     isPrimary: boolean;
     createdAt: Date;
@@ -114,6 +115,7 @@ export interface StrictModel_db {
 
     // Component Flag (replaces legacy isProjectRoot/isRelatedPart)
     isComponent: boolean; // maps to is_component in Prisma schema
+    isMainModel: boolean; // maps to is_main_model in Prisma schema
 
     // Timestamps
     createdAt: Date;
@@ -131,7 +133,7 @@ export interface StrictModel_db {
         price?: number;
         hidden?: boolean;
         isRelatedPart?: boolean;
-        isProjectRoot?: boolean;
+        isMainModel?: boolean;
         category?: string;
         related_files?: string[];
         userDefined?: {
@@ -145,9 +147,10 @@ export interface StrictModel_db {
 }
 
 
-export type Model_db = Omit<StrictModel_db, 'filePath' | 'thumbnailPath'> & {
+export type Model_db = Omit<StrictModel_db, 'primaryModelPath' | 'thumbnailPath'> & {
     // Legacy Overrides (Phase 1 Migration Bridge)
-    filePath?: string;
+    primaryModelPath?: string | null;
+    filePath?: string; // DEPRECATED — kept for legacy bridge only, do not use for 3D paths
     thumbnail?: string;
     images?: string[];
     parsedImages?: string[];

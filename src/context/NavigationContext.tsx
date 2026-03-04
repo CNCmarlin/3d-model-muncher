@@ -80,6 +80,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             case 'collection-view': return activeCollection ? activeCollection.name : 'Collection';
             case 'model-hero': return 'Model Details';
             case 'bulk-edit': return 'Bulk Editor';
+            case 'projects': return 'Project Workspace';
+            case 'project-workspace': return 'Project Workspace';
             default: return 'Organize & Print';
         }
     };

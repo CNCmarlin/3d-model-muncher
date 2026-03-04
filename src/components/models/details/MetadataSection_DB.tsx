@@ -1,7 +1,7 @@
 import { DurationInput_DB } from "@/components/common/DurationInput_DB";
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Model } from "@/types/model_db";
@@ -48,36 +48,30 @@ export const MetadataSection_DB = ({
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">Category</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={editedModel.category || ""}
                             onValueChange={(val) => onLocalUpdate({ category: val })}
-                        >
-                            <SelectTrigger className="h-9 text-xs">
-                                <SelectValue placeholder="Select Category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {categories.map((c) => (
-                                    <SelectItem key={c.id || c.label || c.name} value={c.label || c.name}>{c.label || c.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                            placeholder="Select Category"
+                            className="h-9 text-xs"
+                            options={categories.map((c) => ({
+                                value: c.label || c.name,
+                                label: c.label || c.name
+                            }))}
+                        />
                     </div>
 
                     <div className="space-y-2">
                         <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">License</Label>
-                        <Select
+                        <SearchableSelect_DB
                             value={isKnownLicense(editedModel.license || "") ? editedModel.license || "" : "Other"}
                             onValueChange={(val) => onLocalUpdate({ license: val })}
-                        >
-                            <SelectTrigger className="h-9 text-xs">
-                                <SelectValue placeholder="License Type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {LICENSES.map((l: any) => (
-                                    <SelectItem key={l} value={l}>{l}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                            placeholder="License Type"
+                            className="h-9 text-xs"
+                            options={LICENSES.map((l: any) => ({
+                                value: l,
+                                label: l
+                            }))}
+                        />
                     </div>
                 </div>
 

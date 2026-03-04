@@ -53,6 +53,7 @@ export interface AppConfig {
     showPrintedBadge?: boolean;
     verboseScanLogs?: boolean;
     scanStrategy: 'smart' | 'strict' | 'top-level';
+    collectionMode?: 'strict' | 'smart' | 'top-level' | 'manual' | 'raw';
     modelCardPrimary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     modelCardSecondary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     modelCardTertiary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
@@ -64,6 +65,7 @@ export interface AppConfig {
     alwaysMoveFiles?: boolean; // If true, always move files on collection change without asking.
     onboardingCompleted?: boolean;
     libraryName?: string; // Custom name shown in the sidebar and top bar (default: "3D Model Muncher")
+    buildPlatePresets?: { name: string; width: number; height: number; }[]; // Custom User Presets
   };
   filters: {
     defaultCategory: string;

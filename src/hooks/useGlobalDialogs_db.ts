@@ -32,23 +32,16 @@ export function useGlobalDialogs_db({
     // --- Upload Dialog ---
     const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
     const [uploadTargetFolder, setUploadTargetFolder] = useState<string | undefined>(undefined);
-    const [uploadTargetCollectionName, setUploadTargetCollectionName] = useState<string | undefined>(undefined);
+    const [uploadTargetCollectionId, setUploadTargetCollectionId] = useState<string | undefined>(undefined);
 
     const openUpload = (activeCollection?: Collection | null) => {
-        if (activeCollection && activeCollection.id?.startsWith('col_')) {
-            try {
-                const b64 = activeCollection.id.substring(4);
-                const relPath = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-                setUploadTargetFolder(relPath);
-                setUploadTargetCollectionName(activeCollection.name);
-            } catch (e) {
-                console.warn("Could not decode collection path", e);
-                setUploadTargetFolder(undefined);
-                setUploadTargetCollectionName(undefined);
-            }
+        if (activeCollection && activeCollection.id) {
+            setUploadTargetCollectionId(activeCollection.id);
+            // We can optionally infer a default folder path if it has one, but ID is enough for the dropdown
+            setUploadTargetFolder(activeCollection.pathHash ? atob(activeCollection.pathHash) : undefined);
         } else {
             setUploadTargetFolder(undefined);
-            setUploadTargetCollectionName(undefined);
+            setUploadTargetCollectionId(undefined);
         }
         setIsUploadDialogOpen(true);
     };
@@ -71,15 +64,17 @@ export function useGlobalDialogs_db({
             const col = collections.find(c => c.id === collectionId);
 
             // Helper to extract base folder from a model
+            // modelUrl format: /models/Collection/Model/file.stl → strip prefix → Collection/Model/file.stl
             const getFolderFromModel = (m: Model) => {
-                if (!m.filePath) return null;
-                const lastSlash = Math.max(m.filePath.lastIndexOf('/'), m.filePath.lastIndexOf('\\'));
+                const relPath = m.modelUrl?.replace(/^\/?models\//, '');
+                if (!relPath) return null;
+                const lastSlash = Math.max(relPath.lastIndexOf('/'), relPath.lastIndexOf('\\'));
                 if (lastSlash <= 0) return ''; // Root
 
-                let folder = m.filePath.substring(0, lastSlash);
+                let folder = relPath.substring(0, lastSlash);
 
                 // If Project Root, step up one level to get the 'Apparent' parent folder
-                if ((m.metadata as any)?.isProjectRoot) {
+                if ((m.metadata as any)?.isMainModel) {
                     const parentSlash = Math.max(folder.lastIndexOf('/'), folder.lastIndexOf('\\'));
                     folder = parentSlash > 0 ? folder.substring(0, parentSlash) : '';
                 }
@@ -205,8 +200,8 @@ export function useGlobalDialogs_db({
             setIsUploadDialogOpen,
             uploadTargetFolder,
             setUploadTargetFolder,
-            uploadTargetCollectionName,
-            setUploadTargetCollectionName,
+            uploadTargetCollectionId,
+            setUploadTargetCollectionId,
             onUploadComplete,
 
             isImportOpen,

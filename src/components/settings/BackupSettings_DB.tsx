@@ -1,8 +1,19 @@
 import { LastRunLabel } from '@/components/common/LastRunLabel';
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { useBackups_db } from '@/hooks/settings/useBackups_db';
 import { useSettingsConfig_db } from '@/hooks/settings/useSettingsConfig_db';
@@ -26,6 +37,8 @@ export function BackupSettings_DB({
     handleCreateBackup,
     handleRestoreFromFile,
     handleBackupFileRestore,
+    safeRestores,
+    triggerSafeRestore,
     models,
     configSettings
 }: BackupSettingsProps) {
@@ -237,28 +250,15 @@ export function BackupSettings_DB({
                         {/* Strategy Selection */}
                         <div className="space-y-3">
                             <Label>Restore Strategy</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={restoreStrategy}
-                                onValueChange={(v: 'merge' | 'replace') => setRestoreStrategy(v)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="merge">
-                                        <div className="font-medium">Merge <span className="text-xs text-muted-foreground">(Recommended)</span></div>
-                                        <div className="text-xs text-muted-foreground hidden sm:block">
-                                            Upsert records by ID — existing records not in the backup are kept
-                                        </div>
-                                    </SelectItem>
-                                    <SelectItem value="replace">
-                                        <div className="font-medium text-destructive">Replace (Destructive)</div>
-                                        <div className="text-xs text-muted-foreground hidden sm:block">
-                                            Delete all existing records, then restore from backup
-                                        </div>
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
+                                onValueChange={(v: string) => setRestoreStrategy(v as 'merge' | 'replace')}
+                                placeholder="Select strategy..."
+                                options={[
+                                    { value: 'merge', label: 'Merge (Recommended)', tooltip: 'Upsert records by ID — existing records not in the backup are kept' },
+                                    { value: 'replace', label: 'Replace (Destructive)', tooltip: 'Delete all existing records, then restore from backup' }
+                                ]}
+                            />
 
                             {/* Strategy Description */}
                             <div className={`text-xs p-3 rounded-lg break-words ${restoreStrategy === 'replace' ? 'bg-destructive/10 text-destructive' : 'bg-muted/50 text-muted-foreground'}`}>
@@ -366,6 +366,65 @@ export function BackupSettings_DB({
                                                     </p>
                                                 </div>
                                             </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {/* System Auto-Backups / Safe Restores */}
+                    {safeRestores && safeRestores.length > 0 && (
+                        <>
+                            <Separator />
+                            <div className="space-y-3">
+                                <h3 className="font-medium">System Auto-Backups</h3>
+                                <p className="text-sm text-muted-foreground">
+                                    Automatic safeguards captured before destructive database changes. Restoring from these directly overwrites your live database.
+                                </p>
+                                <div className="space-y-2">
+                                    {safeRestores.map((backup, index) => (
+                                        <div
+                                            key={index}
+                                            className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-muted/30 border border-primary/10 rounded-lg gap-3"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <Database className="h-4 w-4 text-primary" />
+                                                <div>
+                                                    <p className="font-medium text-sm">{backup.name}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {new Date(backup.timestamp).toLocaleString()} • {(backup.size / 1024).toFixed(1)} KB
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <AlertDialog>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="gap-2 shrink-0 border-primary/20 hover:bg-primary/10 transition-colors"
+                                                    >
+                                                        <RotateCcw className="h-3 w-3 text-primary" />
+                                                        Restore
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                                <AlertDialogContent>
+                                                    <AlertDialogHeader>
+                                                        <AlertDialogTitle>Restore Database Backup?</AlertDialogTitle>
+                                                        <AlertDialogDescription>
+                                                            Are you sure you want to overwrite your LIVE database with <strong>{backup.name}</strong>?
+                                                            <br /><br />
+                                                            This action cannot be undone and your backend will restart.
+                                                        </AlertDialogDescription>
+                                                    </AlertDialogHeader>
+                                                    <AlertDialogFooter>
+                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                        <AlertDialogAction onClick={() => triggerSafeRestore(backup.name)}>
+                                                            Restore Backend
+                                                        </AlertDialogAction>
+                                                    </AlertDialogFooter>
+                                                </AlertDialogContent>
+                                            </AlertDialog>
                                         </div>
                                     ))}
                                 </div>

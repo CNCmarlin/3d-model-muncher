@@ -44,10 +44,8 @@ export function useTagManager_db({ models, onModelsUpdate, setSaveStatus, setSta
                 try {
                     let filePath;
                     if (model.modelUrl) {
-                        // FIX: Pass relative path and let server resolve extensions
+                        // modelUrl is the canonical per-model path — strip URL prefix for server
                         filePath = model.modelUrl.replace(/^\/?models\//, '');
-                    } else if (model.filePath) {
-                        filePath = model.filePath;
                     } else {
                         console.error('No file path available for model:', model.name);
                         saveErrors++;

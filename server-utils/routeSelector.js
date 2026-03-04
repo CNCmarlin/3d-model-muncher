@@ -169,6 +169,21 @@ function getIntegrationRoutes() {
     return require('../server/routes/integrations');
 }
 
+/**
+ * Get the appropriate projects routes based on current backend mode
+ * (Projects are inherently DB-only in V2)
+ * @returns {Router} Express router for projects endpoints
+ */
+function getProjectRoutes() {
+    if (isDatabaseMode()) {
+        console.log('📊 [RouteSelector] Loading DATABASE project routes (projects_db.js)');
+        return require('../server/routes/projects_db');
+    }
+    // Fallback for legacy (not fully supported, but prevents crash)
+    console.log('📁 [RouteSelector] WARNING: Projects require Database Mode.');
+    return require('express').Router();
+}
+
 function logStartupMode() {
     const mode = getBackendMode();
     const emoji = mode === 'DATABASE' ? '📊' : '📁';
@@ -189,5 +204,6 @@ module.exports = {
     getConfigRoutes,
     getIntegrationRoutes,
     getCollectionScanner,
+    getProjectRoutes,
     logStartupMode
 };

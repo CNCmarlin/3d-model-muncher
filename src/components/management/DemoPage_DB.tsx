@@ -1,3 +1,4 @@
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -214,16 +214,16 @@ export function DemoPage_DB({ onBack }: DemoPageProps) {
 
                     <div className="space-y-2">
                       <Label htmlFor="demo-select">Select Dropdown</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose an option" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="option1">Option 1</SelectItem>
-                          <SelectItem value="option2">Option 2</SelectItem>
-                          <SelectItem value="option3">Option 3</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <SearchableSelect_DB
+                        value="option1"
+                        onValueChange={() => { }}
+                        placeholder="Choose an option"
+                        options={[
+                          { value: "option1", label: "Option 1" },
+                          { value: "option2", label: "Option 2" },
+                          { value: "option3", label: "Option 3" }
+                        ]}
+                      />
                     </div>
 
                     <div className="space-y-2">

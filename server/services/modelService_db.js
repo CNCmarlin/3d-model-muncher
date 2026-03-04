@@ -1,8 +1,8 @@
 const prisma = require('../../server-utils/db');
 const fs = require('fs');
-const path = require('path');
 const { parseDurationToSeconds } = require('../../server-utils/timeHelper');
 const { getAbsoluteModelsPath } = require('../../server-utils/dataAccess');
+const { generateCoverForCollection } = require('../../server-utils/coverGenerator_db');
 const {
     ModelSchema,
     ModelFormSchema,
@@ -80,7 +80,6 @@ async function getAllModels(query = {}) {
     // Build where clause
     const where = {
         isDeleted, // Respect soft deletes
-        isComponent: componentFilter, // Apply filter
         ...(search && {
             OR: [
                 { name: { contains: search } },
@@ -101,8 +100,16 @@ async function getAllModels(query = {}) {
         }),
         ...(validated.ids && validated.ids.length > 0 && {
             id: { in: validated.ids }
+        }),
+        ...(validated.modelUrl && {
+            modelUrl: validated.modelUrl
         })
     };
+
+    // Only apply isComponent filter if we are NOT doing a specific ID or URL lookup
+    if (!validated.ids && !validated.modelUrl) {
+        where.isComponent = componentFilter;
+    }
 
     dbLog('[getAllModels] Validated Query:', JSON.stringify(validated, null, 2));
     dbLog('[getAllModels] Built Where Clause:', JSON.stringify(where, null, 2));
@@ -196,6 +203,12 @@ async function createModel(data, collectionId) {
 
         return model;
     });
+
+    if (result.collectionId) {
+        triggerCoverGeneration([result.collectionId]);
+    }
+
+    return result;
 }
 
 /**
@@ -301,17 +314,18 @@ async function updateModel(id, updates) {
         mergedMetadata.related_files = related_files;
     }
 
-    // [Batch 4] Promote source, notes, filePath, related_files out of metadata
+    // [Batch 4] Promote source, notes, related_files out of metadata
     if (source !== undefined) modelUpdates.source = source;
     if (notes !== undefined) modelUpdates.notes = notes;
     if (designer !== undefined) modelUpdates.designer = designer;
-    if (filePath !== undefined) modelUpdates.filePath = filePath;
+    // NOTE: filePath/primaryModelPath is NOT written here — modelUrl is the canonical 3D path column
 
     // Clean up promoted fields from JSON blob to maintain "Strict" state
     delete mergedMetadata.source;
     delete mergedMetadata.notes;
     delete mergedMetadata.designer;
     delete mergedMetadata.filePath;
+    delete mergedMetadata.primaryModelPath;
     delete mergedMetadata.related_files;
 
     // [Batch 3] Ensure gcodeData is NOT in the JSON blob (it's promoted to columns)
@@ -366,6 +380,13 @@ async function updateModel(id, updates) {
         dbLog('[updateModel] ========== END - SUCCESS ==========');
         return model;
     });
+
+    // Trigger cover generation if the collection changed
+    if (result.collectionId !== currentModel.collectionId) {
+        triggerCoverGeneration([currentModel.collectionId, result.collectionId].filter(Boolean));
+    }
+
+    return result;
 }
 
 /**
@@ -374,10 +395,16 @@ async function updateModel(id, updates) {
  * @returns {Promise<Model>}
  */
 async function deleteModel(id) {
-    return await prisma.model.update({
+    const model = await prisma.model.update({
         where: { id },
         data: { isDeleted: true }
     });
+
+    if (model.collectionId) {
+        triggerCoverGeneration([model.collectionId]);
+    }
+
+    return model;
 }
 
 /**
@@ -386,7 +413,12 @@ async function deleteModel(id) {
  * @returns {Promise<void>}
  */
 async function hardDeleteModel(id) {
+    const model = await prisma.model.findUnique({ where: { id }, select: { collectionId: true } });
     await prisma.model.delete({ where: { id } });
+
+    if (model && model.collectionId) {
+        triggerCoverGeneration([model.collectionId]);
+    }
 }
 
 /**
@@ -469,8 +501,28 @@ async function bulkEditModels(bulkData) {
             }
         }
 
-        return { updated: updatedCount || modelIds.length };
+        // Gather all collections that these models currently belong to 
+        // OR are being moved to
+        const collectionsToUpdate = new Set();
+        if (updates.collectionId) collectionsToUpdate.add(updates.collectionId);
+
+        const currentModels = await tx.model.findMany({
+            where: { id: { in: modelIds } },
+            select: { collectionId: true }
+        });
+        currentModels.forEach(m => { if (m.collectionId) collectionsToUpdate.add(m.collectionId); });
+
+        return { updated: updatedCount || modelIds.length, collectionsToUpdate: [...collectionsToUpdate] };
     });
+
+    if (result.collectionsToUpdate.length > 0) {
+        triggerCoverGeneration(result.collectionsToUpdate);
+    }
+
+    // Don't leak the internal array back to clients
+    delete result.collectionsToUpdate;
+
+    return result;
 }
 
 /**
@@ -505,6 +557,26 @@ async function searchModels(query, filters = {}, limit = 20) {
 }
 
 // --- HELPER FUNCTIONS ---
+
+/**
+ * Trigger background generation of 2x2 mosaics for collections
+ * @param {string[]} collectionIds
+ */
+function triggerCoverGeneration(collectionIds) {
+    if (!collectionIds || collectionIds.length === 0) return;
+
+    // Deduplicate
+    const ids = [...new Set(collectionIds)];
+
+    // Run in background without awaiting
+    Promise.allSettled(ids.map(id => generateCoverForCollection(id)))
+        .then(results => {
+            const successes = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+            if (successes > 0) {
+                dbLog(`[Auto-Cover] Generated ${successes} new collection covers in the background`);
+            }
+        });
+}
 
 /**
  * Add tags to a model (creates tags if they don't exist)

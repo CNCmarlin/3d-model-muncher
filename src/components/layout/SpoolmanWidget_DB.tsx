@@ -1,7 +1,7 @@
+import { SearchableSelect_DB } from '@/components/common/SearchableSelect_DB';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Model } from '@/types/model_db';
 import { AlertTriangle, CheckCircle2, Loader2, Printer } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
@@ -199,22 +199,23 @@ export const SpoolmanWidget_DB: React.FC<SpoolmanWidgetProps> = ({ model, onUpda
 
               {/* Spool Selector */}
               <div className="flex-1 min-w-0">
-                <Select value={assignments[row.idx] || ''} onValueChange={(v) => handleAssign(row.idx, v)}>
-                  <SelectTrigger className="h-8 text-xs bg-background">
-                    <SelectValue placeholder={`Select ${row.type}...`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {spools.map(s => (
-                      <SelectItem key={s.id} value={s.id.toString()}>
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.filament.color_hex }} />
-                          <span className="truncate">{s.filament.vendor?.name} {s.filament.name}</span>
-                          <span className="text-muted-foreground ml-auto opacity-50">({Math.round(s.remaining_weight)}g)</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect_DB
+                  value={assignments[row.idx] || ''}
+                  onValueChange={(v) => handleAssign(row.idx, v)}
+                  placeholder={`Select ${row.type}...`}
+                  className="h-8 text-xs bg-background"
+                  options={spools.map(s => ({
+                    value: s.id.toString(),
+                    label: `${s.filament.vendor?.name || ''} ${s.filament.name}`,
+                    renderNode: (
+                      <div className="flex items-center gap-2 w-full">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: s.filament.color_hex }} />
+                        <span className="truncate">{s.filament.vendor?.name} {s.filament.name}</span>
+                        <span className="text-muted-foreground ml-auto opacity-50 flex-shrink-0">({Math.round(s.remaining_weight)}g)</span>
+                      </div>
+                    )
+                  }))}
+                />
                 {/* Requirement Text */}
                 <div className="flex justify-between text-[10px] text-muted-foreground px-1 mt-0.5">
                   <span>Req: {row.type}</span>

@@ -1,3 +1,4 @@
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import TagsInput from "@/components/common/TagsInput_DB";
 import { LastRunLabel_DB } from '@/components/shared/LastRunLabel_DB';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -6,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
@@ -79,13 +79,14 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
     setLastRunTimestamps(updated);
     try {
       const resp = await fetch('/api/load-config');
-      const config = await resp.json();
+      const data = await resp.json();
+      const actualConfig = data.config || {};
       await fetch('/api/save-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...config,
-          lastRunTimestamps: { ...config.lastRunTimestamps, ...updated }
+          ...actualConfig,
+          lastRunTimestamps: { ...actualConfig.lastRunTimestamps, ...updated }
         })
       });
     } catch { /* best effort */ }
@@ -708,11 +709,20 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                           </p>
                         </div>
 
-                        <div className="max-h-48 overflow-y-auto border rounded p-2 text-xs font-mono space-y-0.5">
-                          {coverPurgePreview.files.map((f, i) => (
-                            <div key={i} className="flex justify-between text-muted-foreground">
-                              <span className="truncate mr-2">{f.collectionName}</span>
-                              <span className="flex-shrink-0">{formatBytes(f.size)}</span>
+                        <div className="mb-1 text-xs text-muted-foreground">
+                          Target Directory: <code className="bg-muted px-1 py-0.5 rounded">/data/covers</code>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto border rounded p-2 text-xs font-mono space-y-1">
+                          {coverPurgePreview.files.map((f: any, i: number) => (
+                            <div key={i} className="flex justify-between items-center text-muted-foreground bg-muted/20 px-2 py-1.5 rounded-sm">
+                              <div className="flex flex-col min-w-0 flex-1 mr-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="truncate font-medium text-foreground">{f.collectionName}</span>
+                                  <span className="inline-flex flex-shrink-0 items-center justify-center text-[9px] uppercase tracking-widest font-bold text-primary bg-primary/10 border border-primary/20 rounded-full px-2 py-0.5">COLLECTION</span>
+                                </div>
+                                <span className="truncate text-[10px] text-muted-foreground/60" title={f.filename}>{f.filename}</span>
+                              </div>
+                              <span className="flex-shrink-0 text-[10px]">{formatBytes(f.size)}</span>
                             </div>
                           ))}
                         </div>
@@ -861,16 +871,12 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                   {/* Bind the select directly to editCategory and ensure a value is always present.
                       We force a default of 'Uncategorized' elsewhere, so there is no '(none)' option. */}
                   <div className="flex-1">
-                    <Select value={editCategory || 'Uncategorized'} onValueChange={(v: string) => setEditCategory(v)} disabled={categoryLoading}>
-                      <SelectTrigger size="sm">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(categories || []).map(c => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect_DB
+                      value={editCategory || 'Uncategorized'}
+                      onValueChange={(v: string) => setEditCategory(v)}
+                      disabled={categoryLoading}
+                      options={(categories || []).map(c => ({ value: c, label: c }))}
+                    />
                   </div>
                   {categoryLoading && (
                     <svg className="animate-spin h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" aria-hidden>
@@ -900,16 +906,14 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                       <div>
                         <label className="text-sm font-medium">Provider</label>
                         <div className="mt-2">
-                          <Select value={provider} onValueChange={(v: string) => setProvider(v as any)}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="mock">Simulated (fake)</SelectItem>
-                              <SelectItem value="gemini">Google Gemini</SelectItem>
-                              {/* <SelectItem value="openai">OpenAI</SelectItem> */}
-                            </SelectContent>
-                          </Select>
+                          <SearchableSelect_DB
+                            value={provider}
+                            onValueChange={(v: string) => setProvider(v as any)}
+                            options={[
+                              { value: 'mock', label: 'Simulated (fake)' },
+                              { value: 'gemini', label: 'Google Gemini' }
+                            ]}
+                          />
                         </div>
                         {provider === 'mock' && (
                           <div className="text-xs text-muted-foreground mt-2">Using simulated provider — results are mocked for testing.</div>
@@ -919,21 +923,20 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
                       <div className="mt-4">
                         <label className="text-sm font-medium">Prompt Template</label>
                         <div className="mt-1">
-                          <Select value={promptOption} onValueChange={(v: string) => {
-                            setPromptOption(v as any);
-                            // Clear the Other Prompt when choosing any template other than 'other'
-                            if (v !== 'other') setGeminiPrompt('');
-                          }}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="image_description">Create description from image</SelectItem>
-                              <SelectItem value="translate_description">Translate this description</SelectItem>
-                              <SelectItem value="rewrite_description">Rewrite description</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <SearchableSelect_DB
+                            value={promptOption}
+                            onValueChange={(v: string) => {
+                              setPromptOption(v as any);
+                              // Clear the Other Prompt when choosing any template other than 'other'
+                              if (v !== 'other') setGeminiPrompt('');
+                            }}
+                            options={[
+                              { value: 'image_description', label: 'Create description from image' },
+                              { value: 'translate_description', label: 'Translate this description' },
+                              { value: 'rewrite_description', label: 'Rewrite description' },
+                              { value: 'other', label: 'Other' }
+                            ]}
+                          />
                         </div>
                       </div>
 

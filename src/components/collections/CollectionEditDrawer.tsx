@@ -1,13 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Plus, List, Loader2, LayoutGrid, Upload, Trash2, Image as ImageIcon, Star, Box, Copy, FileText } from 'lucide-react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import TagsInput from '@/components/common/TagsInput';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from "@/components/ui/label";
-import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
-import TagsInput from '@/components/common/TagsInput';
-import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
@@ -15,9 +10,14 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { toast } from "sonner";
-import type { Collection } from '@/types/collection';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import type { Category } from '@/types/category';
+import type { Collection } from '@/types/collection';
+import { Box, Copy, FileText, Image as ImageIcon, LayoutGrid, List, Loader2, Plus, Star, Trash2, Upload } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { toast } from "sonner";
 
 
 interface CollectionEditDrawerProps {
@@ -331,7 +331,7 @@ export default function CollectionEditDrawer({
       if (coverImage?.startsWith('blob:')) {
         URL.revokeObjectURL(coverImage);
       }
-  
+
       // 2. State Reset: Clear all fields to prevent "bleeding" into the next open
       setName('');
       setDescription('');
@@ -451,514 +451,513 @@ export default function CollectionEditDrawer({
           } catch (e) { console.error("Image upload failed", e); }
         }
 
-      if (newPaths.length > 0) {
-        const finalImages = [...(savedCollection.images || []), ...newPaths];
-        const updateResp = await fetch('/api/collections', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...savedCollection, images: finalImages })
-        });
-        const updateData = await updateResp.json();
-        if (updateData.success) {
-          savedCollection = updateData.collection; // Update our local reference
+        if (newPaths.length > 0) {
+          const finalImages = [...(savedCollection.images || []), ...newPaths];
+          const updateResp = await fetch('/api/collections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...savedCollection, images: finalImages })
+          });
+          const updateData = await updateResp.json();
+          if (updateData.success) {
+            savedCollection = updateData.collection; // Update our local reference
+          }
         }
-      }
 
-      // Clear pending gallery now that they are moved to the server
-      setPendingGallery([]);
-    }
+        // Clear pending gallery now that they are moved to the server
+        setPendingGallery([]);
+      }
 
       // 3. Upload Pending Cover
       if (pendingCover && savedCollection?.id) {
-      const formData = new FormData();
-      formData.append('image', pendingCover);
-      try {
-        const cvResp = await fetch(`/api/collections/${savedCollection.id}/images`, { method: 'POST', body: formData });
-        const cvData = await cvResp.json();
-        if (cvResp.ok && cvData.success && cvData.imagePath) {
-          await fetch('/api/collections', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...savedCollection, coverImage: cvData.imagePath })
-          });
-        }
-      } catch (e) { console.error("Cover upload failed", e); }
-    }
-
-    // [NEW] 4. Upload Pending Documents
-    if (pendingDocuments.length > 0 && savedCollection?.id) {
-      const newDocPaths: string[] = [];
-      for (const file of pendingDocuments) {
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('image', pendingCover);
         try {
-          const docResp = await fetch(`/api/collections/${savedCollection.id}/documents`, { method: 'POST', body: formData });
-          const docData = await docResp.json();
-          if (docResp.ok && docData.success && docData.filePath) newDocPaths.push(docData.filePath);
-        } catch (e) { console.error("Doc upload failed", e); }
+          const cvResp = await fetch(`/api/collections/${savedCollection.id}/images`, { method: 'POST', body: formData });
+          const cvData = await cvResp.json();
+          if (cvResp.ok && cvData.success && cvData.imagePath) {
+            await fetch('/api/collections', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...savedCollection, coverImage: cvData.imagePath })
+            });
+          }
+        } catch (e) { console.error("Cover upload failed", e); }
       }
-      if (newDocPaths.length > 0) toast.success(`Uploaded ${newDocPaths.length} documents`);
+
+      // [NEW] 4. Upload Pending Documents
+      if (pendingDocuments.length > 0 && savedCollection?.id) {
+        const newDocPaths: string[] = [];
+        for (const file of pendingDocuments) {
+          const formData = new FormData();
+          formData.append('file', file);
+          try {
+            const docResp = await fetch(`/api/collections/${savedCollection.id}/documents`, { method: 'POST', body: formData });
+            const docData = await docResp.json();
+            if (docResp.ok && docData.success && docData.filePath) newDocPaths.push(docData.filePath);
+          } catch (e) { console.error("Doc upload failed", e); }
+        }
+        if (newDocPaths.length > 0) toast.success(`Uploaded ${newDocPaths.length} documents`);
+      }
+
+      window.dispatchEvent(new CustomEvent('collection-created', { detail: savedCollection }));
+      toast.success(isEdit ? "Collection updated" : "Collection created");
+      onSaved?.(savedCollection);
+      onOpenChange(false);
+    } catch (e) {
+      console.error('Failed to save:', e);
+      toast.error("Failed to save collection");
+    } finally {
+      setIsSaving(false);
     }
+  };
 
-    window.dispatchEvent(new CustomEvent('collection-created', { detail: savedCollection }));
-    toast.success(isEdit ? "Collection updated" : "Collection created");
-    onSaved?.(savedCollection);
-    onOpenChange(false);
-  } catch (e) {
-    console.error('Failed to save:', e);
-    toast.error("Failed to save collection");
-  } finally {
-    setIsSaving(false);
-  }
-};
+  const removalTarget = removalCollection ?? collection;
+  const removableIds = Array.isArray(initialModelIds) ? initialModelIds.filter(id => (removalTarget?.modelIds || []).includes(id)) : [];
+  const canRemove = !!removalTarget?.id && removableIds.length > 0 && !isRemoving;
 
-const removalTarget = removalCollection ?? collection;
-const removableIds = Array.isArray(initialModelIds) ? initialModelIds.filter(id => (removalTarget?.modelIds || []).includes(id)) : [];
-const canRemove = !!removalTarget?.id && removableIds.length > 0 && !isRemoving;
+  const handleRemoveSelected = async () => {
+    if (!removalTarget?.id || removableIds.length === 0) return;
+    setIsRemoving(true);
+    try {
+      const remainingIds = (removalTarget.modelIds || []).filter(id => !removableIds.includes(id));
+      const payload = {
+        id: removalTarget.id,
+        name: removalTarget.name,
+        description: removalTarget.description || '',
+        modelIds: remainingIds,
+        category: (removalTarget as any).category || '',
+        tags: (removalTarget as any).tags || [],
+        images: (removalTarget as any).images || [],
+        coverModelId: (removalTarget as any).coverModelId,
+        parentId: removalTarget.parentId,
+        childCollectionIds: removalTarget.childCollectionIds
+      };
 
-const handleRemoveSelected = async () => {
-  if (!removalTarget?.id || removableIds.length === 0) return;
-  setIsRemoving(true);
-  try {
-    const remainingIds = (removalTarget.modelIds || []).filter(id => !removableIds.includes(id));
-    const payload = {
-      id: removalTarget.id,
-      name: removalTarget.name,
-      description: removalTarget.description || '',
-      modelIds: remainingIds,
-      category: (removalTarget as any).category || '',
-      tags: (removalTarget as any).tags || [],
-      images: (removalTarget as any).images || [],
-      coverModelId: (removalTarget as any).coverModelId,
-      parentId: removalTarget.parentId,
-      childCollectionIds: removalTarget.childCollectionIds
-    };
+      const resp = await fetch('/api/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const res = await resp.json();
+      if (!resp.ok || !res.success) throw new Error(res?.error || 'Failed to remove items');
+      onSaved?.(res.collection);
+      onOpenChange(false);
+    } catch (err) {
+      console.error('Failed to remove models from collection:', err);
+    } finally {
+      setIsRemoving(false);
+    }
+  };
 
-    const resp = await fetch('/api/collections', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const res = await resp.json();
-    if (!resp.ok || !res.success) throw new Error(res?.error || 'Failed to remove items');
-    onSaved?.(res.collection);
-    onOpenChange(false);
-  } catch (err) {
-    console.error('Failed to remove models from collection:', err);
-  } finally {
-    setIsRemoving(false);
-  }
-};
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        className="w-full sm:max-w-xl"
+        blockOverlayInteractions={false}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
+        <SheetHeader>
+          <SheetTitle>{collection?.id ? 'Edit Collection' : 'New Collection'}</SheetTitle>
+          <SheetDescription>
+            {collection?.id
+              ? 'Update this collection’s name, parent, description, category, tags, and images.'
+              : 'Create a new collection or add selected models to an existing one.'}
+          </SheetDescription>
+        </SheetHeader>
+        <ScrollArea className="h-[calc(100vh-8rem)] pr-2">
+          <div className="space-y-4 p-4">
 
-return (
-  <Sheet open={open} onOpenChange={onOpenChange}>
-    <SheetContent
-      className="w-full sm:max-w-xl"
-      blockOverlayInteractions={false}
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
-      onEscapeKeyDown={(e) => e.preventDefault()}
-      onOpenAutoFocus={(e) => e.preventDefault()}
-    >
-      <SheetHeader>
-        <SheetTitle>{collection?.id ? 'Edit Collection' : 'New Collection'}</SheetTitle>
-        <SheetDescription>
-          {collection?.id
-            ? 'Update this collection’s name, parent, description, category, tags, and images.'
-            : 'Create a new collection or add selected models to an existing one.'}
-        </SheetDescription>
-      </SheetHeader>
-      <ScrollArea className="h-[calc(100vh-8rem)] pr-2">
-        <div className="space-y-4 p-4">
-
-          <div className="p-3 border rounded-lg bg-accent/20 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Box className="w-4 h-4 text-primary" />
-                <Label className="text-base font-medium">
-                  {collection?.id ? "Project Actions" : "Project Mode"}
-                </Label>
+            <div className="p-3 border rounded-lg bg-accent/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Box className="w-4 h-4 text-primary" />
+                  <Label className="text-base font-medium">
+                    {collection?.id ? "Project Actions" : "Project Mode"}
+                  </Label>
+                </div>
+                {/* Switch only for NEW collections */}
+                {!collection?.id && (
+                  <Switch
+                    id="project-mode"
+                    checked={isProject}
+                    onCheckedChange={setIsProject}
+                  />
+                )}
               </div>
-              {/* Switch only for NEW collections */}
-              {!collection?.id && (
-                <Switch
-                  id="project-mode"
-                  checked={isProject}
-                  onCheckedChange={setIsProject}
-                />
+
+              {/* Description */}
+              <div className="text-xs text-muted-foreground">
+                {collection?.id
+                  ? "Create a standalone Project workspace from this collection. The original collection will be preserved."
+                  : "Initialize this as a Project with Build Plates and print planning features."
+                }
+              </div>
+
+              {/* Action Button for EXISTING collections */}
+              {collection?.id && (
+                <Button
+                  onClick={(e) => { e.stopPropagation(); handleForkProject(); }}
+                  disabled={isSaving}
+                  className="w-full gap-2"
+                  variant="secondary"
+                >
+                  <Copy className="w-4 h-4" />
+                  Create Project from Collection
+                </Button>
               )}
             </div>
 
-            {/* Description */}
-            <div className="text-xs text-muted-foreground">
-              {collection?.id
-                ? "Create a standalone Project workspace from this collection. The original collection will be preserved."
-                : "Initialize this as a Project with Build Plates and print planning features."
-              }
-            </div>
-
-            {/* Action Button for EXISTING collections */}
-            {collection?.id && (
-              <Button
-                onClick={(e) => { e.stopPropagation(); handleForkProject(); }}
-                disabled={isSaving}
-                className="w-full gap-2"
-                variant="secondary"
-              >
-                <Copy className="w-4 h-4" />
-                Create Project from Collection
-              </Button>
+            {removalTarget?.id && removableIds.length > 0 && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-destructive">Remove from collection</h3>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Remove {removableIds.length} item{removableIds.length === 1 ? '' : 's'} from "{removalTarget.name}".
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-2"
+                  onClick={(e) => { e.stopPropagation(); handleRemoveSelected(); }}
+                  disabled={!canRemove}
+                >
+                  {isRemoving ? 'Removing…' : 'Remove selected'}
+                </Button>
+              </div>
             )}
-          </div>
 
-          {removalTarget?.id && removableIds.length > 0 && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
-              <div>
-                <h3 className="text-sm font-semibold text-destructive">Remove from collection</h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Remove {removableIds.length} item{removableIds.length === 1 ? '' : 's'} from "{removalTarget.name}".
-                </p>
+            {!collection?.id && (
+              <div className="flex items-center justify-between">
+                <div className="font-semibold text-lg text-card-foreground">Choose</div>
+                <div className="flex items-center bg-muted/30 rounded-lg p-1 border">
+                  <Button
+                    variant={createMode === 'new' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setCreateMode('new')}
+                    className="gap-2 h-8 px-3"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New
+                  </Button>
+                  <Button
+                    variant={createMode === 'existing' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setCreateMode('existing')}
+                    className="gap-2 h-8 px-3"
+                  >
+                    <List className="h-4 w-4" />
+                    Existing
+                  </Button>
+                </div>
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="gap-2"
-                onClick={(e) => { e.stopPropagation(); handleRemoveSelected(); }}
-                disabled={!canRemove}
-              >
-                {isRemoving ? 'Removing…' : 'Remove selected'}
-              </Button>
-            </div>
-          )}
+            )}
 
-          {!collection?.id && (
-            <div className="flex items-center justify-between">
-              <div className="font-semibold text-lg text-card-foreground">Choose</div>
-              <div className="flex items-center bg-muted/30 rounded-lg p-1 border">
-                <Button
-                  variant={createMode === 'new' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setCreateMode('new')}
-                  className="gap-2 h-8 px-3"
-                >
-                  <Plus className="h-4 w-4" />
-                  New
-                </Button>
-                <Button
-                  variant={createMode === 'existing' ? 'default' : 'ghost'}
-                  size="sm"
-                  onClick={() => setCreateMode('existing')}
-                  className="gap-2 h-8 px-3"
-                >
-                  <List className="h-4 w-4" />
-                  Existing
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {!collection?.id && createMode === 'existing' && (
-            <div className="space-y-2">
-              <Label>Add to existing collection</Label>
-              <Select
-                value={selectedExistingId}
-                onValueChange={(val) => setSelectedExistingId(val)}
-              >
-                <SelectTrigger onClick={(e) => e.stopPropagation()}>
-                  <SelectValue placeholder="Choose an existing collection" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(existingCollections || [])
-                    .slice()
-                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-                    .map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {existingCollections.length === 0 && (
-                <p className="text-xs text-muted-foreground">No existing collections yet.</p>
-              )}
-            </div>
-          )}
-
-          {(!!collection?.id || createMode === 'new') && (
-            <>
+            {!collection?.id && createMode === 'existing' && (
               <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Collection name"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={4}
-                  className="max-h-[150px] min-h-[80px] resize-y"
-                  placeholder="Describe this collection..."
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Parent Collection</Label>
-                <Select value={parentId} onValueChange={setParentId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select parent..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="root">
-                      <span className="text-muted-foreground italic">No Parent (Root Level)</span>
-                    </SelectItem>
-                    {availableParents.map((col) => (
-                      <SelectItem key={col.id} value={col.id}>
-                        {col.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Category</Label>
+                <Label>Add to existing collection</Label>
                 <Select
-                  value={category || 'Uncategorized'}
-                  onValueChange={(val) => setCategory(val)}
+                  value={selectedExistingId}
+                  onValueChange={(val) => setSelectedExistingId(val)}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a category" />
+                  <SelectTrigger onClick={(e) => e.stopPropagation()}>
+                    <SelectValue placeholder="Choose an existing collection" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Uncategorized">Uncategorized</SelectItem>
-                    {categories
-                      .filter(c => c?.label && c.label.trim() !== '')
-                      .filter(c => c.label !== 'Uncategorized')
+                    {(existingCollections || [])
+                      .slice()
+                      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
                       .map(c => (
-                        <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
+                {existingCollections.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No existing collections yet.</p>
+                )}
               </div>
+            )}
 
-              <div className="space-y-2">
-                <Label>Tags</Label>
-                <TagsInput
-                  value={tags}
-                  onChange={(next) => setTags(next)}
-                  placeholder="Add tag"
-                />
-              </div>
-
-              {/* [REPLACEMENT START] */}
-              <div className="space-y-4 pt-2 border-t">
-                {/* SECTION 1: COVER PHOTO */}
+            {(!!collection?.id || createMode === 'new') && (
+              <>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Cover Photo</Label>
-                    {coverImage && (
-                      <Button
-                        variant="ghost" size="sm" className="h-6 text-xs text-destructive hover:text-destructive"
-                        onClick={() => setCoverImage(null)}
-                      >
-                        Remove
-                      </Button>
-                    )}
-                  </div>
+                  <Label>Name</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Collection name"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
 
-                  <div className="flex gap-4 items-start p-3 border rounded-md bg-muted/10">
-                    {/* Cover Preview */}
-                    <div className="w-24 h-24 bg-background rounded-md border flex items-center justify-center overflow-hidden shrink-0">
-                      {coverImage ? (
-                        <img src={coverImage} alt="Cover" className="w-full h-full object-cover" />
-                      ) : (
-                        <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                    className="max-h-[150px] min-h-[80px] resize-y"
+                    placeholder="Describe this collection..."
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Parent Collection</Label>
+                  <Select value={parentId} onValueChange={setParentId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select parent..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="root">
+                        <span className="text-muted-foreground italic">No Parent (Root Level)</span>
+                      </SelectItem>
+                      {availableParents.map((col) => (
+                        <SelectItem key={col.id} value={col.id}>
+                          {col.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select
+                    value={category || 'Uncategorized'}
+                    onValueChange={(val) => setCategory(val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Uncategorized">Uncategorized</SelectItem>
+                      {categories
+                        .filter(c => c?.label && c.label.trim() !== '')
+                        .filter(c => c.label !== 'Uncategorized')
+                        .map(c => (
+                          <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Tags</Label>
+                  <TagsInput
+                    value={tags}
+                    onChange={(next) => setTags(next)}
+                    placeholder="Add tag"
+                  />
+                </div>
+
+                {/* [REPLACEMENT START] */}
+                <div className="space-y-4 pt-2 border-t">
+                  {/* SECTION 1: COVER PHOTO */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Cover Photo</Label>
+                      {coverImage && (
+                        <Button
+                          variant="ghost" size="sm" className="h-6 text-xs text-destructive hover:text-destructive"
+                          onClick={() => setCoverImage(null)}
+                        >
+                          Remove
+                        </Button>
                       )}
                     </div>
 
-                    <div className="space-y-2 flex-1">
-                      <div className="flex flex-wrap gap-2">
-                        <div className="relative">
-                          <Input id="drawer-cover" type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-                          <Button variant="outline" size="sm" onClick={() => document.getElementById('drawer-cover')?.click()}>
-                            <Upload className="h-3 w-3 mr-2" />
-                            Upload
-                          </Button>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={handleGenerateMosaic}
-                          disabled={isGeneratingCover || !collection?.id}
-                          title="Generate 2x2 mosaic from first 4 models"
-                        >
-                          {isGeneratingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <LayoutGrid className="h-3 w-3 mr-2" />}
-                          Mosaic
-                        </Button>
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        Controls the main thumbnail on the dashboard.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SECTION 2: GALLERY */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Gallery Images</Label>
-                    <div className="relative">
-                      <Input id="drawer-gallery" type="file" multiple accept="image/*" className="hidden" onChange={handleMassUpload} />
-                      <Button variant="ghost" size="sm" className="h-6" onClick={() => document.getElementById('drawer-gallery')?.click()}>
-                        <Plus className="h-3 w-3 mr-1" /> Add Photos
-                      </Button>
-                    </div>
-                  </div>
-
-
-                  <div className="grid grid-cols-4 gap-2 border rounded-md p-2 min-h-[100px] bg-muted/10">
-                    {images.map((img, idx) => (
-                      <div key={idx} className="relative aspect-square rounded overflow-hidden border group bg-background">
-                        <img src={img} alt="Gallery" className="w-full h-full object-cover" />
-
-                        {/* Hover Actions */}
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                          <button
-                            className="p-1.5 bg-background rounded-full hover:bg-primary hover:text-primary-foreground"
-                            title="Set as Cover"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCoverImage(img);
-                              // If editing, save immediately
-                              if (collection?.id) {
-                                fetch('/api/collections', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ ...collection, coverImage: img })
-                                });
-                                toast.success("Set as cover");
-                              }
-                            }}
-                          >
-                            <Star className="w-3 h-3" />
-                          </button>
-                          <button
-                            className="p-1.5 bg-background rounded-full hover:bg-destructive hover:text-destructive-foreground"
-                            title="Remove"
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              // Optimistic remove
-                              setImages(prev => prev.filter(i => i !== img));
-
-                              // API Delete if existing
-                              if (collection?.id) {
-                                const filename = img.split('/').pop();
-                                await fetch(`/api/collections/${collection.id}/images/${filename}`, { method: 'DELETE' });
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-
-                        {/* Cover Indicator */}
-                        {coverImage === img && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[8px] text-center py-0.5">
-                            COVER
-                          </div>
+                    <div className="flex gap-4 items-start p-3 border rounded-md bg-muted/10">
+                      {/* Cover Preview */}
+                      <div className="w-24 h-24 bg-background rounded-md border flex items-center justify-center overflow-hidden shrink-0">
+                        {coverImage ? (
+                          <img src={coverImage} alt="Cover" className="w-full h-full object-cover" />
+                        ) : (
+                          <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
                         )}
                       </div>
-                    ))}
-                    {images.length === 0 && (
-                      <div className="col-span-4 flex items-center justify-center text-xs text-muted-foreground italic h-full">
-                        No gallery images
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* SECTION 3: DOCUMENTS */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Documents (PDF, TXT, MD)</Label>
-                    <div className="relative">
-                      <Input id="drawer-docs" type="file" multiple accept=".pdf,.txt,.md,.dxf" className="hidden" onChange={handleDocumentUpload} />
-                      <Button variant="ghost" size="sm" className="h-6" onClick={() => document.getElementById('drawer-docs')?.click()}>
-                        <Plus className="h-3 w-3 mr-1" /> Add Docs
-                      </Button>
+                      <div className="space-y-2 flex-1">
+                        <div className="flex flex-wrap gap-2">
+                          <div className="relative">
+                            <Input id="drawer-cover" type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
+                            <Button variant="outline" size="sm" onClick={() => document.getElementById('drawer-cover')?.click()}>
+                              <Upload className="h-3 w-3 mr-2" />
+                              Upload
+                            </Button>
+                          </div>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleGenerateMosaic}
+                            disabled={isGeneratingCover || !collection?.id}
+                            title="Generate 2x2 mosaic from first 4 models"
+                          >
+                            {isGeneratingCover ? <Loader2 className="h-3 w-3 animate-spin" /> : <LayoutGrid className="h-3 w-3 mr-2" />}
+                            Mosaic
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          Controls the main thumbnail on the dashboard.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-1 border rounded-md p-2 min-h-[50px] bg-muted/10">
-                    {documents.map((doc, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 text-sm bg-background border rounded group">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <FileText className="w-4 h-4 text-blue-500 shrink-0" />
-                          <span className="truncate max-w-[200px]" title={doc.split('/').pop()}>{doc.split('/').pop()}</span>
-                        </div>
-                        <button
-                          className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => { e.stopPropagation(); handleRemoveDocument(doc); }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                  {/* SECTION 2: GALLERY */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Gallery Images</Label>
+                      <div className="relative">
+                        <Input id="drawer-gallery" type="file" multiple accept="image/*" className="hidden" onChange={handleMassUpload} />
+                        <Button variant="ghost" size="sm" className="h-6" onClick={() => document.getElementById('drawer-gallery')?.click()}>
+                          <Plus className="h-3 w-3 mr-1" /> Add Photos
+                        </Button>
                       </div>
-                    ))}
+                    </div>
 
-                    {pendingDocuments.map((file, idx) => (
-                      <div key={`pend-doc-${idx}`} className="flex items-center justify-between p-2 text-sm bg-background border border-dashed rounded opacity-70">
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
-                          <span className="truncate max-w-[200px]">{file.name}</span>
-                        </div>
-                        <span className="text-[9px] bg-secondary px-1 rounded">PENDING</span>
-                      </div>
-                    ))}
 
-                    {documents.length === 0 && pendingDocuments.length === 0 && (
-                      <div className="flex items-center justify-center text-xs text-muted-foreground italic py-2">
-                        No documents attached
+                    <div className="grid grid-cols-4 gap-2 border rounded-md p-2 min-h-[100px] bg-muted/10">
+                      {images.map((img, idx) => (
+                        <div key={idx} className="relative aspect-square rounded overflow-hidden border group bg-background">
+                          <img src={img} alt="Gallery" className="w-full h-full object-cover" />
+
+                          {/* Hover Actions */}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                            <button
+                              className="p-1.5 bg-background rounded-full hover:bg-primary hover:text-primary-foreground"
+                              title="Set as Cover"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCoverImage(img);
+                                // If editing, save immediately
+                                if (collection?.id) {
+                                  fetch('/api/collections', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ ...collection, coverImage: img })
+                                  });
+                                  toast.success("Set as cover");
+                                }
+                              }}
+                            >
+                              <Star className="w-3 h-3" />
+                            </button>
+                            <button
+                              className="p-1.5 bg-background rounded-full hover:bg-destructive hover:text-destructive-foreground"
+                              title="Remove"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                // Optimistic remove
+                                setImages(prev => prev.filter(i => i !== img));
+
+                                // API Delete if existing
+                                if (collection?.id) {
+                                  const filename = img.split('/').pop();
+                                  await fetch(`/api/collections/${collection.id}/images/${filename}`, { method: 'DELETE' });
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+
+                          {/* Cover Indicator */}
+                          {coverImage === img && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[8px] text-center py-0.5">
+                              COVER
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {images.length === 0 && (
+                        <div className="col-span-4 flex items-center justify-center text-xs text-muted-foreground italic h-full">
+                          No gallery images
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* SECTION 3: DOCUMENTS */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Documents (PDF, TXT, MD)</Label>
+                      <div className="relative">
+                        <Input id="drawer-docs" type="file" multiple accept=".pdf,.txt,.md,.dxf" className="hidden" onChange={handleDocumentUpload} />
+                        <Button variant="ghost" size="sm" className="h-6" onClick={() => document.getElementById('drawer-docs')?.click()}>
+                          <Plus className="h-3 w-3 mr-1" /> Add Docs
+                        </Button>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="space-y-1 border rounded-md p-2 min-h-[50px] bg-muted/10">
+                      {documents.map((doc, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 text-sm bg-background border rounded group">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <FileText className="w-4 h-4 text-blue-500 shrink-0" />
+                            <span className="truncate max-w-[200px]" title={doc.split('/').pop()}>{doc.split('/').pop()}</span>
+                          </div>
+                          <button
+                            className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => { e.stopPropagation(); handleRemoveDocument(doc); }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {pendingDocuments.map((file, idx) => (
+                        <div key={`pend-doc-${idx}`} className="flex items-center justify-between p-2 text-sm bg-background border border-dashed rounded opacity-70">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <span className="truncate max-w-[200px]">{file.name}</span>
+                          </div>
+                          <span className="text-[9px] bg-secondary px-1 rounded">PENDING</span>
+                        </div>
+                      ))}
+
+                      {documents.length === 0 && pendingDocuments.length === 0 && (
+                        <div className="flex items-center justify-center text-xs text-muted-foreground italic py-2">
+                          No documents attached
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
 
 
-          <div className="pt-4 flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenChange(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={(e) => { e.stopPropagation(); handleSave(); }}
-              disabled={
-                isSaving || (
-                  collection?.id
-                    ? false
-                    : (createMode === 'new' ? !name.trim() : !selectedExistingId)
-                )
-              }
-            >
-              {isSaving ? 'Saving…' : 'Save'}
-            </Button>
+            <div className="pt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenChange(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                disabled={
+                  isSaving || (
+                    collection?.id
+                      ? false
+                      : (createMode === 'new' ? !name.trim() : !selectedExistingId)
+                  )
+                }
+              >
+                {isSaving ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
           </div>
-        </div>
-      </ScrollArea>
-    </SheetContent>
-  </Sheet>
-);
+        </ScrollArea>
+      </SheetContent>
+    </Sheet>
+  );
 }

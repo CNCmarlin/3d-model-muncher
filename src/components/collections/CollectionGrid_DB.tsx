@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import type { Collection } from '@/types/collection_db';
 import type { AppConfig } from '@/types/config';
 import { Model } from '@/types/model_db';
+import { getDescendantModelIds, hasModelsDeep } from "@/utils/collectionUtils_db";
 import { downloadMultipleModels } from "@/utils/downloadUtils_db";
 import { resolveModelThumbnail } from '@/utils/thumbnailUtils_db';
 import {
@@ -61,12 +62,11 @@ interface CollectionGridProps {
   onCollectionChanged?: () => void;
   onCreateCollection?: (mode: 'manual' | 'folder') => void;
   isFiltering?: boolean;
-  onUploadClick?: () => void;
+  onUploadClick?: (collection?: Collection | null) => void;
 }
 
 export default function CollectionGrid_DB({
   name,
-  modelIds,
   models,
   collections,
   onOpenCollection,
@@ -94,15 +94,29 @@ export default function CollectionGrid_DB({
     // Guard: models may be undefined while data is loading
     if (!models) return [];
 
-    // Database-first: Use models prop if filtering OR modelIds unavailable
-    if (isFiltering || !modelIds || modelIds.length === 0) {
+    // Database-first: Use models prop if filtering
+    if (isFiltering) {
       return models;
     }
+
+    const mode = config?.settings?.collectionMode || 'strict';
+    let targetModelIds: string[] = activeCollection?.modelIds || [];
+
+    // Aggregation mode: Recursively fetch all modelIds inside this folder and all subfolders
+    if (mode === 'top-level' && activeCollection) {
+      targetModelIds = getDescendantModelIds(activeCollection.id, collections);
+    }
+
+    // If no modelIds present, collection is empty
+    if (!targetModelIds || targetModelIds.length === 0) {
+      return [];
+    }
+
     // Legacy: Filter by modelIds array  
-    const set = new Set(modelIds);
+    const set = new Set(targetModelIds);
     const filtered = models.filter(m => set.has(m.id));
     return filtered;
-  }, [modelIds, models, isFiltering]);
+  }, [activeCollection, activeCollection?.modelIds, models, isFiltering, collections, config?.settings?.collectionMode]);
 
   const modelIndexMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -112,10 +126,29 @@ export default function CollectionGrid_DB({
 
   const childCollections = useMemo(() => {
     if (isFiltering || !activeCollection) return [];
-    return collections
-      .filter(c => c.parentId === activeCollection.id)
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [collections, activeCollection, isFiltering]);
+
+    const mode = config?.settings?.collectionMode || 'strict';
+
+    // In Smart or Top-Level modes, we hide all sub-folders because 
+    // models are already flattened or aggregated in the current view!
+    // EXCEPTION: Manual collections keep their curated folders.
+    if (activeCollection.type !== 'Manual' && (mode === 'smart' || mode === 'top-level')) {
+      return [];
+    }
+
+    let children = collections.filter(c => c.parentId === activeCollection.id);
+
+    if (mode === 'strict') {
+      // Hide child collections that are completely empty (0 models deep) unless they are Manual
+      children = children.filter(c => c.type === 'Manual' || hasModelsDeep(c.id, collections));
+    } else if (mode === 'manual') {
+      // Manual mode explicitly hides Auto-Imported collections
+      children = children.filter(c => c.category !== 'Auto-Imported');
+    }
+    // 'raw' mode shows all children unmodified.
+
+    return children.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [collections, activeCollection, isFiltering, config?.settings?.collectionMode]);
 
   const breadcrumbs = useMemo(() => {
     if (!activeCollection) return [];
@@ -308,7 +341,7 @@ export default function CollectionGrid_DB({
 
   // // [PASTE THE INTERCEPT HERE]
   // // If this collection is a PROJECT, show the Project View instead of the Grid
-  // if (activeCollection && activeCollection.type === 'project') {
+  // if (activeCollection && activeCollection.isModelFolder) {
   //   return (
   //     <ProjectView_DB
   //       collection={activeCollection}
@@ -358,7 +391,7 @@ export default function CollectionGrid_DB({
           {!isSelectionMode && (
             <>
               {/* NEW: Global Upload Button */}
-              <Button variant="default" size="sm" className="gap-2" onClick={onUploadClick}>
+              <Button variant="default" size="sm" className="gap-2" onClick={() => onUploadClick?.(activeCollection)}>
                 <Upload className="h-4 w-4" />
                 <span className="hidden sm:inline">Upload</span>
               </Button>
@@ -450,9 +483,12 @@ export default function CollectionGrid_DB({
                         if (col.modelIds && col.modelIds.length > 0) {
                           for (const id of col.modelIds) {
                             const m = (models || []).find((mod: Model) => mod.id === id);
-                            if (m && m.images && m.images.length > 0) {
-                              fallback = m.images[0];
-                              break;
+                            if (m) {
+                              const thumb = resolveModelThumbnail(m);
+                              if (thumb) {
+                                fallback = thumb;
+                                break;
+                              }
                             }
                           }
                         }
@@ -621,7 +657,7 @@ export default function CollectionGrid_DB({
                     ))}
                     {/* [UPDATED] Wire up Upload Click to Edit Drawer */}
                     <button
-                      onClick={handleEditActiveCollection}
+                      onClick={() => onUploadClick?.(activeCollection)}
                       className="w-16 h-16 rounded-md border border-dashed flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex-shrink-0"
                     >
                       <Upload className="h-4 w-4" />
@@ -638,7 +674,7 @@ export default function CollectionGrid_DB({
                   Attached Files
                 </span>
                 {/* [UPDATED] Wire up Upload Click to Edit Drawer */}
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleEditActiveCollection}>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onUploadClick?.(activeCollection)}>
                   <Upload className="h-3 w-3" />
                 </Button>
               </div>
@@ -801,7 +837,6 @@ export default function CollectionGrid_DB({
         onOpenChange={setIsCreateCollectionOpen}
         collection={tempCollectionData}
         collections={collections}
-        models={models}
         categories={config?.categories || []}
         initialMode={createCollectionMode}
         onSave={async (colData) => {
@@ -833,7 +868,6 @@ export default function CollectionGrid_DB({
           onOpenChange={setIsEditorOpen}
           collection={activeCollection}
           collections={collections}
-          models={models}
           categories={config?.categories || []}
           onSave={async (colData) => {
             try {

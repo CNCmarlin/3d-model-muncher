@@ -1,15 +1,9 @@
+import { SearchableSelect_DB } from '@/components/common/SearchableSelect_DB';
 import TagsInput from '@/components/common/TagsInput_DB';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -286,7 +280,7 @@ export default function CollectionEditDrawer_DB({
       setParentId(collection.parentId || "root");
       setTags(Array.isArray(collection.tags) ? collection.tags : []);
       setImages(Array.isArray(collection.images) ? collection.images : []);
-      setIsProject(collection.type === 'project');
+      setIsProject(collection.isModelFolder === true);
 
       setSelectedExistingId('');
       setCreateMode('new');
@@ -357,7 +351,7 @@ export default function CollectionEditDrawer_DB({
         ...collection,
         id: "", // Trigger new ID generation on backend
         name: `${collection.name} (Project)`,
-        type: 'project', // Enforce Project type
+        isModelFolder: true, // Enforce Project type
         buildPlates: [], // Start with empty build plates
         created: new Date().toISOString(),
         lastModified: new Date().toISOString()
@@ -559,7 +553,6 @@ export default function CollectionEditDrawer_DB({
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
         onEscapeKeyDown={(e) => e.preventDefault()}
-        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader>
           <SheetTitle>{collection?.id ? 'Edit Collection' : 'New Collection'}</SheetTitle>
@@ -661,22 +654,15 @@ export default function CollectionEditDrawer_DB({
             {!collection?.id && createMode === 'existing' && (
               <div className="space-y-2">
                 <Label>Add to existing collection</Label>
-                <Select
+                <SearchableSelect_DB
                   value={selectedExistingId}
                   onValueChange={(val) => setSelectedExistingId(val)}
-                >
-                  <SelectTrigger onClick={(e) => e.stopPropagation()}>
-                    <SelectValue placeholder="Choose an existing collection" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(existingCollections || [])
-                      .slice()
-                      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-                      .map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Choose an existing collection"
+                  options={(existingCollections || [])
+                    .slice()
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map(c => ({ value: c.id, label: c.name }))}
+                />
                 {existingCollections.length === 0 && (
                   <p className="text-xs text-muted-foreground">No existing collections yet.</p>
                 )}
@@ -709,42 +695,31 @@ export default function CollectionEditDrawer_DB({
 
                 <div className="space-y-2">
                   <Label>Parent Collection</Label>
-                  <Select value={parentId} onValueChange={setParentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select parent..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="root">
-                        <span className="text-muted-foreground italic">No Parent (Root Level)</span>
-                      </SelectItem>
-                      {availableParents.map((col) => (
-                        <SelectItem key={col.id} value={col.id}>
-                          {col.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableSelect_DB
+                    value={parentId}
+                    onValueChange={setParentId}
+                    placeholder="Select parent..."
+                    options={[
+                      { value: "root", label: "No Parent (Root Level)", tooltip: "Store at the top level" },
+                      ...availableParents.map((col) => ({ value: col.id, label: col.name }))
+                    ]}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Category</Label>
-                  <Select
+                  <SearchableSelect_DB
                     value={category || 'Uncategorized'}
                     onValueChange={(val) => setCategory(val)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Uncategorized">Uncategorized</SelectItem>
-                      {categories
+                    placeholder="Select a category"
+                    options={[
+                      { value: 'Uncategorized', label: 'Uncategorized' },
+                      ...categories
                         .filter(c => c?.label && c.label.trim() !== '')
                         .filter(c => c.label !== 'Uncategorized')
-                        .map(c => (
-                          <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
+                        .map(c => ({ value: c.label, label: c.label }))
+                    ]}
+                  />
                 </div>
 
                 <div className="space-y-2">

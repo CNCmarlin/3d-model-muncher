@@ -1,4 +1,4 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Separator } from "@/components/ui/separator";
 import { useSpoolman } from "@/context/SpoolmanContext";
 import { Model } from "@/types/model_db";
@@ -167,18 +167,16 @@ export const PrintSettingsSection_DB = ({
               )}
             </div>
 
-            <Select value={localSpoolId} onValueChange={setLocalSpoolId}>
-              <SelectTrigger className="h-8 text-[11px] bg-background/50 border-primary/10 rounded-lg">
-                <SelectValue placeholder={isSpoolmanLoading ? "Loading..." : "Select Spool..."} />
-              </SelectTrigger>
-              <SelectContent>
-                {spools.map(spool => (
-                  <SelectItem key={spool.id} value={spool.id.toString()}>
-                    {spool.filament.name} ({Math.round(spool.remaining_weight)}g)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect_DB
+              value={localSpoolId}
+              onValueChange={setLocalSpoolId}
+              placeholder={isSpoolmanLoading ? "Loading..." : "Select Spool..."}
+              className="h-8 text-[11px] bg-background/50 border-primary/10 rounded-lg"
+              options={spools.map(spool => ({
+                value: spool.id.toString(),
+                label: `${spool.filament.name} (${Math.round(spool.remaining_weight)}g)`
+              }))}
+            />
 
             {activeSpool && (
               <div className="flex items-center gap-1.5 mt-0.5 opacity-70">

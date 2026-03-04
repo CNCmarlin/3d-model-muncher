@@ -4,7 +4,23 @@ import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "re
 import * as THREE from "three";
 import { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader';
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
+
+type FileFormat = 'stl' | '3mf' | 'obj';
+
+function getFormat(url: string): FileFormat {
+  const ext = url.toLowerCase().split('.').pop();
+  if (ext === 'stl') return 'stl';
+  if (ext === 'obj') return 'obj';
+  return '3mf';
+}
+
+function getLoader(format: FileFormat) {
+  if (format === 'stl') return STLLoader;
+  if (format === 'obj') return OBJLoader;
+  return ThreeMFLoader;
+}
 
 // [FIX] R3F JSX Intrinsic Elements workaround for React 18+ types
 declare module "react" {
@@ -37,7 +53,6 @@ class ThreeErrorBoundary extends React.Component<{ children: React.ReactNode }, 
   }
   render() {
     if (this.state.hasError) {
-      // Fallback: Red Wireframe Box to indicate error
       return (
         <mesh>
           <boxGeometry args={[20, 20, 20]} />
@@ -51,22 +66,57 @@ class ThreeErrorBoundary extends React.Component<{ children: React.ReactNode }, 
 
 // --- Helper: Model Geometry Fixes ---
 function ModelGeometryFix({ url, color }: { url: string; color: string }) {
-  const isStl = url.toLowerCase().endsWith(".stl");
+  const format = getFormat(url);
+  const isStl = format === 'stl';
 
-  const data = isStl
-    ? useLoader(STLLoader, url)
-    : useLoader(ThreeMFLoader as any, url);
+  const data = useLoader(getLoader(format) as any, url);
+
+  // Create material ONCE — shared across all meshes in this viewer instance.
+  // Previously: new MeshStandardMaterial() per mesh per render — never disposed → memory leak.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const material = useMemo(() => new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    roughness: 0.4,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+  }), []);
+
+  // Keep material color in sync without re-creating it
+  useEffect(() => {
+    material.color.set(color);
+  }, [material, color]);
+
+  // Dispose material on unmount
+  useEffect(() => () => { material.dispose(); }, [material]);
 
   const object = useMemo(() => {
     if (!data) return null;
     if (isStl) return data;
-
+    // 3MF and OBJ loaders return a Group — clone so each viewer instance is independent
     const source = data as any;
-    if (typeof source.clone === "function") {
-      return source.clone();
-    }
-    return data;
+    return typeof source.clone === 'function' ? source.clone() : data;
   }, [data, isStl]);
+
+  // Dispose cloned Group (3MF/OBJ) on unmount.
+  // Previously: cloned groups were never freed → every hover that loaded a 3MF leaked the scene graph.
+  useEffect(() => {
+    if (!object || isStl) return;
+    return () => {
+      const group = object as THREE.Group;
+      group.traverse((child: any) => {
+        if (child.isMesh) {
+          child.geometry?.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              (child.material as THREE.Material[]).forEach(m => m.dispose());
+            } else {
+              (child.material as THREE.Material).dispose();
+            }
+          }
+        }
+      });
+    };
+  }, [object, isStl]);
 
   // Traversal & VISIBILITY FIXES
   useLayoutEffect(() => {
@@ -74,11 +124,8 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
 
     const handleGeometryFix = (geometry: THREE.BufferGeometry) => {
       if (geometry.attributes.position) {
-        // [FIX] Compute Normals if missing. 
         // 3MFs often lack normals, causing them to appear black/dark under light.
-        if (!geometry.attributes.normal) {
-          geometry.computeVertexNormals();
-        }
+        if (!geometry.attributes.normal) geometry.computeVertexNormals();
         if (!geometry.boundingSphere) geometry.computeBoundingSphere();
         if (!geometry.boundingBox) geometry.computeBoundingBox();
       }
@@ -92,18 +139,11 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
           child.frustumCulled = false;
           child.castShadow = true;
           child.receiveShadow = true;
-
-          // Apply a bright standard material
-          child.material = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(color),
-            roughness: 0.4, // Lower roughness = slightly shinier/brighter
-            metalness: 0.0, // No metalness avoids "black reflection" issues without HDRI
-            side: THREE.DoubleSide,
-          });
+          child.material = material; // reuse shared material — no new allocation per mesh
         }
       });
     }
-  }, [object, isStl, color]);
+  }, [object, isStl, material]);
 
   if (!object) return null;
 
@@ -111,28 +151,19 @@ function ModelGeometryFix({ url, color }: { url: string; color: string }) {
     const geom = object as THREE.BufferGeometry;
     if (geom.attributes.position && !geom.boundingSphere) {
       geom.computeBoundingSphere();
-      // Also ensure normals for STLs just in case
       if (!geom.attributes.normal) geom.computeVertexNormals();
     }
-
     return (
       <mesh
         geometry={geom}
+        material={material}
         castShadow
         receiveShadow
         rotation={[-Math.PI / 2, 0, 0]}
-      >
-        <meshStandardMaterial
-          color={color}
-          roughness={0.4}
-          metalness={0.0}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+      />
     );
   }
 
-  // Render 3MF
   return <primitive object={object} rotation={[-Math.PI / 2, 0, 0]} />;
 }
 
@@ -192,11 +223,12 @@ export function Grid3DViewer_DB({ url, color = "#6366f1" }: { url: string; color
       <Canvas
         shadows
         dpr={[1, 1.5]}
-        gl={{ preserveDrawingBuffer: true }}
+      // preserveDrawingBuffer removed — it forces the GPU to keep a full copy of every frame
+      // in VRAM, unnecessary for the hover viewer and a significant memory cost.
       >
         <PerspectiveCamera makeDefault position={[-10, 10, 10]} fov={20} />
 
-        {/* [FIX] Updated Lighting with Shadow Bias */}
+        {/* Updated Lighting with Shadow Bias */}
         <ambientLight intensity={0.8} />
         <hemisphereLight args={["#ffffff", "#444444", 0.6]} />
 
@@ -204,22 +236,15 @@ export function Grid3DViewer_DB({ url, color = "#6366f1" }: { url: string; color
           position={[5, 10, 5]}
           intensity={2.0}
           castShadow
-          shadow-mapSize={[1024, 1024]} // Makes shadows sharper
-          shadow-bias={-0.001}          // [CRITICAL] Fixes the diagonal lines artifact
+          shadow-mapSize={[1024, 1024]}
+          shadow-bias={-0.001}
         />
-        {/* Fill light to soften harsh shadows */}
         <directionalLight position={[-5, 5, -5]} intensity={0.8} />
 
         <Suspense fallback={null}>
           <Center>
             <ThreeErrorBoundary>
-              {url.toLowerCase().endsWith(".3mf") ? (
-                <group onPointerOver={undefined} onPointerOut={undefined}>
-                  <ModelGeometryFix url={url} color={color} />
-                </group>
-              ) : (
-                <ModelGeometryFix url={url} color={color} />
-              )}
+              <ModelGeometryFix url={url} color={color} />
             </ThreeErrorBoundary>
           </Center>
 

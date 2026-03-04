@@ -65,7 +65,7 @@ function createInitialModelMetadata(overrides) {
         related_files: overrides.related_files || [],
         hidden: overrides.hidden ?? true,
         isRelatedPart: overrides.isRelatedPart ?? false,
-        isProjectRoot: overrides.isProjectRoot ?? false,
+        isMainModel: overrides.isMainModel ?? false,
         price: 0,
         userDefined: {
             thumbnail: "parsed:0",
@@ -87,7 +87,7 @@ function reconcileHiddenFlags() {
             else if (e.name.endsWith('munchie.json')) {
                 try {
                     const d = JSON.parse(fs.readFileSync(p, 'utf8'));
-                    if (d.isProjectRoot && d.hidden) {
+                    if (d.isMainModel && d.hidden) {
                         d.hidden = false;
                         fs.writeFileSync(p, JSON.stringify(d, null, 2));
                     }
@@ -102,7 +102,9 @@ function reconcileHiddenFlags() {
 // POST /api/import/thingiverse
 router.post('/import/thingiverse', async (req, res) => {
     try {
-        const { thingId, targetFolder = 'imported', collectionId, category } = req.body;
+        const { thingId, collectionId, category } = req.body;
+        console.log("[Thingiverse Import] Received Payload:", req.body);
+        let targetFolder = req.body.targetFolder || 'imported';
 
         if (!thingId) return res.status(400).json({ success: false, error: 'No Thing ID provided' });
 
@@ -110,81 +112,78 @@ router.post('/import/thingiverse', async (req, res) => {
         const token = config.integrations?.thingiverse?.token || process.env.THINGIVERSE_TOKEN;
         if (!token) return res.status(500).json({ success: false, error: 'Server missing THINGIVERSE_TOKEN' });
 
+        // Phase 2: Resolve Physical Folder from Database Collection
+        const prisma = require('../../server-utils/db');
+        if (collectionId) {
+            try {
+                const col = await prisma.collection.findUnique({ where: { id: collectionId } });
+                // If it's a valid collection with a physical path, decode the hash
+                if (col && col.pathHash) {
+                    targetFolder = Buffer.from(col.pathHash, 'base64').toString('utf8');
+                } else if (col) {
+                    // Manual Virtual Collection (no physical hash yet). Map it to imported folder.
+                    targetFolder = `imported/${col.name.replace(/[^a-z0-9_-]/gi, '_')}`;
+                }
+            } catch (err) {
+                console.error("[Thingiverse Import] Failed to resolve collection path:", err);
+            }
+        }
+
         // 1. Perform Import
         let ThingiverseImporter;
         try {
-            const module = require('../../dist-backend/utils/thingiverseImporter');
+            const module = require('../../dist-backend/utils/thingiverseImporter_db');
             ThingiverseImporter = module.ThingiverseImporter;
         } catch (e) {
             return res.status(500).json({ success: false, error: 'Backend utility not found. Rebuild required.' });
         }
 
         const importer = new ThingiverseImporter(token);
-        const modelData = await importer.importThing(thingId, getAbsoluteModelsPath(), targetFolder);
+        const modelData = await importer.importThing(thingId, getAbsoluteModelsPath(), targetFolder, collectionId);
 
         // 2. Wrap Post-Processing in Collection Queue
         await collectionQueue.add(async (currentCols) => {
-            const modelsRoot = getAbsoluteModelsPath();
+            if (prisma && modelData?.id) {
+                // Update Category if selected
+                if (category && category !== 'Uncategorized') {
+                    modelData.category = category;
+                    try {
+                        await prisma.model.update({
+                            where: { id: modelData.id },
+                            data: { category }
+                        });
+                    } catch (err) {
+                        console.error("[Thingiverse Import] Failed to update category:", err);
+                    }
+                }
 
-            // Update Category if selected
-            if (category && category !== 'Uncategorized') {
-                modelData.category = category;
-                const jsonPath = modelData.filePath.endsWith('.json')
-                    ? modelData.filePath
-                    : modelData.filePath.replace(/\.(3mf|stl)$/i, modelData.filePath.toLowerCase().endsWith('.stl') ? '-stl-munchie.json' : '-munchie.json');
+                // Add to Collection if selected (Manual collections)
+                if (collectionId) {
+                    try {
+                        const existingCol = await prisma.collection.findUnique({
+                            where: { id: collectionId }
+                        });
 
-                const fullJsonPath = path.join(modelsRoot, jsonPath);
-                fs.writeFileSync(fullJsonPath, JSON.stringify(modelData, null, 2));
-            }
+                        if (existingCol) {
+                            // 1. Set Primary Strict Ownership
+                            await prisma.model.update({
+                                where: { id: modelData.id },
+                                data: { collectionId: collectionId }
+                            });
 
-            // Add to Collection if selected
-            if (collectionId) {
-                // If we're inside the queue, currentCols contains the latest state?
-                // The queue implementation in server.js passed 'currentCols' to the callback?
-                // Let's check how collectionQueue works. In server.js.bak it was:
-                // collectionQueue.add(async (currentCols) => { ... })
-                // Here we imported collectionQueue.
-                // We should ensure parity.
-
-                // If existing implementation expects currentCols, we use it.
-                // BUT, wait. In imports.js I see: const { collectionQueue } = require('../../server-utils/sharedQueue');
-                // Does that queue pass arguments?
-                // server-utils/collectionQueue.js (implied) usually just sequences tasks.
-                // Let's assume for now we need to load collections if they aren't passed, OR if the queue provides them.
-                // In server.js.bak line 2287: await collectionQueue.add(async (currentCols) => { ...
-                // This implies the queue runner passes the current state?
-                // Or maybe it's just a closure in the original server.js?
-                // Server.js had `const collectionQueue = new CollectionQueue(DATA_DIR);` ?
-                // No, I need to check `server-utils/collectionQueue.js` or `sharedQueue.js` to be sure.
-                // Parity Safety: I will loadCollections() inside just in case, or look at how the original queue was initialized.
-                // In server.js.bak it was likely: `const collectionQueue = require('./server-utils/collectionQueue');`
-
-                // Let's stick to the code structure. If `currentCols` is undefined, we load.
-                let cols = currentCols;
-                if (!cols || !Array.isArray(cols)) cols = loadCollections();
-
-                const colIndex = cols.findIndex(c => c.id === collectionId);
-                if (colIndex !== -1) {
-                    const col = cols[colIndex];
-                    if (!col.modelIds.includes(modelData.id)) {
-                        col.modelIds.push(modelData.id);
-                        if (!col.coverModelId) col.coverModelId = modelData.id;
-                        col.lastModified = new Date().toISOString();
-                        // If we modified, we should save?
-                        // If the queue handles saving, great. If not, we must.
-                        // In server.js.bak, the callback returned a promise, but who saved?
-                        // server.js.bak lines 2287-2316 do NOT show a saveCollections() call specifically. 
-                        // Wait, maybe `collectionScanner.scanDirectory` invalidates or reloads?
-                        // Actually, lines 2315 returns `collectionScanner.scanDirectory`.
-                        // IF collectionQueue handles persistence, fine.
-                        // I will add `saveCollections(cols)` here to be safe, because `imports.js` has `saveCollections` imported.
-                        saveCollections(cols); // Explicit save for safety
+                            // 2. Add Virtual Symbolic Link
+                            await prisma.modelCollection.upsert({
+                                where: { modelId_collectionId: { collectionId, modelId: modelData.id } },
+                                update: {},
+                                create: { collectionId, modelId: modelData.id }
+                            });
+                        }
+                    } catch (err) {
+                        console.error("[Thingiverse Import] Failed to link to collection:", err);
                     }
                 }
             }
-
-            const userStrategy = config.settings?.scanStrategy || 'smart';
-            return collectionScanner.scanDirectory(modelsRoot, modelsRoot, { strategy: userStrategy });
+            return currentCols; // Prevent ERR_INVALID_ARG_TYPE in queue processing
         });
 
         res.json({ success: true, model: modelData });
@@ -235,8 +234,8 @@ router.post('/upload-models', upload.array('files'), async (req, res) => {
         // Import ProjectService with safety catch
         let ProjectService;
         try {
-            const projectModule = require('../../dist-backend/utils/ProjectService');
-            ProjectService = projectModule.ProjectService || projectModule.default;
+            const projectModule = require('../../dist-backend/utils/ProjectService_db');
+            ProjectService = projectModule.ProjectService_db || projectModule.default;
         } catch (e) {
             console.error("[UPLOAD] Critical: ProjectService utility not found. Asset Folder mode will fail.");
         }
@@ -267,7 +266,7 @@ router.post('/upload-models', upload.array('files'), async (req, res) => {
         }
 
         const {
-            isProjectFolder,
+            isModelFolder,
             projectName,
             primaryModelFile,
             createCollection: createColRaw,
@@ -279,15 +278,47 @@ router.post('/upload-models', upload.array('files'), async (req, res) => {
 
         const createCollection = createColRaw === 'true';
 
-        // --- 1. PHYSICAL FILE SAVING (ATOMIC WRITE) ---
+        // --- 1. RESOLVE PHYSICAL DESTINATION (DB First) ---
+        let resolvedBaseFolder = ''; // 'None' means Root, which is no prefix
+
+        if (createCollection && collectionId && collectionId !== 'new') {
+            try {
+                const prisma = require('../../server-utils/db');
+                const col = await prisma.collection.findUnique({ where: { id: collectionId } });
+                if (col && col.pathHash) {
+                    // Valid physical folder collection found
+                    resolvedBaseFolder = Buffer.from(col.pathHash, 'base64').toString('utf8');
+                } else if (col) {
+                    // It's a virtual manual collection, so fall back to the name
+                    resolvedBaseFolder = `uploads/${col.name.replace(/[^a-z0-9_-]/gi, '_')}`;
+                }
+            } catch (err) {
+                console.error("[UPLOAD] Failed to resolve target collection's physical path:", err);
+            }
+        }
+
+        // --- 2. PHYSICAL FILE SAVING (ATOMIC WRITE) ---
         for (let i = 0; i < files.length; i++) {
             const f = files[i];
             const originalName = f.originalname.replace(/\\/g, '/');
             let base = path.basename(originalName).replace(/[^a-zA-Z0-9_.\- ]/g, '_');
 
-            // Resolve destination with path-traversal protection
-            let destFolder = (destinations && destinations[i]) ? destinations[i].replace(/\.\./g, '') : 'uploads';
-            const destDir = path.join(modelsDir, destFolder);
+            // Resolve destination with DB path protection
+            // If they are making a "Model Folder", the projectName acts as the trailing directory
+            let userTrailingPath = '';
+            // Only prepend the sanitized project name if they specifically check "Model Folder" toggle
+            if (isModelFolder === 'true' && projectName) {
+                userTrailingPath = projectName.replace(/[^a-zA-Z0-9_\- ]/g, '');
+            }
+
+            // Reconstruct path: modelsDir / [DB Collection Path] / [Model Folder Name (if any)]
+            const targetRelDir = userTrailingPath
+                ? path.join(resolvedBaseFolder, userTrailingPath).replace(/\\/g, '/')
+                : resolvedBaseFolder;
+
+            const destDir = path.isAbsolute(targetRelDir)
+                ? targetRelDir
+                : path.join(modelsDir, targetRelDir);
 
             if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
@@ -307,12 +338,16 @@ router.post('/upload-models', upload.array('files'), async (req, res) => {
                 fs.writeFileSync(tmpPath, f.buffer);
                 fs.renameSync(tmpPath, targetPath);
 
-                const relativePath = path.relative(modelsDir, targetPath).replace(/\\/g, '/');
+                let relativePath = path.relative(modelsDir, targetPath).replace(/\\/g, '/');
+                // Failsafe: if the path is still absolute (due to drive letter mismatch or something), strip the modelsDir completely
+                if (path.isAbsolute(relativePath)) {
+                    relativePath = targetPath.replace(modelsDir, '').replace(/^[\\\/]+/, '').replace(/\\/g, '/');
+                }
                 savedFilePaths.push(relativePath);
 
                 // --- 2. INDIVIDUAL MODEL PROCESSING ---
                 // Skip heavy parsing if we are letting ProjectService handle it as an Asset Folder
-                if (isProjectFolder !== 'true') {
+                if (isModelFolder !== 'true') {
                     const lowerBase = base.toLowerCase();
                     if (lowerBase.endsWith('.3mf') || lowerBase.endsWith('.stl')) {
                         const derivedId = base.replace(/\.(3mf|stl)$/i, '');
@@ -333,9 +368,189 @@ router.post('/upload-models', upload.array('files'), async (req, res) => {
                             tags: Array.from(new Set([...sharedTags, ...(parsedData.tags || [])]))
                         });
 
-                        const jsonRel = relativePath.replace(/\.(3mf|stl)$/i, lowerBase.endsWith('.3mf') ? '-munchie.json' : '-stl-munchie.json');
-                        const jsonPath = path.join(modelsDir, jsonRel);
-                        fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2));
+                        // NEW: Directly Insert the Model to Prisma DB
+                        try {
+                            const prisma = require('../../server-utils/db');
+                            await prisma.model.upsert({
+                                where: { id: derivedId },
+                                update: {
+                                    name: derivedId,
+                                    description: metadata.description || '',
+                                    license: metadata.license || 'Unknown',
+                                    designer: metadata.designer || 'Unknown',
+                                    source: 'Local',
+                                    modelUrl: `/models/${relativePath}`,
+                                    layerHeight: parsedData.printSettings?.layerHeight || null,
+                                    infill: parsedData.printSettings?.infill || null,
+                                    nozzle: parsedData.printSettings?.nozzle || null,
+                                    fileSize: parsedData.fileSize || null,
+                                    printTime: parsedData.printTime ? parseInt(parsedData.printTime.replace(/[^0-9]/g, '')) : null,
+                                    filamentUsage: parsedData.filamentUsed ? parseFloat(parsedData.filamentUsed) : null,
+                                    metadata: JSON.stringify(metadata),
+                                    ...(createCollection && collectionId && collectionId !== 'new' && { collectionId }),
+                                    updatedAt: new Date()
+                                },
+                                create: {
+                                    id: derivedId,
+                                    name: derivedId,
+                                    description: metadata.description || '',
+                                    license: metadata.license || 'Unknown',
+                                    designer: metadata.designer || 'Unknown',
+                                    source: 'Local',
+                                    modelUrl: `/models/${relativePath}`,
+                                    pathHash: Buffer.from(relativePath).toString('base64'),
+                                    layerHeight: parsedData.printSettings?.layerHeight || null,
+                                    infill: parsedData.printSettings?.infill || null,
+                                    nozzle: parsedData.printSettings?.nozzle || null,
+                                    fileSize: parsedData.fileSize || null,
+                                    printTime: parsedData.printTime ? parseInt(parsedData.printTime.replace(/[^0-9]/g, '')) : null,
+                                    filamentUsage: parsedData.filamentUsed ? parseFloat(parsedData.filamentUsed) : null,
+                                    metadata: JSON.stringify(metadata),
+                                    category: category || 'Uncategorized',
+                                    isMainModel: true,
+                                    isHidden: false,
+                                    collectionId: (createCollection && collectionId && collectionId !== 'new') ? collectionId : null,
+                                    files: {
+                                        create: {
+                                            filename: base,
+                                            filePath: relativePath,
+                                            fileType: path.extname(base).substring(1).toLowerCase(),
+                                            size: BigInt(fs.statSync(targetPath).size),
+                                            isPrimary: true,
+                                            pathHash: Buffer.from(relativePath).toString('base64')
+                                        }
+                                    }
+                                }
+                            });
+
+                            // If putting in an existing collection, make sure it gets the virtual link too
+                            if (createCollection && collectionId && collectionId !== 'new') {
+                                await prisma.modelCollection.upsert({
+                                    where: { modelId_collectionId: { collectionId, modelId: derivedId } },
+                                    update: {},
+                                    create: { collectionId, modelId: derivedId }
+                                });
+                            }
+
+                            // Insert Tags
+                            const tagsToInsert = metadata.tags || [];
+                            for (const tagName of tagsToInsert) {
+                                const tagRecord = await prisma.tag.upsert({
+                                    where: { name: tagName },
+                                    update: {},
+                                    create: { name: tagName }
+                                });
+                                await prisma.modelTag.upsert({
+                                    where: { modelId_tagId: { modelId: derivedId, tagId: tagRecord.id } },
+                                    update: {},
+                                    create: { modelId: derivedId, tagId: tagRecord.id }
+                                });
+                            }
+
+                            // Insert Embedded Parsed Images (Gallery)
+                            const embeddedImages = parsedData.parsedImages || [];
+                            for (let j = 0; j < embeddedImages.length; j++) {
+                                const imgUrl = embeddedImages[j];
+                                const cleanPath = imgUrl.replace(/^\/models\//, '');
+
+                                const existingImg = await prisma.modelImage.findFirst({
+                                    where: { modelId: derivedId, path: cleanPath }
+                                });
+
+                                if (!existingImg) {
+                                    await prisma.modelImage.create({
+                                        data: {
+                                            modelId: derivedId,
+                                            path: cleanPath,
+                                            source: 'gallery',
+                                            order: j + 1
+                                        }
+                                    });
+                                }
+                            }
+
+                            // --- THUMBNAIL GENERATION FOR INDIVIDUAL MODELS ---
+                            try {
+                                const { generateThumbnail } = (require('../../dist-backend/utils/thumbnailGenerator') || require('../../dist-backend/utils/thumbnailGenerator_db'));
+                                const { extractEmbeddedThumbnail } = require('../../server-utils/thumbnailExtraction');
+                                const BASE_URL = process.env.HOST_URL || `http://127.0.0.1:${process.env.PORT || 3001}`;
+                                const cleanName = base.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+
+                                const thumbName = cleanName + '-thumb.png';
+                                const thumbPath = path.join(destDir, thumbName);
+
+                                const embeddedName = cleanName + '-embedded-thumb.png';
+                                const embeddedPath = path.join(destDir, embeddedName);
+
+                                let extractionSuccess = false;
+                                let finalThumbPath = thumbPath;
+
+                                const isStl = targetPath.toLowerCase().endsWith('.stl');
+
+                                // Attempt embedded extraction for 3MFs
+                                if (!isStl) {
+                                    try {
+                                        extractionSuccess = await extractEmbeddedThumbnail(targetPath, embeddedPath);
+                                        if (extractionSuccess && fs.existsSync(embeddedPath)) {
+                                            finalThumbPath = embeddedPath;
+                                        } else {
+                                            extractionSuccess = false;
+                                        }
+                                    } catch (err) {
+                                        console.warn(`[UPLOAD] Failed to extract embedded thumb for ${base}:`, err.message);
+                                        extractionSuccess = false;
+                                    }
+                                }
+
+                                // Fallback to headless browser if extraction failed
+                                if (!extractionSuccess) {
+                                    // Make sure config fallback uses the nice gray 
+                                    const { ConfigManager } = require('../../dist-backend/utils/configManager');
+                                    const config = ConfigManager.loadConfig();
+                                    const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#dddddd';
+
+                                    await generateThumbnail(targetPath, thumbPath, BASE_URL, globalDefaultColor, modelsDir);
+                                    finalThumbPath = thumbPath;
+                                }
+
+                                if (fs.existsSync(finalThumbPath)) {
+                                    const relativeThumbUrl = `/models/${path.relative(modelsDir, finalThumbPath).replace(/\\/g, '/')}`;
+
+                                    // Make sure relative array exists and push thumbnail
+                                    let allParsedImages = parsedData.parsedImages || [];
+                                    if (!allParsedImages.includes(relativeThumbUrl)) {
+                                        allParsedImages.unshift(relativeThumbUrl);
+                                        metadata.parsedImages = allParsedImages;
+                                        metadata.userDefined = metadata.userDefined || {};
+                                        metadata.userDefined.imageOrder = allParsedImages.map((_, idx) => `parsed:${idx}`);
+                                    }
+
+                                    // Update metadata and thumbnailPath on Prisma Model
+                                    await prisma.model.update({
+                                        where: { id: derivedId },
+                                        data: {
+                                            metadata: JSON.stringify(metadata),
+                                            thumbnailPath: relativeThumbUrl.replace(/^\/models\//, '')
+                                        }
+                                    });
+
+                                    // Insert image record for frontend gallery mapping
+                                    await prisma.modelImage.create({
+                                        data: {
+                                            modelId: derivedId,
+                                            path: relativeThumbUrl.replace(/^\/models\//, ''),
+                                            source: 'thumbnail',
+                                            sourceFile: base,
+                                            order: 0
+                                        }
+                                    });
+                                }
+                            } catch (thumbErr) {
+                                console.error(`[UPLOAD] Failed to generate thumbnail for ${base}:`, thumbErr);
+                            }
+                        } catch (dbErr) {
+                            console.error(`[UPLOAD] Failed to insert DB record for ${base}:`, dbErr);
+                        }
 
                         processedModelIds.push(derivedId);
                         if (!affectedFolders.has(destDir)) affectedFolders.set(destDir, []);
@@ -349,7 +564,7 @@ router.post('/upload-models', upload.array('files'), async (req, res) => {
         }
 
         // --- 3. ASSET FOLDER MODE (Project Logic) ---
-        if (isProjectFolder === 'true' && ProjectService && savedFilePaths.length > 0) {
+        if (isModelFolder === 'true' && ProjectService && savedFilePaths.length > 0) {
             try {
                 const firstFile = savedFilePaths[0];
                 const absoluteDestDir = path.join(modelsDir, path.dirname(firstFile));
@@ -373,50 +588,74 @@ router.post('/upload-models', upload.array('files'), async (req, res) => {
                         name: projectName || path.basename(absoluteDestDir),
                         category: category || 'Uncategorized',
                         tags: sharedTags
-                    }
+                    },
+                    collectionId: (createCollection && collectionId && collectionId !== 'new') ? collectionId : undefined
                 });
                 processedModelIds.push(projectModel.id);
+
+                // If putting in an existing collection, make sure the new project gets the virtual link too
+                if (createCollection && collectionId && collectionId !== 'new') {
+                    const prisma = require('../../server-utils/db');
+                    await prisma.modelCollection.upsert({
+                        where: { modelId_collectionId: { collectionId, modelId: projectModel.id } },
+                        update: {},
+                        create: { collectionId, modelId: projectModel.id }
+                    });
+                }
             } catch (projErr) {
                 console.error("[UPLOAD] ProjectService finalization failed:", projErr);
                 errors.push({ error: "Asset folder organization failed" });
             }
         }
 
-        // --- 4. LOGICAL GROUPING (Collections) ---
-        if (createCollection && processedModelIds.length > 0) {
+        // --- 4. NEW COLLECTION CREATION (If user requested 'Create New' which shouldn't happen anymore but just in case) ---
+        if (createCollection && (!collectionId || collectionId === 'new') && processedModelIds.length > 0) {
             try {
-                const currentCols = loadCollections(); // Ensure this helper exists in your server.js
-                let targetCol;
+                const prisma = require('../../server-utils/db');
 
-                if (collectionId && collectionId !== 'new') {
-                    targetCol = currentCols.find(c => c.id === collectionId);
-                }
+                // Create a new collection and link the new models
+                const newId = `col-${Date.now()}`;
 
-                if (!targetCol) {
-                    targetCol = {
-                        id: collectionId && collectionId !== 'new' ? collectionId : `col-${Date.now()}`,
+                // Reconstruct Pathhash if they generated a Model Folder, or just use root
+                const colPath = (isModelFolder === 'true' && projectName) ? projectName.replace(/[^a-zA-Z0-9_\- ]/g, '') : '';
+
+                await prisma.collection.create({
+                    data: {
+                        id: newId,
                         name: collectionName || projectName || "New Upload",
-                        modelIds: [],
                         description: collectionDescription || '',
-                        tags: collectionTags,
-                        created: new Date().toISOString()
-                    };
-                    currentCols.push(targetCol);
-                }
+                        isModelFolder: false,
+                        type: 'Manual',
+                        pathHash: Buffer.from(colPath).toString('base64'),
+                        models: {
+                            connect: processedModelIds.map(id => ({ id }))
+                        }
+                    }
+                });
 
-                // Logical union of existing and new models
-                targetCol.modelIds = Array.from(new Set([...targetCol.modelIds, ...processedModelIds]));
-                targetCol.lastModified = new Date().toISOString();
-                saveCollections(currentCols);
+                // Set optional tags if any were provided for the collection
+                if (collectionTags && collectionTags.length > 0) {
+                    for (const tagName of collectionTags) {
+                        const tag = await prisma.tag.upsert({
+                            where: { name: tagName },
+                            update: {},
+                            create: { name: tagName }
+                        });
+                        await prisma.collectionTag.create({
+                            data: {
+                                collectionId: newId,
+                                tagId: tag.id
+                            }
+                        });
+                    }
+                }
             } catch (colErr) {
-                console.error("[UPLOAD] Collection update failed:", colErr);
-                errors.push({ error: "Failed to add models to collection" });
+                console.error("[UPLOAD] New Collection creation failed:", colErr);
+                errors.push({ error: "Failed to create new collection for models" });
             }
         }
 
-        // Final Syncing
-        await collectionQueue.add(() => collectionScanner.scanDirectory(modelsDir, modelsDir, { strategy: 'strict' }));
-        try { reconcileHiddenFlags(); } catch (e) { }
+        // ProjectService and Prisma Upserts handle the DB insertion safely now.
 
         res.json({
             success: errors.length === 0,
@@ -439,12 +678,12 @@ router.post('/move-model-to-project', async (req, res) => {
 
         try {
             // Use the same dist-backend path since they are in the same folder
-            const projectModule = require('../../dist-backend/utils/ProjectService');
+            const projectModule = require('../../dist-backend/utils/ProjectService_db');
 
             // Note: Check if your class is a named export or default export in the compiled JS
             // If it's "export class ProjectService", use .ProjectService
             // If it's "export default class ProjectService", use .default
-            ProjectService = projectModule.ProjectService || projectModule.default;
+            ProjectService = projectModule.ProjectService_db || projectModule.default;
         } catch (e) {
             console.error('Failed to load ProjectService:', e);
             return res.status(500).json({

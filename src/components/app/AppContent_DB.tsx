@@ -15,6 +15,8 @@ import { PrinterStatusHub_DB } from "@/components/layout/PrinterStatusHub_DB";
 import { ThemeToggle_DB } from "@/components/layout/ThemeToggle_DB";
 import { SettingsPage_DB } from "@/components/management/SettingsPage_DB";
 import { ModelHubView_DB } from "@/components/models/ModelHubView_DB";
+import { ProjectsList_DB } from "@/components/projects/ProjectsList_DB";
+import { ProjectWorkspace_DB } from "@/components/projects/ProjectWorkspace_DB";
 import { GlobalDialogs_DB } from "@/components/shared/GlobalDialogs_DB";
 import { BulkEditView_DB } from "@/components/views/BulkEditView_DB";
 import { CollectionsView_DB } from "@/components/views/CollectionsView_DB";
@@ -51,6 +53,7 @@ import { useSelectionMode_db } from "@/hooks/useSelectionMode_db";
 // ── Types ──────────────────────────────────────────────────────────────────────
 import type { Collection } from "@/types/collection_db";
 import type { Model } from "@/types/model_db";
+import { hasModelsDeep } from "@/utils/collectionUtils_db";
 import type { SortKey } from "@/utils/sortUtils_db";
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
@@ -94,6 +97,7 @@ export default function AppContent_DB() {
     } = useNavigation();
 
     const [selectedModel, setSelectedModel] = useState<Model | null>(null);
+    const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
     // ── Onboarding Redirect ────────────────────────────────────────────────────
     useEffect(() => {
@@ -383,12 +387,41 @@ export default function AppContent_DB() {
         }
 
         const isFiltering = searchTerm !== "" || hasCategoryFilter || hasTagFilter;
+
+        // ── Dynamic Collection Mode Logic ──
         if (!isFiltering) {
-            filteredList = filteredList.filter((c) => !c.parentId);
+            const mode = appConfig?.settings?.collectionMode || 'strict';
+
+            if (mode === 'smart') {
+                // Flattened: Elevate ANY folder that contains models directly, EXCEPT Manual collections which stay hierarchical
+                filteredList = filteredList.filter(c =>
+                    c.type === 'Manual' ? !c.parentId : (Array.isArray(c.modelIds) && c.modelIds.length > 0)
+                );
+            }
+            else if (mode === 'top-level') {
+                // Top-Level: Show only roots (strict hierarchy, no empty filtering)
+                filteredList = filteredList.filter(c => !c.parentId);
+            }
+            else if (mode === 'strict' || !mode) {
+                // Default Strict: Show roots that have models SOMEWHERE deeply nested (Manual collections always show)
+                filteredList = filteredList.filter(c => {
+                    if (c.parentId) return false;
+                    if (c.type === 'Manual') return true;
+                    return hasModelsDeep(c.id, collections);
+                });
+            }
+            else if (mode === 'raw') {
+                // Raw: Show exactly all roots, ignoring emptiness.
+                filteredList = filteredList.filter(c => !c.parentId);
+            }
+            else if (mode === 'manual') {
+                // Manual: Custom Collections only (ignore Auto-Imported)
+                filteredList = filteredList.filter(c => c.category !== 'Auto-Imported' && !c.parentId);
+            }
         }
 
         return filteredList;
-    }, [collections, lastFilters]);
+    }, [collections, lastFilters, appConfig?.settings?.collectionMode]);
 
     // ── Sidebar Layout ─────────────────────────────────────────────────────────
     useEffect(() => {
@@ -445,6 +478,7 @@ export default function AppContent_DB() {
                         }}
                         onClose={() => setIsSidebarOpen(false)}
                         onSettingsClick={handleSettingsClick}
+                        onProjectsClick={() => setCurrentView('projects')}
                         categories={categories}
                         collections={collections as any}
                         onOpenCollection={navOpenCollection}
@@ -553,6 +587,9 @@ export default function AppContent_DB() {
                                 <DropdownMenuItem onClick={() => dialogs.openUpload(activeCollection as any)}>
                                     <Upload className="h-4 w-4 mr-2" /> Upload Files
                                 </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setCurrentView('projects')}>
+                                    <Box className="h-4 w-4 mr-2" /> Projects
+                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
 
@@ -597,6 +634,16 @@ export default function AppContent_DB() {
                             }}
                             onBulkDelete={handleBulkDeleteClick}
                         />
+                    ) : currentView === "projects" ? (
+                        <ProjectsList_DB onOpenProject={(id) => {
+                            setSelectedProjectId(id);
+                            setCurrentView("project-workspace");
+                        }} />
+                    ) : currentView === "project-workspace" && selectedProjectId ? (
+                        <ProjectWorkspace_DB
+                            projectId={selectedProjectId}
+                            onBack={() => setCurrentView("projects")}
+                        />
                     ) : currentView === "settings" ? (
                         <SettingsPage_DB
                             onBack={navHandleBack}
@@ -633,21 +680,6 @@ export default function AppContent_DB() {
                             onUploadClick={handleCollectionUpload}
                             config={appConfig}
                             onBack={() => {
-                                if (hasActiveFilters) {
-                                    handleFilterChange({
-                                        search: "",
-                                        category: "all",
-                                        printStatus: "all",
-                                        license: "all",
-                                        fileType: "all",
-                                        tags: [],
-                                        showHidden: true,
-                                        showMissingImages: false,
-                                        sortBy: currentSortBy,
-                                    });
-                                    setSidebarResetKey((k) => k + 1);
-                                    return;
-                                }
                                 if ((activeCollection as any)?.parentId) {
                                     const parent = collections.find(
                                         (c) => c.id === (activeCollection as any).parentId

@@ -28,6 +28,12 @@ export function useThumbnails_db() {
                 if (res.ok) {
                     const status = await res.json();
                     setProgress(status);
+
+                    // If the backend says idle but we are polling, it must have finished
+                    if (status.status === 'idle') {
+                        stopPolling();
+                        setIsGenerating(false);
+                    }
                 }
             } catch (e) {
                 console.error("Poll error", e);
@@ -42,9 +48,31 @@ export function useThumbnails_db() {
         }
     };
 
-    // Cleanup on unmount
+    // Auto-resume polling on mount if a job is already entirely active on the backend
     useEffect(() => {
-        return () => stopPolling();
+        let isMounted = true;
+        const checkActiveJob = async () => {
+            try {
+                const res = await fetch('/api/admin/thumbnail-status');
+                if (res.ok && isMounted) {
+                    const status = await res.json();
+                    if (status.status === 'generating' || status.status === 'scanning' || status.status === 'querying') {
+                        setIsGenerating(true);
+                        setProgress(status);
+                        startPolling();
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to check initial thumbnail status", e);
+            }
+        };
+
+        checkActiveJob();
+
+        return () => {
+            isMounted = false;
+            stopPolling();
+        };
     }, []);
 
     const handleStartGeneration = async (options: { force: boolean; skipEmbedded: boolean }) => {

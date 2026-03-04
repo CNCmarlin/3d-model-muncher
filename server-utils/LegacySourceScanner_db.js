@@ -151,12 +151,20 @@ class LegacySourceScanner {
             assignedThumbnails = {};
         }
 
+        // Ensure backward compatible modelUrl mapping
+        let modelUrl = data.modelUrl || data.filePath || null;
+        if (modelUrl) {
+            modelUrl = modelUrl.replace(/\\/g, '/');
+            if (modelUrl.startsWith('models/')) modelUrl = '/' + modelUrl;
+            if (!modelUrl.startsWith('/models/')) modelUrl = '/models/' + modelUrl;
+        }
+
         const mapped = {
             id: data.id,
             name: resolvedName,
             // Promoted columns (Batch 1)
             category: data.category || null,
-            modelUrl: data.modelUrl || null,
+            modelUrl: modelUrl,
             price: typeof data.price === 'number' ? data.price : null,
             // Promoted columns (Batch 2 - print settings)
             layerHeight: data.printSettings?.layerHeight || null,
@@ -169,7 +177,7 @@ class LegacySourceScanner {
             source: data.source || null,
             notes: data.notes || null,
             tags: Array.isArray(data.tags) ? data.tags : [], // NEW: Map Tags
-            isHidden: data.hidden || false,     // Direct Map
+            isHidden: (type === 'LOOSE_MODEL' && dir.replace(/\\/g, '/') === this.modelsDir.replace(/\\/g, '/')) ? false : (data.hidden || false),
             isComponent: type === 'PROJECT_PART', // Derived
             printTime: this._parsePrintTime(data.printTime),
             filamentUsage: this._parseFilamentUsage(data.filamentUsed),
@@ -182,7 +190,6 @@ class LegacySourceScanner {
             isFavorite: data.favorite || false, // Note: legacy might call it 'favorite' or 'isFavorite'
             thumbnailPath: this._findCoverImage(data, dir, { isExplicitStl, munchieBaseName }),  // Maps to `thumbnail_path` column
             pathHash: this._generatePathHash(dir, filename),
-            filePath: path.relative(this.modelsDir, fullPath).replace(/\\/g, '/'),
             // Complex objects stored in metadata (only userDefined remains after Batch 6)
             metadata: {
                 userDefined: data.userDefined || {}

@@ -1,8 +1,8 @@
+import { SearchableSelect_DB } from '@/components/common/SearchableSelect_DB';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, CloudDownload, Info, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -11,19 +11,10 @@ interface ThingiverseImportDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onImportComplete?: () => void;
-  defaultFolder?: string;
   defaultCollectionId?: string;
 }
 
-// [NEW] Helper to truncate middle of long paths
-function truncateMiddle(text: string, maxLength: number) {
-  if (!text || text.length <= maxLength) return text;
-  const startChars = Math.ceil(maxLength / 2) - 2;
-  const endChars = Math.floor(maxLength / 2) - 1;
-  return `${text.substring(0, startChars)}...${text.substring(text.length - endChars)}`;
-}
-
-export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, defaultFolder, defaultCollectionId }: ThingiverseImportDialogProps) {
+export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, defaultCollectionId }: ThingiverseImportDialogProps) {
   const [inputUrl, setInputUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState('');
@@ -31,8 +22,6 @@ export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, 
   const [apiStatus, setApiStatus] = useState<{ limit: string; remaining: string } | null>(null);
 
   // Options State
-  const [folders, setFolders] = useState<string[]>(['imported', 'uploads']);
-  const [selectedFolder, setSelectedFolder] = useState<string>('imported');
   const [collections, setCollections] = useState<{ id: string, name: string }[]>([]);
   const [selectedCollection, setSelectedCollection] = useState<string>('none');
   const [categories, setCategories] = useState<string[]>(['Uncategorized']);
@@ -43,7 +32,6 @@ export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, 
     if (!isOpen) return;
     setErrorMessage(null);
     setInputUrl(''); // Reset input
-    if (defaultFolder) setSelectedFolder(defaultFolder);
 
     // Reset or set collection based on prop
     if (defaultCollectionId) {
@@ -54,19 +42,15 @@ export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, 
 
     const loadData = async () => {
       try {
-        const [fRes, cRes, confRes] = await Promise.all([
-          fetch('/api/model-folders'),
+        const [cRes, confRes] = await Promise.all([
           fetch('/api/collections'),
           fetch('/api/load-config')
         ]);
 
-        if (fRes.ok) {
-          const d = await fRes.json();
-          setFolders(Array.from(new Set(['imported', 'uploads', ...(d.folders || [])])));
-        }
         if (cRes.ok) {
           const d = await cRes.json();
-          setCollections(d.collections || []);
+          // DB Mode returns an array, Legacy Mode returns { collections: [...] }
+          setCollections(Array.isArray(d) ? d : (d.collections || []));
         }
         if (confRes.ok) {
           const d = await confRes.json();
@@ -76,7 +60,7 @@ export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, 
       } catch (e) { console.error('Data load error', e); }
     };
     loadData();
-  }, [isOpen, defaultFolder, defaultCollectionId]);
+  }, [isOpen, defaultCollectionId]);
 
   useEffect(() => {
     // 1. If we already have a default from the view, use it
@@ -113,7 +97,6 @@ export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           thingId,
-          targetFolder: selectedFolder,
           collectionId: selectedCollection === 'none' ? null : selectedCollection,
           category: selectedCategory
         })
@@ -201,47 +184,31 @@ export function ThingiverseImportDialog_DB({ isOpen, onClose, onImportComplete, 
           )}
 
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>Destination Folder</Label>
-              <Select value={selectedFolder} onValueChange={setSelectedFolder} disabled={isLoading}>
-                {/* [FIX] Use custom display with truncation instead of generic SelectValue */}
-                <SelectTrigger title={selectedFolder}>
-                  <span className="truncate block text-left">
-                    {truncateMiddle(selectedFolder, 35)}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  {folders.map(f => (
-                    <SelectItem key={f} value={f} title={f}>
-                      {f}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="grid grid-cols-1 gap-4">
             <div className="grid gap-2">
               <Label>Category</Label>
-              <Select value={selectedCategory} onValueChange={setSelectedCategory} disabled={isLoading}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(categories || []).map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <SearchableSelect_DB
+                value={selectedCategory}
+                onValueChange={setSelectedCategory}
+                disabled={isLoading}
+                placeholder="Select category..."
+                options={(categories || []).map(c => ({ value: c, label: c }))}
+              />
             </div>
           </div>
 
           <div className="grid gap-2">
             <Label>Add to Collection</Label>
-            <Select value={selectedCollection} onValueChange={setSelectedCollection} disabled={isLoading}>
-              <SelectTrigger>
-                <SelectValue placeholder="None" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                {collections.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <SearchableSelect_DB
+              value={selectedCollection}
+              onValueChange={setSelectedCollection}
+              disabled={isLoading}
+              placeholder="None"
+              options={[
+                { value: 'none', label: 'None' },
+                ...collections.map(c => ({ value: c.id, label: c.name }))
+              ]}
+            />
             {defaultCollectionId && selectedCollection === defaultCollectionId && (
               <p className="text-xs text-muted-foreground">
                 * Automatically selected based on your current view.

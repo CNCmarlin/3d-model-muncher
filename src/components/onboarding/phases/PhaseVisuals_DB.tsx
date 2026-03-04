@@ -1,12 +1,10 @@
 
 import { GenerateThumbnailsDialog_DB } from "@/components/modals/GenerateThumbnailsDialog_DB";
-import { AutoImportDialog_DB } from "@/components/shared/AutoImportDialog_DB";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useCovers_db } from "@/hooks/settings/useCovers_db";
 import { useThumbnails_db } from "@/hooks/settings/useThumbnails_db";
-import { CheckCircle2, FolderOpen, Image as ImageIcon, Layers, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { CheckCircle2, Image as ImageIcon, Layers, Loader2 } from "lucide-react";
 
 interface PhaseVisualsProps {
     onNext: () => void;
@@ -15,8 +13,6 @@ interface PhaseVisualsProps {
 export function PhaseVisuals_DB({ }: PhaseVisualsProps) {
     const thumbnails = useThumbnails_db();
     const covers = useCovers_db();
-
-    const [isAutoImportOpen, setIsAutoImportOpen] = useState(false);
 
     // Calculate percent for card display
     const thumbPercent = thumbnails.progress && thumbnails.progress.total > 0
@@ -80,37 +76,6 @@ export function PhaseVisuals_DB({ }: PhaseVisualsProps) {
 
             <Separator />
 
-            {/* 2. Collections (Auto Import) */}
-            <div className="space-y-4">
-                <div>
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <FolderOpen className="w-5 h-5 text-primary" />
-                        Organize Collections
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Turn your folders into browsable collections.
-                    </p>
-                </div>
-
-                <div className="p-4 border rounded-xl bg-card flex items-center justify-between">
-                    <div className="space-y-1">
-                        <div className="font-medium">Auto-Import</div>
-                        <div className="text-xs text-muted-foreground">
-                            Create collections compatible with your folder structure.
-                        </div>
-                    </div>
-                    <Button
-                        variant="outline"
-                        onClick={() => setIsAutoImportOpen(true)}
-                    >
-                        <Layers className="mr-2 h-4 w-4" />
-                        Import Collections
-                    </Button>
-                </div>
-            </div>
-
-            <Separator />
-
             {/* 3. Covers (Mosaic) */}
             <div className="space-y-4">
                 <div>
@@ -150,11 +115,6 @@ export function PhaseVisuals_DB({ }: PhaseVisualsProps) {
                 isGenerating={thumbnails.isGenerating}
                 results={thumbnails.results}
                 progress={thumbnails.progress}
-            />
-
-            <AutoImportDialog_DB
-                open={isAutoImportOpen}
-                onOpenChange={setIsAutoImportOpen}
             />
         </div>
     );

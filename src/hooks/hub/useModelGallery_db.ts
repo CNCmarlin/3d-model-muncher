@@ -70,7 +70,7 @@ export function useModelGallery_db({
 
         // Determine which file we are "focused" on
         // IMPORTANT: Use modelUrl (actual 3D file) for thumbnail lookup, NOT filePath (munchie JSON path)
-        const targetFilePath = active3DFile || src.modelUrl || src.filePath;
+        const targetFilePath = active3DFile || src.modelUrl;
 
         if (targetFilePath) {
             const parts = targetFilePath.split(/[/\\]/);
@@ -131,7 +131,7 @@ export function useModelGallery_db({
     // Reset Logic
     useEffect(() => {
         if (model) {
-            const has3D = !!(model.modelUrl || model.filePath);
+            const has3D = !!model.modelUrl;
             // const preferredMode = defaultModelView === '3d' && !has3D ? 'images' : defaultModelView; // Unused
             const setting = defaultModelView || 'images';
             // If default is 3d but no 3d file, fall back to images
@@ -143,7 +143,7 @@ export function useModelGallery_db({
             setSelectedImageIndex(0);
 
         }
-    }, [model?.id, model?.filePath, model?.modelUrl]);
+    }, [model?.id, model?.modelUrl]);
 
     // Secondary Reset Logic: When active3DFile changes (e.g. clicking a related part), reset the image index.
     useEffect(() => {

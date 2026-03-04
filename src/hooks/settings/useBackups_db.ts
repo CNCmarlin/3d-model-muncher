@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface UseBackupsProps {
     setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -159,6 +159,56 @@ export function useBackups_db({
         }
     };
 
+    // --- Safe Restore (.bak) Logic ---
+    const [safeRestores, setSafeRestores] = useState<BackupEntry[]>([]);
+    const [isFetchingSafeRestores, setIsFetchingSafeRestores] = useState(false);
+
+    const fetchSafeRestores = async () => {
+        setIsFetchingSafeRestores(true);
+        try {
+            const response = await fetch('/api/admin/db-safe-restores');
+            const data = await response.json();
+            if (data.success && data.backups) {
+                setSafeRestores(data.backups);
+            }
+        } catch (e) {
+            console.error("Failed to fetch safe restores:", e);
+        } finally {
+            setIsFetchingSafeRestores(false);
+        }
+    };
+
+    // Auto-fetch on hook mount
+    useEffect(() => {
+        fetchSafeRestores();
+    }, []);
+
+    const triggerSafeRestore = async (filename: string) => {
+        setIsRestoring(true);
+        setSaveStatus('saving');
+        setStatusMessage(`Restoring specific safe backup: ${filename}...`);
+
+        try {
+            const response = await fetch(`/api/admin/db-safe-restore/${filename}`, { method: 'POST' });
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error || 'Safe restore failed');
+
+            setSaveStatus('saved');
+            setStatusMessage('Database restored! Please restart the backend server.');
+            alert('Database restored successfully. If your backend does not automatically restart, please manually restart it (npm run server).');
+            // Refresh page to clear out any stale front-end state
+            window.location.reload();
+        } catch (error) {
+            setSaveStatus('error');
+            setStatusMessage('Failed to execute safe restore');
+            console.error('Safe restore error:', error);
+            alert('Failed to execute safe restore: ' + error);
+        } finally {
+            setIsRestoring(false);
+            setTimeout(() => { setSaveStatus('idle'); setStatusMessage(''); }, 4000);
+        }
+    };
+
     return {
         // State
         isCreatingBackup,
@@ -168,10 +218,15 @@ export function useBackups_db({
         restoreStrategy,
         setRestoreStrategy,
         backupFileInputRef,
+        safeRestores,
+        isFetchingSafeRestores,
 
         // Actions
         handleCreateBackup,
         handleRestoreFromFile,
         handleBackupFileRestore,
+        fetchSafeRestores,
+        triggerSafeRestore,
     };
 }
+

@@ -40,7 +40,7 @@ export const applyFiltersToModels_db = (modelsToFilter: Model_db[], filters: Fil
       model.name.toLowerCase().includes(term) ||
       (model.tags || []).some(tag => getTagName(tag).toLowerCase().includes(term)) ||
       (model.modelUrl || '').toLowerCase().includes(term) ||
-      (model.filePath || '').toLowerCase().includes(term)
+      (model.modelUrl || '').toLowerCase().includes(term)
     );
   }
 
@@ -79,15 +79,24 @@ export const applyFiltersToModels_db = (modelsToFilter: Model_db[], filters: Fil
     const ext = filters.fileType.toLowerCase();
     if (ext !== 'collections') {
       filtered = filtered.filter(model => {
-        // DB-first: use ModelFile_db.fileType enum (most reliable)
+        // Primary check: model.modelUrl is always the correct per-model 3D path
+        const primaryPath = (model.modelUrl || '').toLowerCase();
+        if (primaryPath.endsWith('.' + ext)) return true;
+
+        // DB-first: check only PRIMARY ModelFile records (isPrimary === true)
+        // Never match secondary/sibling files — that causes STL models to show
+        // when filtering by 'obj' because they have an OBJ sibling file.
         const files: any[] = (model as any).files || [];
-        if (files.some((f: any) =>
-          (f.fileType || '').toLowerCase() === ext ||
-          (f.path || f.filePath || '').toLowerCase().endsWith('.' + ext)
-        )) return true;
-        // Fallback: top-level filePath / modelUrl
-        const path = (model.filePath || model.modelUrl || '').toLowerCase();
-        return path.endsWith('.' + ext);
+        const primaryFiles = files.filter((f: any) => f.isPrimary === true);
+        if (primaryFiles.length > 0) {
+          return primaryFiles.some((f: any) =>
+            (f.fileType || '').toLowerCase() === ext ||
+            (f.filePath || f.path || '').toLowerCase().endsWith('.' + ext)
+          );
+        }
+
+        // No primary files in the relation — already checked filePath above
+        return false;
       });
     }
   }

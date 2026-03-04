@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
+import { defineConfig } from 'vite';
 
 export default defineConfig(async () => {
   // @tailwindcss/vite is ESM-only. Dynamically import it so Vite doesn't try to load it via require.
@@ -66,14 +66,19 @@ export default defineConfig(async () => {
       open: true,
       proxy: {
         '/api': 'http://localhost:3001',
-        '/models': 'http://localhost:3001'
+        '/models': 'http://localhost:3001',
+        '/data': 'http://localhost:3001'
+      },
+      watch: {
+        ignored: ['**/prisma/**', '**/data/**', '**/*.db', '**/*.db-journal']
       }
     },
     preview: {
       port: 4173,
       proxy: {
         '/api': 'http://localhost:3001',
-        '/models': 'http://localhost:3001'
+        '/models': 'http://localhost:3001',
+        '/data': 'http://localhost:3001'
       }
     },
     publicDir: 'public',

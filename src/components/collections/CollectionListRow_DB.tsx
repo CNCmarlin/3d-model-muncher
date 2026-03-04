@@ -4,8 +4,10 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useConfig } from "@/context/AppConfigContext";
 import type { Category } from "@/types/category";
 import type { Collection } from "@/types/collection_db";
+import { getDynamicModelCount } from "@/utils/collectionUtils_db";
 import { Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -17,17 +19,18 @@ interface CollectionListRowProps {
   onOpen: (id: string) => void;
   onChanged?: () => void;
   onDeleted?: (id: string) => void;
-  // Optional models prop for dialog
-  models?: any[];
 }
 
-export function CollectionListRow_DB({ collection, categories, collections, onOpen, onChanged, onDeleted, models = [] }: CollectionListRowProps) {
+export function CollectionListRow_DB({ collection, categories, collections, onOpen, onChanged, onDeleted }: CollectionListRowProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deletePhysicalFiles, setDeletePhysicalFiles] = useState(false);
 
+  const { appConfig } = useConfig();
+  const collectionMode = appConfig?.settings?.collectionMode || 'strict';
+
   const collectionId = collection?.id;
-  const modelCount = Array.isArray(collection?.modelIds) ? collection.modelIds.length : 0;
+  const modelCount = getDynamicModelCount(collection, collections, collectionMode);
 
   const handleOpen = () => {
     if (collectionId) {
@@ -50,6 +53,18 @@ export function CollectionListRow_DB({ collection, categories, collections, onOp
     }
   };
 
+  const getCoverUrl = (path: string | undefined | null) => {
+    if (!path) return null;
+    if (path.startsWith('/data/') || path.startsWith('/api/') || path.startsWith('http')) return path;
+    if (path.startsWith('/models/')) return path;
+    if (path.startsWith('models/')) return `/${path}`;
+    return `/models/${path}`;
+  };
+
+  const coverSrc = getCoverUrl(
+    collection.coverImagePath || collection.coverImage || (collection.images && collection.images.length > 0 ? collection.images[0] : null)
+  );
+
   return (
     <>
       <div
@@ -57,10 +72,10 @@ export function CollectionListRow_DB({ collection, categories, collections, onOp
         onClick={handleOpen}
       >
         <div className="flex-shrink-0 mr-4">
-          {collection.coverImage || (collection.images && collection.images.length > 0) ? (
+          {coverSrc ? (
             <div className="h-12 w-12 rounded overflow-hidden bg-muted">
               <ImageWithFallback_DB
-                src={collection.coverImage || collection.images![0]}
+                src={coverSrc}
                 alt={collection.name}
                 className="h-full w-full object-cover"
               />
@@ -136,7 +151,6 @@ export function CollectionListRow_DB({ collection, categories, collections, onOp
           onOpenChange={setIsEditOpen}
           collection={collection}
           collections={collections}
-          models={models}
           categories={categories}
           onSave={async (_updated) => {
             onChanged?.();

@@ -18,7 +18,7 @@ import { useIntegrityCheck_db } from '@/hooks/settings/useIntegrityCheck_db';
 import { Model } from '@/types/model_db';
 import { getDisplayPath_db } from '@/utils/clientUtils_db';
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils_db";
-import { AlertTriangle, Box, ChevronDown, FileCheck, Files, FolderSync, Ghost, HardDrive, Hash, Link2, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
+import { AlertTriangle, Box, Check, ChevronDown, Cpu, FileCheck, Files, FolderSync, Ghost, HardDrive, Hash, HeartPulse, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 type IntegritySettingsProps = ReturnType<typeof useIntegrityCheck_db> & {
@@ -62,95 +62,99 @@ export function IntegritySettings_DB({
 
     // ── Library Resync State (self-contained) ──
     type ResyncResult = {
-        stats: { totalDiskFiles: number; totalDbFiles: number; totalModels: number; orphanCount: number; ghostCount: number; modelGhostCount: number };
+        stats: { totalDiskFiles: number; totalDbFiles: number; totalModels: number; orphanCount: number; sourceOrphanCount: number; ghostCount: number; modelGhostCount: number };
         orphans: { path: string; size: number; ext: string; sizeFormatted: string }[];
+        sourceOrphans: { path: string; size: number; ext: string; sizeFormatted: string }[];
         ghosts: { id: string; modelId: string; filePath: string; filename: string }[];
         modelGhosts: { id: string; name: string; filePath: string }[];
     };
+    type HealDetail = { model: string; additions: string[]; deletions: string[]; modifications: string[] };
+    type HealReport = {
+        dryRun: boolean;
+        embedded: { processed: number; extracted: number; alreadyDone: number; noEmbed: number; errors: { model?: string; error: string }[] };
+        gallery: { processed: number; added: number; errors: { model?: string; error: string }[] };
+        stale: { processed: number; removed: number; errors: { imageId?: string; error: string }[] };
+        details: HealDetail[];
+    };
+    const [healReport, setHealReport] = useState<HealReport | null>(null);
+    const [isHealDialogOpen, setIsHealDialogOpen] = useState(false);
+
+    const healTotalChanges = healReport
+        ? healReport.embedded.extracted + healReport.gallery.added + healReport.stale.removed
+        : 0;
+
+    // ── Library Resync State (self-contained) ──
     const [resyncResult, setResyncResult] = useState<ResyncResult | null>(null);
     const [isResyncing, setIsResyncing] = useState(false);
     const [resyncError, setResyncError] = useState<string | null>(null);
     const [expandedSection, setExpandedSection] = useState<string | null>(null);
-    const [isPurging, setIsPurging] = useState(false);
+
+    // Batch Apply State
+    const [includeOrphans, setIncludeOrphans] = useState(true);
+    const [includeSourceOrphans, setIncludeSourceOrphans] = useState(true);
+    const [includeGhosts, setIncludeGhosts] = useState(true);
+    const [includeModelGhosts, setIncludeModelGhosts] = useState(false); // Default to false for safety
+    const [includeHeal, setIncludeHeal] = useState(true);
+    const [isBatchApplying, setIsBatchApplying] = useState(false);
+
+    const handleBatchApply = useCallback(async () => {
+        setIsBatchApplying(true);
+        try {
+            const payload = {
+                purgeGhostIds: includeGhosts ? (resyncResult?.ghosts.map(g => g.id) || []) : [],
+                purgeModelGhostIds: includeModelGhosts ? (resyncResult?.modelGhosts.map(m => m.id) || []) : [],
+                linkOrphanPaths: includeOrphans ? (resyncResult?.orphans.map(o => o.path) || []) : [],
+                linkSourceOrphanPaths: includeSourceOrphans ? (resyncResult?.sourceOrphans.map(o => o.path) || []) : [],
+                applyHeal: includeHeal && healTotalChanges > 0
+            };
+
+            const resp = await fetch('/api/admin/resync-apply-batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!data.success) throw new Error(data.error || 'Batch apply failed');
+
+            // Re-run the scan to get fresh numbers
+            await handleResync();
+        } catch (err: any) {
+            setResyncError(err.message || 'Batch apply failed');
+        } finally {
+            setIsBatchApplying(false);
+        }
+    }, [resyncResult, includeOrphans, includeSourceOrphans, includeGhosts, includeModelGhosts, includeHeal, healTotalChanges]);
 
     const handleResync = useCallback(async () => {
         setIsResyncing(true);
         setResyncError(null);
         setResyncResult(null);
+        setHealReport(null);
         try {
+            // Step 1: Filesystem resync
             const resp = await fetch('/api/admin/library-resync', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
             const data = await resp.json();
             if (!data.success) throw new Error(data.error || 'Resync failed');
             setResyncResult(data);
+
+            // Step 2: DB heal (extract embedded thumbnails, claim images, scrub stale links)
+            try {
+                const healResp = await fetch('/api/admin/db-heal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dryRun: true }),
+                });
+                const healData = await healResp.json();
+                if (healData.success) setHealReport(healData.report);
+            } catch {
+                // Non-fatal — resync result is still valid
+            }
         } catch (err: any) {
             setResyncError(err.message || 'Unknown error');
         } finally {
             setIsResyncing(false);
         }
     }, []);
-
-    const handlePurgeGhosts = useCallback(async () => {
-        if (!resyncResult?.ghosts.length) return;
-        setIsPurging(true);
-        try {
-            const ids = resyncResult.ghosts.map(g => g.id);
-            const resp = await fetch('/api/admin/resync-purge-ghosts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids }),
-            });
-            const data = await resp.json();
-            if (!data.success) throw new Error(data.error);
-            // Re-run scan to refresh results
-            await handleResync();
-        } catch (err: any) {
-            setResyncError(err.message || 'Purge failed');
-        } finally {
-            setIsPurging(false);
-        }
-    }, [resyncResult, handleResync]);
-
-    const handlePurgeModelGhosts = useCallback(async () => {
-        if (!resyncResult?.modelGhosts.length) return;
-        setIsPurging(true);
-        try {
-            const ids = resyncResult.modelGhosts.map(m => m.id);
-            const resp = await fetch('/api/admin/resync-purge-model-ghosts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids }),
-            });
-            const data = await resp.json();
-            if (!data.success) throw new Error(data.error);
-            // Re-run scan to refresh results
-            await handleResync();
-        } catch (err: any) {
-            setResyncError(err.message || 'Purge failed');
-        } finally {
-            setIsPurging(false);
-        }
-    }, [resyncResult, handleResync]);
-
-    const handleLinkOrphans = useCallback(async () => {
-        if (!resyncResult?.orphans.length) return;
-        setIsPurging(true);
-        try {
-            const paths = resyncResult.orphans.map(o => o.path);
-            const resp = await fetch('/api/admin/resync-link-orphans', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ paths }),
-            });
-            const data = await resp.json();
-            if (!data.success) throw new Error(data.error);
-            // Re-run scan to refresh results (linked files won't show as orphans anymore)
-            await handleResync();
-        } catch (err: any) {
-            setResyncError(err.message || 'Link failed');
-        } finally {
-            setIsPurging(false);
-        }
-    }, [resyncResult, handleResync]);
 
     const toggleSection = (key: string) => setExpandedSection(prev => prev === key ? null : key);
 
@@ -196,12 +200,22 @@ export function IntegritySettings_DB({
                                 />
                                 <Label htmlFor="file-type-stl" className="cursor-pointer">STL</Label>
                             </div>
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="file-type-obj"
+                                    checked={(selectedFileTypes as any)["obj"] ?? false}
+                                    onCheckedChange={(checked) =>
+                                        setSelectedFileTypes(prev => ({ ...prev, "obj": Boolean(checked) }))
+                                    }
+                                />
+                                <Label htmlFor="file-type-obj" className="cursor-pointer">OBJ</Label>
+                            </div>
                         </div>
                     </div>
 
                     <Button
                         onClick={() => handleRunHashCheck()}
-                        disabled={isHashChecking || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"])}
+                        disabled={isHashChecking || (!selectedFileTypes["3mf"] && !selectedFileTypes["stl"] && !(selectedFileTypes as any)["obj"])}
                         variant="outline"
                         className="gap-2"
                     >
@@ -326,7 +340,7 @@ export function IntegritySettings_DB({
                         <p className="text-sm text-muted-foreground">
                             These files have identical content hashes. Keep one and delete the rest.
                         </p>
-                        <div className="space-y-2">
+                        <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
                             {hashCheckResult.duplicateGroups.map((group: any, idx: number) => (
                                 <div
                                     key={`dup-${idx}`}
@@ -426,7 +440,7 @@ export function IntegritySettings_DB({
                     )
                 }
 
-                {/* ═══════ SECTION 2: Library Resync ═══════ */}
+                {/* ═══════ SECTION 2: Library Resync & Heal ═══════ */}
                 <Separator />
 
                 <div className="space-y-4">
@@ -435,7 +449,7 @@ export function IntegritySettings_DB({
                             <FolderSync className="h-4 w-4" />
                             DB ↔ Filesystem Resync
                         </h3>
-                        <Button onClick={handleResync} disabled={isResyncing || isPurging} variant="outline" size="sm" className="gap-2">
+                        <Button onClick={handleResync} disabled={isResyncing || isBatchApplying} variant="outline" size="sm" className="gap-2">
                             {isResyncing
                                 ? <RefreshCw className="h-4 w-4 animate-spin" />
                                 : <FolderSync className="h-4 w-4" />
@@ -471,10 +485,98 @@ export function IntegritySettings_DB({
                             </div>
 
                             {/* All clean */}
-                            {resyncResult.stats.orphanCount === 0 && resyncResult.stats.ghostCount === 0 && resyncResult.stats.modelGhostCount === 0 && (
+                            {resyncResult.stats.orphanCount === 0 && resyncResult.stats.sourceOrphanCount === 0 && resyncResult.stats.ghostCount === 0 && resyncResult.stats.modelGhostCount === 0 && healTotalChanges === 0 && (
                                 <div className="flex flex-col items-center justify-center py-6 text-muted-foreground gap-2">
                                     <ShieldCheck className="h-8 w-8 text-green-500 opacity-60" />
-                                    <p className="text-sm">Database and filesystem are in sync.</p>
+                                    <p className="text-sm">Database and filesystem are in sync. No healing needed.</p>
+                                </div>
+                            )}
+
+                            {/* ── Library Heal Available ── */}
+                            {healTotalChanges > 0 && healReport && (
+                                <div className="rounded-lg border overflow-hidden mt-2 bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
+                                        <div className="space-y-1">
+                                            <div className="flex items-center gap-2">
+                                                <HeartPulse className="h-4 w-4 text-green-600 dark:text-green-500" />
+                                                <span className="font-medium text-sm text-green-800 dark:text-green-400">Gallery & Thumbnails Repair Available</span>
+                                            </div>
+                                            <div className="text-xs text-muted-foreground flex items-center gap-3">
+                                                {healReport.embedded.extracted > 0 && <span>• {healReport.embedded.extracted} thumbnails</span>}
+                                                {healReport.gallery.added > 0 && <span>• {healReport.gallery.added} untracked images</span>}
+                                                {healReport.stale.removed > 0 && <span>• {healReport.stale.removed} stale links</span>}
+                                            </div>
+                                        </div>
+                                        <Dialog open={isHealDialogOpen} onOpenChange={setIsHealDialogOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button size="sm" variant="outline" className="gap-2 border-green-200 hover:bg-green-100 dark:border-green-800 dark:hover:bg-green-900">
+                                                    <HeartPulse className="h-3.5 w-3.5" />
+                                                    Review & Apply
+                                                </Button>
+                                            </DialogTrigger>
+                                            <DialogContent className="max-w-2xl h-[80vh] flex flex-col p-0 overflow-hidden">
+                                                <div className="p-6 pb-0">
+                                                    <DialogHeader>
+                                                        <DialogTitle className="flex items-center gap-2">
+                                                            <HeartPulse className="h-5 w-5 text-primary" />
+                                                            Gallery & Thumbnails Repair Preview
+                                                        </DialogTitle>
+                                                        <DialogDescription>
+                                                            {healTotalChanges} change{healTotalChanges !== 1 ? 's' : ''} proposed. Review before applying.
+                                                        </DialogDescription>
+                                                    </DialogHeader>
+                                                </div>
+                                                <div className="flex-1 min-h-0 px-6 my-4">
+                                                    <div className="h-full border rounded-md bg-muted/20 overflow-hidden">
+                                                        <ScrollArea className="h-full w-full">
+                                                            <div className="p-4 space-y-4">
+                                                                {healReport.details.map((item: HealDetail, idx: number) => (
+                                                                    <div key={idx} className="space-y-1 pb-3 border-b last:border-0 border-border/50">
+                                                                        <h4 className="font-semibold text-sm flex items-center gap-2">
+                                                                            <Box className="h-3.5 w-3.5 text-primary/70" />
+                                                                            {item.model}
+                                                                        </h4>
+                                                                        <div className="ml-5 space-y-1">
+                                                                            {item.additions.map((add: string, i: number) => (
+                                                                                <div key={i} className="text-xs flex items-start gap-2 text-green-600">
+                                                                                    <Plus className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                                                                    <span>{add}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                            {item.deletions.map((del: string, i: number) => (
+                                                                                <div key={i} className="text-xs flex items-start gap-2 text-destructive">
+                                                                                    <Trash2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                                                                                    <span>{del}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </ScrollArea>
+                                                    </div>
+                                                </div>
+                                                <div className="p-6 pt-0">
+                                                    <DialogFooter className="flex flex-col sm:flex-row items-center gap-3">
+                                                        <Button variant="ghost" onClick={() => setIsHealDialogOpen(false)} className="flex-1 sm:flex-none">
+                                                            Cancel
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => {
+                                                                setIncludeHeal(true);
+                                                                handleBatchApply();
+                                                            }}
+                                                            disabled={isBatchApplying}
+                                                            className="gap-2 flex-1 sm:flex-none"
+                                                        >
+                                                            <Check className="h-4 w-4" />
+                                                            Apply {healTotalChanges} Change{healTotalChanges !== 1 ? 's' : ''}
+                                                        </Button>
+                                                    </DialogFooter>
+                                                </div>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </div>
                                 </div>
                             )}
 
@@ -498,35 +600,50 @@ export function IntegritySettings_DB({
                                                 <p className="text-xs text-muted-foreground">
                                                     These files exist on disk but have no database record. They may be non-primary model formats (.step, .obj, .gcode) or manually added files.
                                                 </p>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <Button variant="outline" size="sm" disabled={isPurging} className="gap-1.5 shrink-0">
-                                                            <Link2 className="h-3.5 w-3.5" />
-                                                            Link All ({resyncResult.orphans.length})
-                                                        </Button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Link {resyncResult.orphans.length} orphaned files?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                This will match each orphaned file to the model in its directory and add it as a Related File.
-                                                                Files in directories without a matching model will be skipped.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction onClick={handleLinkOrphans}>
-                                                                Link to Related Files
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
                                             </div>
                                             <div className="h-[300px]">
                                                 <ScrollArea className="h-full">
                                                     <div className="px-4 pb-4 space-y-1">
                                                         {resyncResult.orphans.map((f, i) => (
                                                             <div key={`orphan-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
+                                                                <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{f.path}</span>
+                                                                <span className="text-xs text-muted-foreground shrink-0">{f.sizeFormatted}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </ScrollArea>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* ── Source File Orphans ── */}
+                            {resyncResult.sourceOrphans.length > 0 && (
+                                <div className="rounded-lg border overflow-hidden mt-4">
+                                    <button
+                                        onClick={() => toggleSection('sourceOrphans')}
+                                        className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <Cpu className="h-4 w-4 text-purple-500 shrink-0" />
+                                            <span className="font-medium text-sm shrink-0">Source File Orphans</span>
+                                            <span className="text-xs text-muted-foreground truncate">({resyncResult.sourceOrphans.length} CAD/project files)</span>
+                                        </div>
+                                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${expandedSection === 'sourceOrphans' ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {expandedSection === 'sourceOrphans' && (
+                                        <div className="border-t">
+                                            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                                                <p className="text-xs text-muted-foreground">
+                                                    These are CAD or project files (.f3d, .step, .blend) found on disk. Link them to add them to the Source Files tab.
+                                                </p>
+                                            </div>
+                                            <div className="h-[300px]">
+                                                <ScrollArea className="h-full">
+                                                    <div className="px-4 pb-4 space-y-1">
+                                                        {resyncResult.sourceOrphans.map((f, i) => (
+                                                            <div key={`source-orphan-${i}`} className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-muted/30 text-sm overflow-hidden">
                                                                 <span className="truncate flex-1 min-w-0 font-mono text-xs text-foreground/70">{f.path}</span>
                                                                 <span className="text-xs text-muted-foreground shrink-0">{f.sizeFormatted}</span>
                                                             </div>
@@ -559,30 +676,6 @@ export function IntegritySettings_DB({
                                                 <p className="text-xs text-muted-foreground">
                                                     These ModelFile records point to files that no longer exist on disk.
                                                 </p>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <Button variant="destructive" size="sm" disabled={isPurging} className="gap-1.5 shrink-0">
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                            Purge All ({resyncResult.ghosts.length})
-                                                        </Button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Purge {resyncResult.ghosts.length} ghost file records?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                This will permanently delete {resyncResult.ghosts.length} ModelFile database records
-                                                                that point to files no longer on disk. The models themselves will not be deleted.
-                                                                <strong className="text-destructive block mt-1">This action cannot be undone.</strong>
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction onClick={handlePurgeGhosts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                                Purge Ghost Records
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
                                             </div>
                                             <div className="h-[300px]">
                                                 <ScrollArea className="h-full">
@@ -621,31 +714,6 @@ export function IntegritySettings_DB({
                                                 <p className="text-xs text-muted-foreground">
                                                     These Model records have a filePath pointing to a non-existent file.
                                                 </p>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <Button variant="destructive" size="sm" disabled={isPurging} className="gap-1.5 shrink-0">
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                            Purge All ({resyncResult.modelGhosts.length})
-                                                        </Button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Purge {resyncResult.modelGhosts.length} ghost models?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                This will permanently delete {resyncResult.modelGhosts.length} Model records and all
-                                                                associated data (tags, images, related files). Only models whose filePath points to
-                                                                a missing file will be deleted.
-                                                                <strong className="text-destructive block mt-1">This action cannot be undone.</strong>
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction onClick={handlePurgeModelGhosts} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                                Purge Ghost Models
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
                                             </div>
                                             <div className="h-[300px]">
                                                 <ScrollArea className="h-full">
@@ -662,6 +730,120 @@ export function IntegritySettings_DB({
                                             </div>
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {/* ── Batch Apply Bottom Bar ── */}
+                            {(resyncResult.orphans.length > 0 || resyncResult.sourceOrphans.length > 0 || resyncResult.ghosts.length > 0 || resyncResult.modelGhosts.length > 0) && (
+                                <div className="mt-6 p-5 border rounded-lg bg-muted/40 shadow-sm flex flex-col gap-5">
+                                    <div>
+                                        <h4 className="font-medium flex items-center gap-2">
+                                            <FolderSync className="h-4 w-4 text-primary" />
+                                            Apply Selected Resolutions
+                                        </h4>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            Select which groups of issues you want to resolve. Missing paths will be purged, and unlinked files will be tracked.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {resyncResult.orphans.length > 0 && (
+                                            <div className="flex items-center space-x-2 bg-background p-3 rounded-md border">
+                                                <Checkbox
+                                                    id="include-orphans"
+                                                    checked={includeOrphans}
+                                                    onCheckedChange={(checked) => setIncludeOrphans(Boolean(checked))}
+                                                />
+                                                <Label htmlFor="include-orphans" className="text-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis">
+                                                    Link {resyncResult.orphans.length} Orphan Files
+                                                </Label>
+                                            </div>
+                                        )}
+                                        {resyncResult.sourceOrphans.length > 0 && (
+                                            <div className="flex items-center space-x-2 bg-background p-3 rounded-md border">
+                                                <Checkbox
+                                                    id="include-source"
+                                                    checked={includeSourceOrphans}
+                                                    onCheckedChange={(checked) => setIncludeSourceOrphans(Boolean(checked))}
+                                                />
+                                                <Label htmlFor="include-source" className="text-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis">
+                                                    Link {resyncResult.sourceOrphans.length} Source Files
+                                                </Label>
+                                            </div>
+                                        )}
+                                        {resyncResult.ghosts.length > 0 && (
+                                            <div className="flex items-center space-x-2 bg-background p-3 rounded-md border">
+                                                <Checkbox
+                                                    id="include-ghosts"
+                                                    checked={includeGhosts}
+                                                    onCheckedChange={(checked) => setIncludeGhosts(Boolean(checked))}
+                                                />
+                                                <Label htmlFor="include-ghosts" className="text-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis">
+                                                    Purge {resyncResult.ghosts.length} File Ghosts
+                                                </Label>
+                                            </div>
+                                        )}
+                                        {resyncResult.modelGhosts.length > 0 && (
+                                            <div className="flex items-center space-x-2 bg-red-50 dark:bg-red-950/30 p-3 rounded-md border border-red-200 dark:border-red-900/50">
+                                                <Checkbox
+                                                    id="include-model-ghosts"
+                                                    checked={includeModelGhosts}
+                                                    onCheckedChange={(checked) => setIncludeModelGhosts(Boolean(checked))}
+                                                />
+                                                <Label htmlFor="include-model-ghosts" className="text-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis font-medium text-red-700 dark:text-red-400">
+                                                    Purge {resyncResult.modelGhosts.length} Model Ghosts
+                                                </Label>
+                                            </div>
+                                        )}
+                                        {healTotalChanges > 0 && (
+                                            <div className="flex items-center space-x-2 bg-green-50 dark:bg-green-950/30 p-3 rounded-md border border-green-200 dark:border-green-900/50">
+                                                <Checkbox
+                                                    id="include-heal"
+                                                    checked={includeHeal}
+                                                    onCheckedChange={(checked) => setIncludeHeal(Boolean(checked))}
+                                                />
+                                                <Label htmlFor="include-heal" className="text-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis text-green-700 dark:text-green-400">
+                                                    Gallery & Thumbnails Repair ({healTotalChanges})
+                                                </Label>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex justify-end pt-2 border-t mt-2">
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button
+                                                    size="lg"
+                                                    disabled={isBatchApplying || isResyncing || (!includeOrphans && !includeSourceOrphans && !includeGhosts && !includeModelGhosts && !includeHeal)}
+                                                    className="w-full sm:w-auto font-semibold shadow-sm"
+                                                >
+                                                    {isBatchApplying ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                                                    {isBatchApplying ? 'Applying Selected Fixes...' : 'Apply Selected Fixes'}
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Apply Selected Fixes?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This will execute the selected actions simultaneously:
+                                                        <ul className="list-disc pl-5 mt-2 space-y-1 mb-2">
+                                                            {includeOrphans && resyncResult.orphans.length > 0 && <li>Link {resyncResult.orphans.length} Orphaned Files</li>}
+                                                            {includeSourceOrphans && resyncResult.sourceOrphans.length > 0 && <li>Link {resyncResult.sourceOrphans.length} Source Files</li>}
+                                                            {includeGhosts && resyncResult.ghosts.length > 0 && <li>Purge {resyncResult.ghosts.length} Ghost File Records</li>}
+                                                            {includeModelGhosts && resyncResult.modelGhosts.length > 0 && <li className="text-destructive font-medium">Purge {resyncResult.modelGhosts.length} Model Path Ghosts</li>}
+                                                            {includeHeal && healTotalChanges > 0 && <li>Apply {healTotalChanges} Gallery & Thumbnail repairs</li>}
+                                                        </ul>
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={handleBatchApply} className="bg-primary text-primary-foreground hover:bg-primary/90">
+                                                        Apply Fixes
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </div>
                                 </div>
                             )}
                         </>

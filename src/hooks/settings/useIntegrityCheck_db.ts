@@ -22,7 +22,7 @@ export function useIntegrityCheck_db({
     setStatusMessage
 }: UseIntegrityCheckProps) {
     // Hash Check State
-    const [selectedFileTypes, setSelectedFileTypes] = useState<{ "3mf": boolean; "stl": boolean }>({ "3mf": true, "stl": true });
+    const [selectedFileTypes, setSelectedFileTypes] = useState<{ "3mf": boolean; "stl": boolean; "obj": boolean }>({ "3mf": true, "stl": true, "obj": true });
     const [hashCheckResult, setHashCheckResult] = useState<HashCheckResult | null>(null);
     const [isHashChecking, setIsHashChecking] = useState(false);
     const [isRehashing, setIsRehashing] = useState(false);
@@ -76,10 +76,14 @@ export function useIntegrityCheck_db({
     }, [hashCheckResult?.corruptedFiles]);
 
     // --- Run Hash Check ---
-    const handleRunHashCheck = async (fileType?: "3mf" | "stl") => {
-        const fileTypesToProcess: Array<"3mf" | "stl"> = fileType
+    const handleRunHashCheck = async (fileType?: "3mf" | "stl" | "obj") => {
+        const fileTypesToProcess: Array<"3mf" | "stl" | "obj"> = fileType
             ? [fileType]
-            : [...(selectedFileTypes["3mf"] ? ["3mf" as const] : []), ...(selectedFileTypes["stl"] ? ["stl" as const] : [])];
+            : [
+                ...(selectedFileTypes["3mf"] ? ["3mf" as const] : []),
+                ...(selectedFileTypes["stl"] ? ["stl" as const] : []),
+                ...(selectedFileTypes["obj"] ? ["obj" as const] : []),
+            ];
 
         if (fileTypesToProcess.length === 0) return;
 
@@ -97,7 +101,7 @@ export function useIntegrityCheck_db({
             const usedIds = new Set<string>();
 
             for (const effectiveFileType of fileTypesToProcess) {
-                const fileTypeText = effectiveFileType === "3mf" ? ".3mf" : ".stl";
+                const fileTypeText = `.${effectiveFileType}`;
                 setStatusMessage(`Checking ${fileTypeText} files...`);
 
                 const resp = await fetch('/api/hash-check', {
@@ -168,8 +172,20 @@ export function useIntegrityCheck_db({
             }
 
             for (const hash in allHashToModels) {
-                if (allHashToModels[hash].length > 1) {
-                    allDuplicateGroups.push({ hash, models: allHashToModels[hash] as any, totalSize: '0' });
+                const group = allHashToModels[hash] as any[];
+                if (group.length > 1) {
+                    // Collect the actual file paths for this group
+                    const paths = group.map((m: any) =>
+                        (m.modelUrl || '').toLowerCase().replace(/^\/models\//, '')
+                    );
+                    const uniquePaths = new Set(paths);
+
+                    // If all entries map to the SAME physical path it means the
+                    // same file has multiple DB records (DB-level dup, not a real
+                    // content duplicate). Skip — these should be fixed via resync.
+                    if (uniquePaths.size <= 1) continue;
+
+                    allDuplicateGroups.push({ hash, models: group, totalSize: '0' });
                 }
             }
 

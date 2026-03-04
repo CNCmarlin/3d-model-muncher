@@ -1,7 +1,7 @@
 import * as path from 'path';
 import puppeteer from 'puppeteer';
 
-export async function generateThumbnail(modelUrl: string, outputPath: string, baseUrl: string, modelColor: string = '#6366f1', modelsDir: string) {
+export async function generateThumbnail(modelUrl: string, outputPath: string, baseUrl: string, modelColor: string = '#dddddd', modelsDir: string) {
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
 
   const browser = await puppeteer.launch({

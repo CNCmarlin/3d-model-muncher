@@ -1,3 +1,4 @@
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { GenerateThumbnailsDialog_DB } from '@/components/modals/GenerateThumbnailsDialog_DB';
 import { LastRunLabel_DB } from '@/components/shared/LastRunLabel_DB';
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { LICENSES } from '@/constants/licenses';
 import { Category } from '@/types/category';
@@ -304,66 +304,62 @@ export function GeneralSettings_DB({
                         {/* Theme */}
                         <div className="space-y-2">
                             <Label htmlFor="default-theme">Default Theme</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={localConfig.settings?.defaultTheme ?? 'system'}
                                 onValueChange={(value) => handleConfigFieldChange('settings.defaultTheme', value)}
-                            >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="light">Light</SelectItem>
-                                    <SelectItem value="dark">Dark</SelectItem>
-                                    <SelectItem value="system">System</SelectItem>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select theme..."
+                                options={[
+                                    { value: 'light', label: 'Light' },
+                                    { value: 'dark', label: 'Dark' },
+                                    { value: 'system', label: 'System' }
+                                ]}
+                            />
                         </div>
 
                         {/* View */}
                         <div className="space-y-2">
                             <Label htmlFor="default-view">Default View</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={localConfig.settings?.defaultView ?? 'grid'}
                                 onValueChange={(value) => handleConfigFieldChange('settings.defaultView', value)}
-                            >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="grid">Grid</SelectItem>
-                                    <SelectItem value="list">List</SelectItem>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select view..."
+                                options={[
+                                    { value: 'grid', label: 'Grid' },
+                                    { value: 'list', label: 'List' }
+                                ]}
+                            />
                         </div>
 
                         {/* Grid Density */}
                         <div className="space-y-2">
                             <Label htmlFor="default-density">Default Grid Density</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={String(localConfig.settings?.defaultGridDensity ?? 4)}
                                 onValueChange={(value) => handleConfigFieldChange('settings.defaultGridDensity', parseInt(value))}
-                            >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="1">1 Column</SelectItem>
-                                    <SelectItem value="2">2 Columns</SelectItem>
-                                    <SelectItem value="3">3 Columns</SelectItem>
-                                    <SelectItem value="4">4 Columns</SelectItem>
-                                    <SelectItem value="5">5 Columns</SelectItem>
-                                    <SelectItem value="6">6 Columns</SelectItem>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select columns..."
+                                options={[
+                                    { value: '1', label: '1 Column' },
+                                    { value: '2', label: '2 Columns' },
+                                    { value: '3', label: '3 Columns' },
+                                    { value: '4', label: '4 Columns' },
+                                    { value: '5', label: '5 Columns' },
+                                    { value: '6', label: '6 Columns' }
+                                ]}
+                            />
                         </div>
 
                         {/* Model View */}
                         <div className="space-y-2">
                             <Label htmlFor="default-model-view">Default Model View</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={localConfig.settings?.defaultModelView ?? '3d'}
                                 onValueChange={(value) => handleConfigFieldChange('settings.defaultModelView', value)}
-                            >
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="3d">Interactive 3D Viewer</SelectItem>
-                                    <SelectItem value="images">Image Carousel</SelectItem>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select interactive viewer..."
+                                options={[
+                                    { value: '3d', label: 'Interactive 3D Viewer' },
+                                    { value: 'images', label: 'Image Carousel' }
+                                ]}
+                            />
                         </div>
 
                         {/* Model Card Fields */}
@@ -372,63 +368,60 @@ export function GeneralSettings_DB({
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <Label className="text-xs">Primary Field</Label>
-                                    <Select
+                                    <SearchableSelect_DB
                                         value={localConfig.settings?.modelCardPrimary ?? 'none'}
                                         onValueChange={(value) => handleConfigFieldChange('settings.modelCardPrimary', value)}
-                                    >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            <SelectItem value="printTime">Print Time</SelectItem>
-                                            <SelectItem value="filamentUsed">Filament Used</SelectItem>
-                                            <SelectItem value="fileSize">File Size</SelectItem>
-                                            <SelectItem value="category">Category</SelectItem>
-                                            <SelectItem value="designer">Designer</SelectItem>
-                                            <SelectItem value="layerHeight">Layer Height</SelectItem>
-                                            <SelectItem value="nozzle">Nozzle Size</SelectItem>
-                                            <SelectItem value="price">Price</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                        placeholder="None"
+                                        options={[
+                                            { value: 'none', label: 'None' },
+                                            { value: 'printTime', label: 'Print Time' },
+                                            { value: 'filamentUsed', label: 'Filament Used' },
+                                            { value: 'fileSize', label: 'File Size' },
+                                            { value: 'category', label: 'Category' },
+                                            { value: 'designer', label: 'Designer' },
+                                            { value: 'layerHeight', label: 'Layer Height' },
+                                            { value: 'nozzle', label: 'Nozzle Size' },
+                                            { value: 'price', label: 'Price' }
+                                        ]}
+                                    />
                                 </div>
                                 <div>
                                     <Label className="text-xs">Secondary Field</Label>
-                                    <Select
+                                    <SearchableSelect_DB
                                         value={localConfig.settings?.modelCardSecondary ?? 'none'}
                                         onValueChange={(value) => handleConfigFieldChange('settings.modelCardSecondary', value)}
-                                    >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            <SelectItem value="printTime">Print Time</SelectItem>
-                                            <SelectItem value="filamentUsed">Filament Used</SelectItem>
-                                            <SelectItem value="fileSize">File Size</SelectItem>
-                                            <SelectItem value="category">Category</SelectItem>
-                                            <SelectItem value="designer">Designer</SelectItem>
-                                            <SelectItem value="layerHeight">Layer Height</SelectItem>
-                                            <SelectItem value="nozzle">Nozzle Size</SelectItem>
-                                            <SelectItem value="price">Price</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                        placeholder="None"
+                                        options={[
+                                            { value: 'none', label: 'None' },
+                                            { value: 'printTime', label: 'Print Time' },
+                                            { value: 'filamentUsed', label: 'Filament Used' },
+                                            { value: 'fileSize', label: 'File Size' },
+                                            { value: 'category', label: 'Category' },
+                                            { value: 'designer', label: 'Designer' },
+                                            { value: 'layerHeight', label: 'Layer Height' },
+                                            { value: 'nozzle', label: 'Nozzle Size' },
+                                            { value: 'price', label: 'Price' }
+                                        ]}
+                                    />
                                 </div>
                                 <div>
                                     <Label className="text-xs">Tertiary Field</Label>
-                                    <Select
+                                    <SearchableSelect_DB
                                         value={localConfig.settings?.modelCardTertiary ?? 'none'}
                                         onValueChange={(value) => handleConfigFieldChange('settings.modelCardTertiary', value)}
-                                    >
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none">None</SelectItem>
-                                            <SelectItem value="printTime">Print Time</SelectItem>
-                                            <SelectItem value="filamentUsed">Filament Used</SelectItem>
-                                            <SelectItem value="fileSize">File Size</SelectItem>
-                                            <SelectItem value="category">Category</SelectItem>
-                                            <SelectItem value="designer">Designer</SelectItem>
-                                            <SelectItem value="layerHeight">Layer Height</SelectItem>
-                                            <SelectItem value="nozzle">Nozzle Size</SelectItem>
-                                            <SelectItem value="price">Price</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                        placeholder="None"
+                                        options={[
+                                            { value: 'none', label: 'None' },
+                                            { value: 'printTime', label: 'Print Time' },
+                                            { value: 'filamentUsed', label: 'Filament Used' },
+                                            { value: 'fileSize', label: 'File Size' },
+                                            { value: 'category', label: 'Category' },
+                                            { value: 'designer', label: 'Designer' },
+                                            { value: 'layerHeight', label: 'Layer Height' },
+                                            { value: 'nozzle', label: 'Nozzle Size' },
+                                            { value: 'price', label: 'Price' }
+                                        ]}
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -501,76 +494,58 @@ export function GeneralSettings_DB({
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
                             <Label>Default Category</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={localConfig.filters?.defaultCategory ?? 'all'}
                                 onValueChange={(value: string) => handleConfigFieldChange('filters.defaultCategory', value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Categories</SelectItem>
-                                    {(categories || []).map((category) => (
-                                        <SelectItem key={category.id} value={category.id}>
-                                            {category.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select category..."
+                                options={[
+                                    { value: 'all', label: 'All Categories' },
+                                    ...(categories || []).map((category) => ({ value: category.id, label: category.label }))
+                                ]}
+                            />
                         </div>
 
                         <div className="space-y-2">
                             <Label>Default Print Status</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={localConfig.filters?.defaultPrintStatus ?? 'all'}
                                 onValueChange={(value: string) => handleConfigFieldChange('filters.defaultPrintStatus', value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="printed">Printed</SelectItem>
-                                    <SelectItem value="not-printed">Not Printed</SelectItem>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select status..."
+                                options={[
+                                    { value: 'all', label: 'All Status' },
+                                    { value: 'printed', label: 'Printed' },
+                                    { value: 'not-printed', label: 'Not Printed' }
+                                ]}
+                            />
                         </div>
 
                         <div className="space-y-2">
                             <Label>Default License</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={localConfig.filters?.defaultLicense ?? 'all'}
                                 onValueChange={(value: string) => handleConfigFieldChange('filters.defaultLicense', value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Licenses</SelectItem>
-                                    {LICENSES.map((lic) => (
-                                        <SelectItem key={lic} value={lic}>{lic}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select license..."
+                                options={[
+                                    { value: 'all', label: 'All Licenses' },
+                                    ...LICENSES.map((lic) => ({ value: lic, label: lic }))
+                                ]}
+                            />
                         </div>
 
                         <div className="space-y-2">
                             <Label>Default Sort By</Label>
-                            <Select
+                            <SearchableSelect_DB
                                 value={localConfig.filters?.defaultSortBy ?? 'none'}
                                 onValueChange={(value: string) => handleConfigFieldChange('filters.defaultSortBy', value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Default</SelectItem>
-                                    <SelectItem value="modified_desc">Recently modified (newest)</SelectItem>
-                                    <SelectItem value="modified_asc">Modified (oldest)</SelectItem>
-                                    <SelectItem value="name_asc">Name A → Z</SelectItem>
-                                    <SelectItem value="name_desc">Name Z → A</SelectItem>
-                                </SelectContent>
-                            </Select>
+                                placeholder="Select sort order..."
+                                options={[
+                                    { value: 'none', label: 'Default' },
+                                    { value: 'modified_desc', label: 'Recently modified (newest)' },
+                                    { value: 'modified_asc', label: 'Modified (oldest)' },
+                                    { value: 'name_asc', label: 'Name A → Z' },
+                                    { value: 'name_desc', label: 'Name Z → A' }
+                                ]}
+                            />
                         </div>
                     </div>
                 </CardContent>

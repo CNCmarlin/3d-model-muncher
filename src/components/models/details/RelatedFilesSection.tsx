@@ -1,6 +1,9 @@
+import { Badge } from '@/components/ui/badge';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useModelMutations } from '@/hooks/useModelMutations';
+import { Model } from "@/types/model";
 import {
     Ban,
     Box,
@@ -13,9 +16,6 @@ import {
     X
 } from 'lucide-react';
 import React from 'react';
-import { useModelMutations } from '@/hooks/useModelMutations';
-import { Model } from "@/types/model";
-import { Badge } from '@/components/ui/badge';
 
 // Helper for UI display
 function truncatePath(path: string, maxLength: number = 40) {
@@ -241,7 +241,7 @@ export const RelatedFilesSection = ({
             const promotionPayload = {
                 filePath: newPath,
                 changes: {
-                    isProjectRoot: true,
+                    isMainModel: true,
                     isRelatedPart: false,
                     // We strip these to ensure the subsequent Heal generates fresh paths
                     thumbnail: undefined,

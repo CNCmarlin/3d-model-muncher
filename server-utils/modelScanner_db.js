@@ -36,7 +36,10 @@ async function scanModels(modelsDir) {
 
     // Recursive scan function
     async function scanDir(currentDir) {
-        const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+        let entries = [];
+        try {
+            entries = fs.readdirSync(currentDir, { withFileTypes: true });
+        } catch (e) { return; }
 
         for (const entry of entries) {
             const fullPath = path.join(currentDir, entry.name);
@@ -45,10 +48,10 @@ async function scanModels(modelsDir) {
                 if (!entry.name.startsWith('.') && entry.name !== 'uploads') {
                     await scanDir(fullPath);
                 }
-            } else if (entry.name.endsWith('munchie.json')) {
-                // Found a model metadata file
+            } else if (/\.(stl|3mf|obj)$/i.test(entry.name)) {
+                // Found a physical 3D model file
                 try {
-                    await processModelFile(fullPath, currentDir);
+                    await processPhysicalFile(fullPath, currentDir);
                     stats.found++;
                 } catch (e) {
                     console.error(`❌ Error processing ${entry.name}:`, e.message);
@@ -58,95 +61,107 @@ async function scanModels(modelsDir) {
         }
     }
 
-    // Process a single munchie.json file
-    async function processModelFile(jsonPath, dirPath) {
-        const data = readJson(jsonPath);
-        if (!data || !data.id) return;
+    // Helper: Get Legacy Munchie filename
+    function getMunchieFileName(modelFileName) {
+        if (/\.3mf$/i.test(modelFileName)) return modelFileName.replace(/\.3mf$/i, '-munchie.json');
+        if (/\.stl$/i.test(modelFileName)) return modelFileName.replace(/\.stl$/i, '-stl-munchie.json');
+        return modelFileName + '-munchie.json';
+    }
 
-        // 1. Prepare Model Data
-        // Handle "legacy" relative paths or partial data
-        const relativePath = path.relative(modelsDir, jsonPath); // relative path of the json file
-        const modelDirRel = path.dirname(relativePath).replace(/\\/g, '/'); // relative folder path
+    // Process a physical STL/3MF/OBJ file
+    async function processPhysicalFile(modelPath, dirPath) {
+        const primaryFileName = path.basename(modelPath);
+        const primaryFileRel = path.relative(modelsDir, modelPath).replace(/\\/g, '/');
+        const fileHash = Buffer.from(primaryFileRel).toString('base64');
+        const fileStats = fs.statSync(modelPath);
 
-        // Determine "Primary File" (STL/3MF)
-        let primaryFile = null;
-        if (jsonPath.endsWith('-stl-munchie.json')) {
-            primaryFile = jsonPath.replace('-stl-munchie.json', '.stl');
-            if (!fs.existsSync(primaryFile)) primaryFile = jsonPath.replace('-stl-munchie.json', '.STL');
-        } else {
-            primaryFile = jsonPath.replace('-munchie.json', '.3mf');
+        // 1. RECONCILIATION CHECK (Happy Path)
+        const existingFile = await prisma.modelFile.findUnique({
+            where: { pathHash: fileHash }
+        });
+
+        if (existingFile) {
+            // DB is source of truth. Check for physical file changes (size).
+            if (existingFile.size !== fileStats.size) {
+                await prisma.modelFile.update({
+                    where: { id: existingFile.id },
+                    data: { size: fileStats.size, updatedAt: new Date() }
+                });
+                stats.updated++;
+            }
+            stats.files++;
+            return; // We are done! No JSON reading needed.
         }
 
-        // If primary file doesn't exist, skip model? Or keep as "metadata only"?
-        // Legacy scanner required the file to exist.
-        if (!primaryFile || !fs.existsSync(primaryFile)) {
-            // console.warn(`Skipping orphan metadata: ${relativePath}`);
-            return;
+        // 2. MIGRATION FALLBACK (File missing from DB)
+        // Look for legacy JSON sidecar to seed the new DB record
+        const jsonPath = path.join(dirPath, getMunchieFileName(primaryFileName));
+        let data = readJson(jsonPath);
+
+        // If no legacy JSON exists at all, we create a clean default "drag-and-drop" model
+        if (!data) {
+            data = {
+                id: crypto.randomUUID(),
+                name: primaryFileName,
+                description: '',
+                isMainModel: true,
+                isRelatedPart: false,
+                tags: []
+            };
         }
 
-        const primaryFileName = path.basename(primaryFile);
-        const primaryFileRel = path.relative(modelsDir, primaryFile).replace(/\\/g, '/');
-        const primaryStats = fs.statSync(primaryFile);
+        // Ensure we always have an ID
+        if (!data.id) data.id = crypto.randomUUID();
 
-        // Metadata blob
+        // Metadata blob for legacy fields
         const metadata = {
-            category: data.category,
+            category: data.category || '',
             related_files: data.related_files || [],
             userDefined: data.userDefined || {},
-            notes: data.notes,
+            notes: data.notes || '',
             hidden: !!data.hidden,
             isRelatedPart: !!data.isRelatedPart,
-            isProjectRoot: !!data.isProjectRoot,
-            price: data.price
+            isMainModel: !!data.isMainModel || !!data.isProjectRoot,
+            price: data.price || ''
         };
 
-        // 2. Upsert Model
-        // We use `pathHash` of the JSON file (or primary file?) as a unique key for "Physical File" map?
-        // Actually, `id` should be improved or trusted? 
-        // If re-migrating, we trust the ID in the json file.
-
+        // 3. Upsert Model (Trusting the JSON ID if it existed, or the new UUID)
         const model = await prisma.model.upsert({
             where: { id: data.id },
             update: {
-                name: data.name || path.basename(primaryFile),
-                description: data.description || '',
-                license: data.license,
-                designer: data.designer,
-                source: data.source,
-                printTime: data.printTime ? parseInt(String(data.printTime)) : 0,
-                filamentUsage: data.filamentUsed ? parseFloat(String(data.filamentUsed)) : 0,
-                isPrinted: !!data.isPrinted,
-                isFavorite: false, // Don't overwrite favorites on re-scan? Or should we? Metadata usually doesn't store favorite status in legacy except maybe userDefined?
-                isDeleted: false,
-                coverImagePath: data.coverImage || null, // data.coverImage in legacy was often a relative path or a blob? It's usually a path.
-                metadata: JSON.stringify(metadata),
-                updatedAt: new Date(data.lastModified || new Date())
+                // If it already existed in DB but missing ModelFile, just update stats
+                updatedAt: new Date()
             },
             create: {
                 id: data.id,
-                name: data.name || path.basename(primaryFile),
+                name: data.name || primaryFileName,
                 description: data.description || '',
-                license: data.license,
-                designer: data.designer,
-                source: data.source,
+                license: data.license || '',
+                designer: data.designer || '',
+                source: data.source || '',
                 printTime: data.printTime ? parseInt(String(data.printTime)) : 0,
                 filamentUsage: data.filamentUsed ? parseFloat(String(data.filamentUsed)) : 0,
                 isPrinted: !!data.isPrinted,
                 isFavorite: false,
                 isDeleted: false,
-                collectionId: 'uncategorized', // Will be fixed by Collection Scanner
+                isComponent: !!data.isRelatedPart,
+                isMainModel: !!data.isMainModel || !!data.isProjectRoot,
+                collectionId: null, // Will be linked by Collection Scanner
                 coverImagePath: data.coverImage || null,
-                pathHash: Buffer.from(primaryFileRel).toString('base64'), // Track primary file as the "filesytem identity"
+                pathHash: Buffer.from(primaryFileRel).toString('base64'),
                 metadata: JSON.stringify(metadata),
                 createdAt: new Date(data.created || new Date()),
                 updatedAt: new Date(data.lastModified || new Date())
             }
         });
 
-        if (model.createdAt.getTime() === model.updatedAt.getTime()) stats.created++;
-        else stats.updated++;
+        if (model.createdAt && model.updatedAt && model.createdAt.getTime() === model.updatedAt.getTime()) {
+            stats.created++;
+        } else {
+            stats.updated++;
+        }
 
-        // 3. Upsert Tags
+        // 4. Upsert Tags (only if we created a new model or are hydrating from JSON)
         if (data.tags && Array.isArray(data.tags)) {
             for (const tagName of data.tags) {
                 const tag = await prisma.tag.upsert({
@@ -154,7 +169,6 @@ async function scanModels(modelsDir) {
                     update: {},
                     create: { name: tagName }
                 });
-                // Link
                 await prisma.modelTag.upsert({
                     where: { modelId_tagId: { modelId: model.id, tagId: tag.id } },
                     update: {},
@@ -163,53 +177,42 @@ async function scanModels(modelsDir) {
             }
         }
 
-        // 4. Upsert Model Files
-        // Primary File
-        await upsertFile(model.id, primaryFile, true);
-        stats.files++;
-
-        // Related Files (Images, Gcode, other STLs in same folder?)
-        // Legacy scanner logic: check `related_files` in metadata, or scan folder?
-        // Usually, we just scan the folder for images/gcode relative to the model.
-        // For simplicity, let's look for sibling files if it's a "Project Folder" logic, 
-        // but typically legacy just looked at `related_files` array OR implicitly images.
-
-        // Let's just Add the Primary file for now to be safe and fast.
-        // If `userDefined.images` exists, those point to files we should probably index.
-    }
-
-    async function upsertFile(modelId, absolutePath, isPrimary) {
-        const stats = fs.statSync(absolutePath);
-        const relPath = path.relative(modelsDir, absolutePath).replace(/\\/g, '/');
-        const fileHash = Buffer.from(relPath).toString('base64');
-        const ext = path.extname(absolutePath).substring(1).toLowerCase();
-
-        await prisma.modelFile.upsert({
-            where: { pathHash: fileHash },
-            update: {
-                size: stats.size,
-                updatedAt: new Date()
-            },
-            create: {
-                modelId: modelId,
-                fileName: path.basename(absolutePath),
-                filePath: relPath,
+        // 5. Create ModelFile
+        const ext = path.extname(modelPath).substring(1).toLowerCase();
+        await prisma.modelFile.create({
+            data: {
+                modelId: model.id,
+                fileName: primaryFileName,
+                filePath: primaryFileRel,
                 fileType: ext,
-                size: stats.size,
-                isPrimary: isPrimary,
+                size: fileStats.size,
+                isPrimary: true, // It's the file we found
                 pathHash: fileHash
             }
         });
+        stats.files++;
     }
 
     // Start
     await scanDir(modelsDir);
+
+    // 6. Prune Orphaned DB Files (File missing from disk)
+    const allDbFiles = await prisma.modelFile.findMany();
+    let pruned = 0;
+    for (const dbFile of allDbFiles) {
+        const absPath = path.join(modelsDir, dbFile.filePath);
+        if (!fs.existsSync(absPath)) {
+            await prisma.modelFile.delete({ where: { id: dbFile.id } });
+            pruned++;
+        }
+    }
 
     console.log(`\n✅ Model Scan Complete!`);
     console.log(`   Found: ${stats.found}`);
     console.log(`   Created: ${stats.created}`);
     console.log(`   Updated: ${stats.updated}`);
     console.log(`   Files Indexed: ${stats.files}`);
+    console.log(`   Orphans Pruned: ${pruned}`);
     console.log(`   Errors: ${stats.errors}`);
 
     return stats;

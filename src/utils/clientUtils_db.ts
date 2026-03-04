@@ -103,5 +103,5 @@ export function getDisplayPath_db(model: Partial<Model>): string {
   if (model.modelUrl) {
     return model.modelUrl.replace(/^\/models\//, '');
   }
-  return model.filePath || model.name || 'Unknown';
+  return model.name || 'Unknown';
 }

@@ -73,8 +73,8 @@
         dirLight2.position.set(-5, 3, -5);
         scene.add(dirLight2);
 
-        // 3. Setup Camera 
-        const camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 0.1, 2000);
+        // 3. Setup Camera (Massive far plane to prevent clipping tall objects)
+        const camera = new THREE.PerspectiveCamera(20, window.innerWidth / window.innerHeight, 0.1, 100000);
         const defaultVector = new THREE.Vector3(-66, 79, 83).normalize();
 
         const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
@@ -180,6 +180,13 @@
                 } else {
                     cameraDist *= 1.2; // Keep 3MF margin smaller
                 }
+
+                console.log(JSON.stringify({
+                    maxDim, cameraDist,
+                    size: { x: size.x, y: size.y, z: size.z },
+                    boxMin: { x: box.min.x, y: box.min.y, z: box.min.z },
+                    boxMax: { x: box.max.x, y: box.max.y, z: box.max.z }
+                }));
 
                 camera.position.copy(defaultVector).multiplyScalar(cameraDist);
                 camera.lookAt(center);

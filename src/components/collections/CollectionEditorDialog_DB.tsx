@@ -1,14 +1,14 @@
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { SearchableSelect_DB } from '@/components/common/SearchableSelect_DB';
+import TagsInput from '@/components/common/TagsInput_DB';
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Category } from "@/types/category";
 import { Collection } from "@/types/collection_db";
-import { Model } from "@/types/model_db";
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Image as ImageIcon, Images, Loader2, Save, Star, Trash2, Upload, X } from "lucide-react";
+import { FileText, HelpCircle, Image as ImageIcon, Images, Loader2, Save, Star, Trash2, Upload, X } from "lucide-react";
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from "sonner";
 
@@ -16,7 +16,6 @@ interface CollectionEditorDialogProps {
   collection: Collection | null;
   categories: Category[];
   collections?: Collection[]; // [NEW] List of all collections for parent selection
-  models: Model[];
   onSave: (collection: Collection) => Promise<Collection | void>;
   onDelete: (id: string) => Promise<void>;
   open: boolean;
@@ -38,16 +37,12 @@ const defaultCollectionState: Collection = {
   pathHash: null,
   coverImage: null,
   coverImagePath: null,
-  documents: []
+  documents: [],
+  category: 'Uncategorized',
+  tags: []
 };
 
-// Helper to shorten long paths for UI
-function truncateMiddle(text: string, maxLength: number) {
-  if (!text || text.length <= maxLength) return text;
-  const startChars = Math.ceil(maxLength / 2) - 2;
-  const endChars = Math.floor(maxLength / 2) - 1;
-  return `${text.substring(0, startChars)}...${text.substring(text.length - endChars)}`;
-}
+
 
 // Helper to resolve asset URLs correctly for display
 function resolveAssetUrl(path: string | null) {
@@ -57,72 +52,12 @@ function resolveAssetUrl(path: string | null) {
   return `/models/${path}`;
 }
 
-// --- Folder Tree Helpers (Keep existing implementation) ---
-interface FolderNode {
-  name: string;
-  fullPath: string;
-  children: Record<string, FolderNode>;
-  fileCount: number;
-}
 
-const buildFolderTree = (models: Model[]): FolderNode => {
-  const root: FolderNode = { name: 'Root', fullPath: '', children: {}, fileCount: 0 };
-  if (!models) return root;
-  models.forEach(model => {
-    let pathStr = model.modelUrl || model.filePath || '';
-    pathStr = pathStr.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
-    if (!pathStr) return;
-    const parts = pathStr.split('/');
-    parts.pop();
-    if (parts.length === 0) return;
-    let current = root;
-    let currentPath = '';
-    parts.forEach((part) => {
-      currentPath = currentPath ? `${currentPath}/${part}` : part;
-      if (!current.children[part]) {
-        current.children[part] = { name: part, fullPath: currentPath, children: {}, fileCount: 0 };
-      }
-      current = current.children[part];
-      current.fileCount++;
-    });
-  });
-  return root;
-};
-
-const FolderTreeItem = ({ node, level, onSelect }: { node: FolderNode, level: number, onSelect: (node: FolderNode) => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const hasChildren = Object.keys(node.children).length > 0;
-  return (
-    <div className="w-full select-none">
-      <div
-        className={`flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent cursor-pointer ${level > 0 ? 'ml-3 border-l border-border/50' : ''}`}
-        onClick={(e) => { e.stopPropagation(); onSelect(node); }}
-      >
-        {hasChildren ? (
-          <span className="cursor-pointer p-0.5 hover:bg-muted rounded" onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}>
-            {isOpen ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronRight className="h-3 w-3 text-muted-foreground" />}
-          </span>
-        ) : <span className="w-4" />}
-        {isOpen || (!hasChildren && level > 0) ? <FolderOpen className="h-4 w-4 text-primary" /> : <Folder className="h-4 w-4 text-muted-foreground" />}
-        <span className="text-sm truncate flex-1">{node.name}</span>
-        <span className="text-xs text-muted-foreground bg-muted px-1.5 rounded-full">{node.fileCount}</span>
-      </div>
-      {isOpen && hasChildren && (
-        <div className="mt-1">
-          {Object.values(node.children).sort((a, b) => a.name.localeCompare(b.name)).map((child) => (
-            <FolderTreeItem key={child.fullPath} node={child} level={level + 1} onSelect={onSelect} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
 
 export function CollectionEditorDialog_DB({
   collection,
-
+  categories = [], // [FIX] Added categories back to destructuring
   collections = [], // Default to empty array
-  models,
   onSave,
   onDelete,
   open,
@@ -146,6 +81,10 @@ export function CollectionEditorDialog_DB({
 
   const [documents, setDocuments] = useState<string[]>([]);
   const [pendingDocuments, setPendingDocuments] = useState<File[]>([]);
+
+  // Category and Tags state
+  const [selectedCategory, setSelectedCategory] = useState<string>('Uncategorized');
+  const [applyTags, setApplyTags] = useState<string[]>([]);
 
   // [NEW] Smart List: Decode IDs to show full paths
   // This solves the "Which 'Test' folder is this?" problem
@@ -190,34 +129,42 @@ export function CollectionEditorDialog_DB({
     if (collection) {
       setParentId(collection.parentId || "root");
       setDocuments(collection.documents || []);
+      setSelectedCategory(collection.category || 'Uncategorized');
+      setApplyTags(collection.tags || []);
     } else {
       setParentId(defaultParentId || "root");
       setDocuments([]);
+      setSelectedCategory('Uncategorized');
+      setApplyTags([]);
+
+      // If we are given a default parent on open, inherit its properties instantly
+      if (defaultParentId && defaultParentId !== "root" && collections.length > 0) {
+        const parentCol = collections.find(c => c.id === defaultParentId);
+        if (parentCol) {
+          if (parentCol.category) setSelectedCategory(parentCol.category);
+          if (parentCol.tags && parentCol.tags.length > 0) setApplyTags(parentCol.tags);
+        }
+      }
     }
-  }, [collection, initialMode, defaultParentId, open]);
+  }, [collection, initialMode, defaultParentId, open, collections]);
+
+  // Handle Parent Change to trigger inheritance
+  const handleParentChange = (newParentId: string) => {
+    setParentId(newParentId);
+    if (!isEditing && newParentId !== "root") {
+      const parentCol = collections.find(c => c.id === newParentId);
+      if (parentCol) {
+        if (parentCol.category && selectedCategory === 'Uncategorized') setSelectedCategory(parentCol.category);
+        if (parentCol.tags && parentCol.tags.length > 0 && applyTags.length === 0) setApplyTags(parentCol.tags);
+      }
+    }
+  };
 
   const isEditing = !!collection;
-  const folderTree = useMemo(() => buildFolderTree(models), [models]);
-
-  // Filter out self to avoid circular parents
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
     setLocalCollection(prev => ({ ...prev, [id]: value }));
-  };
-
-
-
-  const handleFolderSelect = (node: FolderNode) => {
-    const folderPrefix = node.fullPath + '/';
-    const modelsInFolder = models.filter(m => {
-      let path = m.modelUrl || m.filePath || '';
-      path = path.replace(/^(\/)?models\//, '').replace(/\\/g, '/');
-      return path.startsWith(folderPrefix) || path === node.fullPath;
-    });
-    const ids = modelsInFolder.map(m => m.id);
-    setLocalCollection(prev => ({ ...prev, name: node.name, modelIds: ids, path: node.fullPath }));
-    toast.info(`Selected ${ids.length} models from "${node.name}"`);
   };
 
   // --- 1. COVER PHOTO HANDLER ---
@@ -376,7 +323,10 @@ export function CollectionEditorDialog_DB({
       parentId: parentId === "root" ? null : parentId,
       // Clear images if creating new (they are pending), otherwise keep existing
       images: isEditing ? localCollection.images : [],
-      documents: isEditing ? documents : []
+      documents: isEditing ? documents : [],
+      category: selectedCategory,
+      tags: applyTags,
+      createOnDisk: !isEditing // ALWAYS enforce physical creation for new collections
     };
 
     try {
@@ -498,7 +448,6 @@ export function CollectionEditorDialog_DB({
       <DialogContent
         className="w-full sm:max-w-xl flex flex-col p-0 max-h-[85vh] bg-background"
         onEscapeKeyDown={(e: any) => e.preventDefault()}
-        onOpenAutoFocus={(e: any) => e.preventDefault()}
       >
         <div className="p-6 pb-4 border-b">
           <DialogHeader>
@@ -528,49 +477,59 @@ export function CollectionEditorDialog_DB({
               </div>
 
               <div className="space-y-2">
-                <Label>Parent</Label>
-                <Select value={parentId} onValueChange={setParentId} disabled={isLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select parent..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[250px]">
-                    <SelectItem value="root"><span className="italic">Root</span></SelectItem>
-                    {formattedCollections.map((col) => (
-                      <SelectItem key={col.id} value={col.id}>
-                        {truncateMiddle(col.displayName, 30)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Label>Parent Collection</Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground hover:text-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[300px]">
+                        <p>Selecting a Parent Collection nests this collection one level deeper. Choosing "Root" places it at the top level.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <SearchableSelect_DB
+                  disabled={isLoading}
+                  value={parentId}
+                  onValueChange={handleParentChange}
+                  placeholder="Select parent..."
+                  emptyText="No collections found."
+                  options={[
+                    { value: "root", label: "Root", tooltip: "Store at the top level" },
+                    ...formattedCollections.map(col => ({
+                      value: col.id,
+                      label: col.name,
+                      tooltip: col.displayName
+                    }))
+                  ]}
+                />
               </div>
             </div>
 
-            {/* MANUAL IMPORT SELECTION (Reverted to simple list/accordion if that was legacy, or just keep as is if it was part of legacy) */}
-            {/* Assuming legacy had the manual import but NOT the dual mode toggle */}
-            {!isEditing && (
-              <Accordion type="single" collapsible className="w-full border rounded-md px-2">
-                <AccordionItem value="folder-import" className="border-0">
-                  <AccordionTrigger className="hover:no-underline py-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <Folder className="h-4 w-4 text-blue-500" />
-                      Select from Existing Folder
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
-                      {Object.values(folderTree.children).map(node => (
-                        <FolderTreeItem
-                          key={node.fullPath}
-                          node={node}
-                          level={0}
-                          onSelect={handleFolderSelect}
-                        />
-                      ))}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            )}
+            {/* ORGANIZATIONAL METADATA */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <SearchableSelect_DB
+                  value={selectedCategory}
+                  onValueChange={setSelectedCategory}
+                  disabled={isLoading}
+                  placeholder="Select a category..."
+                  options={[
+                    ...categories.map(c => ({ value: c.label || c.id, label: c.label })),
+                    ...(!categories.find(c => c.label === 'Uncategorized') ? [{ value: 'Uncategorized', label: 'Uncategorized' }] : [])
+                  ]}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tags</Label>
+                <TagsInput value={applyTags} onChange={setApplyTags} placeholder="Add tags..." />
+              </div>
+            </div>
+
+
 
             {/* DESCRIPTION */}
             <div className="space-y-2">

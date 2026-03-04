@@ -586,7 +586,6 @@ export function ModelGrid_DB({
         collection={null}
         collections={allCollections}
         categories={config?.categories || []}
-        models={models}
         initialMode={createCollectionMode}
         defaultParentId="root"
         onSave={async (colData) => {
@@ -611,6 +610,7 @@ export function ModelGrid_DB({
       <ThingiverseImportDialog_DB
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
+        defaultCollectionId={undefined}
         onImportComplete={() => {
           // Trigger a refresh of the model list
           onCollectionChanged?.();

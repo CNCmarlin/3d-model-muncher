@@ -1,6 +1,6 @@
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Check } from "lucide-react";
@@ -109,18 +109,13 @@ export function BufferedSelect_DB({ value, onApply, options, placeholder, descri
     return (
         <div className="space-y-1">
             <div className="flex items-center gap-2">
-                <Select value={localValue} onValueChange={setLocalValue}>
-                    <SelectTrigger className="flex-1">
-                        <SelectValue placeholder={placeholder} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {options.map(opt => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                <SearchableSelect_DB
+                    value={localValue}
+                    onValueChange={setLocalValue}
+                    placeholder={placeholder}
+                    className="flex-1"
+                    options={options}
+                />
                 <Button
                     size="icon"
                     variant={isDirty ? "default" : "ghost"}

@@ -1,4 +1,5 @@
 // src/components/FilterSidebar.tsx
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import { useGlobalTagsContext_DB } from "@/components/common/TagsContext_DB";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
@@ -6,14 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { LICENSES } from '@/constants/licenses';
 import { Category } from "@/types/category";
 import { Collection } from "@/types/collection";
 import { Model } from "@/types/model_db";
 import * as LucideIcons from 'lucide-react';
-import { ChevronDown, ChevronRight, CircleCheckBig, Eye, FileBox, FileText, Filter, Layers, LayoutGrid, Search, Settings, Tag, X } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, CircleCheckBig, Eye, FileBox, FileText, Filter, Layers, LayoutGrid, Search, Settings, Tag, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface FilterSidebarProps {
@@ -32,6 +32,7 @@ interface FilterSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   onSettingsClick: () => void;
+  onProjectsClick?: () => void;
   categories: Category[];
   models: Model[];
   collections: Collection[];
@@ -184,6 +185,7 @@ export function FilterSidebar_DB({
   collections = [],
   onOpenCollection,
   onBackToRoot,
+  onProjectsClick,
   initialFilters,
   currentFilters,
   libraryName
@@ -413,13 +415,22 @@ export function FilterSidebar_DB({
             </div>
 
             {/* "All Models" (Home Button) */}
-            <div className="space-y-2">
+            <div className="space-y-1">
               <div
                 className="flex items-center gap-2 py-2 px-2 rounded-md hover:bg-accent cursor-pointer transition-colors text-foreground"
                 onClick={handleGoHome}
               >
                 <LayoutGrid className="h-4 w-4 text-primary" />
                 <span className="text-sm font-medium">All Models</span>
+              </div>
+
+              {/* Project Workspace */}
+              <div
+                className="flex items-center gap-2 py-2 px-2 rounded-md hover:bg-accent cursor-pointer transition-colors text-foreground"
+                onClick={() => onProjectsClick && onProjectsClick()}
+              >
+                <Box className="h-4 w-4 text-primary" />
+                <span className="text-sm font-medium">Project Workspace</span>
               </div>
             </div>
 
@@ -503,16 +514,17 @@ export function FilterSidebar_DB({
                 <CircleCheckBig className="h-4 w-4 text-foreground" />
                 <label className="text-sm font-medium text-foreground">Print Status</label>
               </div>
-              <Select value={selectedPrintStatus} onValueChange={handlePrintStatusChange}>
-                <SelectTrigger className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="printed">Printed</SelectItem>
-                  <SelectItem value="not-printed">Not Printed</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect_DB
+                value={selectedPrintStatus}
+                onValueChange={handlePrintStatusChange}
+                className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary"
+                placeholder="All Status"
+                options={[
+                  { value: "all", label: "All Status" },
+                  { value: "printed", label: "Printed" },
+                  { value: "not-printed", label: "Not Printed" }
+                ]}
+              />
             </div>
 
             {/* Type Filter */}
@@ -521,17 +533,19 @@ export function FilterSidebar_DB({
                 <FileBox className="h-4 w-4 text-foreground" />
                 <label className="text-sm font-medium text-foreground">Type</label>
               </div>
-              <Select value={selectedFileType} onValueChange={handleFileTypeChange}>
-                <SelectTrigger className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary">
-                  <SelectValue placeholder="All Types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="3mf">3MF</SelectItem>
-                  <SelectItem value="stl">STL</SelectItem>
-                  <SelectItem value="collections">Collections</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect_DB
+                value={selectedFileType}
+                onValueChange={handleFileTypeChange}
+                placeholder="All Types"
+                className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary"
+                options={[
+                  { value: "all", label: "All Types" },
+                  { value: "3mf", label: "3MF" },
+                  { value: "stl", label: "STL" },
+                  { value: "obj", label: "OBJ" },
+                  { value: "collections", label: "Collections" }
+                ]}
+              />
             </div>
 
             {/* Sort By */}
@@ -540,18 +554,19 @@ export function FilterSidebar_DB({
                 <LucideIcons.SortAsc className="h-4 w-4 text-foreground" />
                 <label className="text-sm font-medium text-foreground">Sort By</label>
               </div>
-              <Select value={selectedSort} onValueChange={handleSortChange}>
-                <SelectTrigger className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Default</SelectItem>
-                  <SelectItem value="modified_desc">Recently modified (newest)</SelectItem>
-                  <SelectItem value="modified_asc">Modified (oldest)</SelectItem>
-                  <SelectItem value="name_asc">Name A → Z</SelectItem>
-                  <SelectItem value="name_desc">Name Z → A</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect_DB
+                value={selectedSort}
+                onValueChange={handleSortChange}
+                placeholder="None"
+                className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary"
+                options={[
+                  { value: "none", label: "Default" },
+                  { value: "modified_desc", label: "Recently modified (newest)" },
+                  { value: "modified_asc", label: "Modified (oldest)" },
+                  { value: "name_asc", label: "Name A → Z" },
+                  { value: "name_desc", label: "Name Z → A" }
+                ]}
+              />
             </div>
 
             {/* License Filter */}
@@ -560,19 +575,19 @@ export function FilterSidebar_DB({
                 <FileText className="h-4 w-4 text-foreground" />
                 <label className="text-sm font-medium text-foreground">License</label>
               </div>
-              <Select value={selectedLicense} onValueChange={handleLicenseChange}>
-                <SelectTrigger className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary">
-                  <SelectValue placeholder="All Licenses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Licenses</SelectItem>
-                  {availableLicenses.map((license) => (
-                    <SelectItem key={license} value={license}>
-                      {license}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect_DB
+                value={selectedLicense}
+                onValueChange={handleLicenseChange}
+                placeholder="All Licenses"
+                className="bg-background border-border text-foreground focus:ring-2 focus:ring-primary"
+                options={[
+                  { value: "all", label: "All Licenses" },
+                  ...availableLicenses.map((license) => ({
+                    value: license,
+                    label: license
+                  }))
+                ]}
+              />
             </div>
 
             {/* Show Hidden Models */}
