@@ -663,12 +663,16 @@ class MigrationEngine {
     }
 
     async _linkFiles(entity, dryRun = false) {
-        const { mapped, filePath, folderPath } = entity; // filePath here is the MUNCHIE .json file path
+        const { mapped, filePath, folderPath } = entity;
         let filesCount = 0;
         let primaryFileFound = false;
 
         // Track added files to avoid duplicates
         const addedFiles = new Set();
+
+        // Only these extensions are valid 3D model / print files for ModelFile records.
+        // Everything else (thumbnails, PDFs, images) is gallery/metadata territory.
+        const ALLOWED_MODEL_EXTS = new Set(['.stl', '.3mf', '.obj', '.gcode', '.bgcode', '.step', '.stp', '.f3d', '.blend']);
 
         console.log(`[MigrationEngine] Linking files for Model ID: ${mapped.id}`);
 
@@ -695,36 +699,45 @@ class MigrationEngine {
 
             if (addedFiles.has(fileName)) return false; // Skip duplicates
 
-            const ext = path.extname(absPath).toLowerCase().replace('.', '');
-            const isSupported = ['stl', 'obj', '3mf'].includes(ext);
+            const ext = path.extname(absPath).toLowerCase();
+            const extNoDot = ext.replace('.', '');
+            const isSupported = ['stl', 'obj', '3mf'].includes(extNoDot);
 
             // LOGIC FIX: Is this the primary file?
             let isPrimary = false;
 
-            // If we explicitly passed true (legacy logic), OR we found it via our new smart logic
             if (isPrimaryCandidate && !primaryFileFound && isSupported) {
                 isPrimary = true;
                 primaryFileFound = true;
             }
 
             if (!dryRun) {
-                // Check DB for existing file to avoid Unique Constraint errors if re-running
-                // (Though usually we cleared files before this, or it's a fresh migration)
-                // For safety in this simpler engine, we just create.
+                // Always compute pathHash so resync and dedup can use it.
+                const relPath = this._getRelativePath(absPath);
+                const pathHash = Buffer.from(relPath).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
                 try {
-                    await prisma.modelFile.create({
-                        data: {
+                    // Use upsert so re-running migration never creates duplicates.
+                    await prisma.modelFile.upsert({
+                        where: { pathHash },
+                        create: {
                             filename: fileName,
-                            filePath: this._getRelativePath(absPath),
-                            fileType: ext,
+                            filePath: relPath,
+                            fileType: extNoDot,
                             size: BigInt(fs.statSync(absPath).size),
+                            pathHash,
                             modelId: mapped.id,
-                            isPrimary: isPrimary,
-                            isSupported: isSupported
-                        }
+                            isPrimary,
+                            isSupported,
+                        },
+                        update: {
+                            // On re-run: only update isPrimary if we're promoting this file
+                            isPrimary: isPrimary || undefined,
+                        },
                     });
                 } catch (e) {
-                    // Ignore if already exists (shouldn't happen in clean migration)
+                    // Ignore P2002 unique constraint (race condition guard)
+                    if (e.code !== 'P2002') throw e;
                 }
             }
             filesCount++;
@@ -776,14 +789,15 @@ class MigrationEngine {
             const files = fs.readdirSync(folderPath);
             for (const f of files) {
                 if (f.endsWith('.json') || f.endsWith('.bak')) continue;
+
+                // Only ingest files with allowed model extensions.
+                // Thumbnails, PDFs, images etc. are NOT ModelFile records.
+                const fExt = path.extname(f).toLowerCase();
+                if (!ALLOWED_MODEL_EXTS.has(fExt)) continue;
+
                 const absPath = path.join(folderPath, f);
 
-                // If we somehow missed the primary (e.g. no match found on name), 
-                // and this is a supported file, allow it to become primary as a fallback.
-                // But only if we haven't found one yet.
-                const ext = path.extname(f).toLowerCase();
-                const isSupported = ['.stl', '.obj', '.3mf'].includes(ext);
-
+                const isSupported = ['.stl', '.obj', '.3mf'].includes(fExt);
                 await addFile(absPath, isSupported && !primaryFileFound);
             }
         } catch (e) { }
