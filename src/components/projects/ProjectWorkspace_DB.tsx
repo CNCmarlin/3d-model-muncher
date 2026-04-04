@@ -3,7 +3,6 @@ import { Box, ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-
 import React, { useMemo, useState } from 'react';
 import { useProjectMutations } from '../../hooks/useProjects_db';
 import { BuildPlate, BuildPlateItem, Project, ProjectItem } from '../../types/project';
-import { dbAdapter } from '../../utils/dbAdapter';
 import { resolveModelThumbnail } from '../../utils/thumbnailUtils_db';
 import { ImageWithFallback } from '../common/ImageWithFallback';
 import { Badge } from '../ui/badge';
@@ -21,7 +20,12 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
     // Queries
     const { data: platesData, isLoading: platesLoading } = useQuery<BuildPlate[]>({
         queryKey: ['buildPlates', project.id],
-        queryFn: () => dbAdapter.getBuildPlatesByProject(project.id)
+        queryFn: async () => {
+            const res = await fetch(`/api/projects/${project.id}/plates`);
+            if (!res.ok) throw new Error('Failed to fetch build plates');
+            const json = await res.json();
+            return json.plates ?? json;
+        }
     });
     const plates: BuildPlate[] = platesData || [];
 

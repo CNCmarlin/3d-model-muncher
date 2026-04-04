@@ -63,10 +63,13 @@ const ModelFileCard = ({
                 // Determine search path (prefix with /models/ if absent to match database)
                 const searchPath = path.startsWith('/models/') ? path : `/models/${path}`;
 
-                const resp = await fetch(`/api/models?modelUrl=${encodeURIComponent(searchPath)}`, { cache: 'no-store' });
+                // Fetch with exactUrl=true to prevent fuzzy matching returning the primary model
+                const resp = await fetch(`/api/models?modelUrl=${encodeURIComponent(searchPath)}&exactUrl=true`, { cache: 'no-store' });
                 if (resp.ok && mounted) {
                     const parsed = await resp.json();
-                    const data = Array.isArray(parsed) ? parsed[0] : parsed?.data?.[0];
+                    // Handle DB-first paginated response format ({ models, total })
+                    const modelsArray = parsed.models || parsed.data || (Array.isArray(parsed) ? parsed : []);
+                    const data = modelsArray[0];
 
                     if (!data) return;
 
@@ -621,7 +624,7 @@ export const RelatedFilesSection_DB = ({
                                                 {isViewable && tabKey === 'docs' && (
                                                     <Button
                                                         size="icon" variant="ghost" className="h-7 w-7 text-primary/60 hover:text-primary hover:bg-primary/10"
-                                                        onClick={() => handleViewDocument(`/models/${path}`)}
+                                                        onClick={() => handleViewDocument(path.startsWith('/models/') ? path : `/models/${path}`)}
                                                     >
                                                         <Eye className="h-4 w-4" />
                                                     </Button>

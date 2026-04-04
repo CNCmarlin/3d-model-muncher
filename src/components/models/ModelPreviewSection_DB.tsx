@@ -57,6 +57,8 @@ interface ModelPreviewSectionProps {
     active3DFile: string | null;
     setActive3DFile: (path: string | null) => void;
     onTogglePrinted?: (val: boolean) => void;
+    /** When true the 3D viewer uses aspect-square instead of aspect-video */
+    compact?: boolean;
     //currentModel: any;
 }
 
@@ -71,7 +73,7 @@ export const ModelPreviewSection_DB = ({
     handleAddImageClick, handleAddImageFile, addImageProgress, addImageError,
     toggleImageSelection, isImageSelected, handleDragStart, handleDragOver,
     handleDrop, handleDragLeave, handleDragEnd, dragOverIndex, active3DFile,
-    setActive3DFile, onTogglePrinted, activeDocUrl, }: ModelPreviewSectionProps) => {
+    setActive3DFile, onTogglePrinted, activeDocUrl, compact = false, }: ModelPreviewSectionProps) => {
 
     const fileToDisplay = React.useMemo(() => {
         // If no specific part is selected, use the project's main modelUrl
@@ -141,7 +143,7 @@ export const ModelPreviewSection_DB = ({
                     </div>
                 ) : viewMode === '3d' ? (
                     /* --- STAGE 2: 3D VIEWER --- */
-                    <div className="relative w-full aspect-video animate-in fade-in duration-300">
+                    <div className={`relative w-full animate-in fade-in duration-300 ${compact ? 'aspect-square' : 'aspect-video'}`}>
                         {active3DFile && (
                             <div className="absolute top-4 left-4 z-20">
                                 <Badge variant="secondary" className="py-1.5 px-3 flex items-center gap-2 bg-background/80 backdrop-blur-md border shadow-sm">

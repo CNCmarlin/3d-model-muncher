@@ -49,6 +49,7 @@ async function getAllModels(query = {}) {
         includeCollection = false,
         page = 0,
         limit = 10000, // High default to match legacy behavior (return all)
+        exactUrl = false, // New: Exact match for modelUrl
         sortBy = 'name',
         sortOrder = 'asc'
     } = validated;
@@ -102,7 +103,7 @@ async function getAllModels(query = {}) {
             id: { in: validated.ids }
         }),
         ...(validated.modelUrl && {
-            modelUrl: validated.modelUrl
+            modelUrl: exactUrl ? validated.modelUrl : { startsWith: validated.modelUrl }
         })
     };
 

@@ -108,9 +108,11 @@ router.get('/models', async (req, res) => {
                 : (meta.parsedImages || (m.thumbnailPath ? [`/models/${m.thumbnailPath}`] : []));
 
             // ── Resolve cover thumbnail ────────────────────────────────────────────────
-            // parsedImages[0] is already embedded-first if DB rows exist.
-            // Fall back to legacy pointer resolution only for metadata-based models.
-            let thumbnail = parsedImages[0];
+            // Prefer the explicit thumbnailPath in the database if it exists (fixes component thumbnails).
+            let thumbnail = m.thumbnailPath
+                ? (m.thumbnailPath.startsWith('/') ? m.thumbnailPath : `/models/${m.thumbnailPath}`)
+                : parsedImages[0];
+
             if (!thumbnail) {
                 // Legacy pointer handling for un-migrated models (parsed:N / user:N)
                 const legacyDesc = meta.thumbnail;
@@ -124,7 +126,7 @@ router.get('/models', async (req, res) => {
                         ? resolved
                         : (meta.parsedImages?.[0] || undefined);
                 } else {
-                    thumbnail = legacyDesc || (m.thumbnailPath ? `/models/${m.thumbnailPath}` : undefined);
+                    thumbnail = legacyDesc || undefined;
                 }
             }
 

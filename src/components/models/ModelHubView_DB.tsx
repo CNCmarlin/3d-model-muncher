@@ -49,6 +49,7 @@ import { useDeleteModel_db } from "@/hooks/mutations/useDeleteModel_db";
 import { useUpdateCollection_db } from "@/hooks/mutations/useUpdateCollection_db";
 import { useUpdateModel_db } from "@/hooks/mutations/useUpdateModel_db";
 import { useModel_db } from "@/hooks/queries/useModel_db";
+import { useMediaQuery_db } from "@/hooks/useMediaQuery_db";
 
 interface ModelHubViewProps {
   model: Model | null;
@@ -172,6 +173,8 @@ export function ModelHubView_DB({
   const uploadLogic = useDocumentUpload_db(model as any, handleModelUpdateParams as any);
   const siblingsLogic = useSiblings_db(model as any, collections as any, models as any);
   const relatedLogic = useRelatedFiles_db(model as any, editLogic.isEditing);
+  // Prevents two WebGL contexts mounting simultaneously at xl breakpoint
+  const isXl = useMediaQuery_db('(min-width: 1280px)');
 
   // -- LOCAL UI STATE --
   const [isAddToCollectionOpen, setIsAddToCollectionOpen] = useState(false);
@@ -354,7 +357,33 @@ export function ModelHubView_DB({
         </div>
 
         {/* Right Section: Actions */}
-        <div className="flex items-center gap-4 flex-1 justify-end shrink-0">
+        <div className="flex items-center gap-2 flex-1 justify-end shrink-0">
+          {/* Add / Remove Collection — in breadcrumb bar for easy access */}
+          {!editLogic.isEditing && (
+            <>
+              <Button
+                onClick={() => setIsAddToCollectionOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-2 opacity-60 hover:opacity-100 transition-opacity"
+                disabled={!collections || collections.length === 0}
+              >
+                <List className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Add to Collection</span>
+              </Button>
+              <Button
+                onClick={() => setIsRemoveFromCollectionOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-2 opacity-60 hover:opacity-100 transition-opacity"
+                disabled={!collections.some(c => c.modelIds?.includes(model.id))}
+              >
+                <MinusCircle className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Remove</span>
+              </Button>
+              <div className="h-4 w-px bg-border mx-1 hidden lg:block" />
+            </>
+          )}
           {!editLogic.isEditing && (
             <Button
               variant="ghost"
@@ -374,64 +403,66 @@ export function ModelHubView_DB({
         <div className="p-4 lg:p-10 pb-32">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 max-w-[1600px] mx-auto">
 
-            {/* LEFT COLUMN: PREVIEW */}
-            <div className="lg:col-span-7 space-y-8">
+            {/* ZONE A: Viewer — only rendered below xl; at xl the viewer lives in the left block below */}
+            <div className="lg:col-span-7 xl:hidden space-y-8">
               <div className="rounded-2xl overflow-hidden border bg-card shadow-sm">
-                <ModelPreviewSection_DB
-                  // Gallery State
-                  viewMode={galleryLogic.viewMode}
-                  setViewMode={galleryLogic.setViewMode}
-                  currentModel={activeModel as any}
-                  activeDocUrl={galleryLogic.activeDocUrl}
-                  handleViewDocument={galleryLogic.handleViewDocument}
-                  active3DFile={galleryLogic.active3DFile}
-                  setActive3DFile={galleryLogic.setActive3DFile}
-                  allImages={galleryLogic.allImages}
-                  selectedImageIndex={galleryLogic.selectedImageIndex}
-                  setSelectedImageIndex={galleryLogic.setSelectedImageIndex}
-                  isWindowFullscreen={galleryLogic.isWindowFullscreen}
-                  setIsWindowFullscreen={galleryLogic.setIsWindowFullscreen}
-                  imageContainerRef={galleryLogic.imageContainerRef}
-                  prevButtonRef={galleryLogic.prevButtonRef}
-                  thumbnailStripRef={galleryLogic.thumbnailStripRef}
-                  handlePreviousImage={galleryLogic.handlePreviousImage}
-                  handleNextImage={galleryLogic.handleNextImage}
-                  handleToggleFullscreen={galleryLogic.handleToggleFullscreen}
+                {!isXl && (
+                  <ModelPreviewSection_DB
+                    // Gallery State
+                    viewMode={galleryLogic.viewMode}
+                    setViewMode={galleryLogic.setViewMode}
+                    currentModel={activeModel as any}
+                    activeDocUrl={galleryLogic.activeDocUrl}
+                    handleViewDocument={galleryLogic.handleViewDocument}
+                    active3DFile={galleryLogic.active3DFile}
+                    setActive3DFile={galleryLogic.setActive3DFile}
+                    allImages={galleryLogic.allImages}
+                    selectedImageIndex={galleryLogic.selectedImageIndex}
+                    setSelectedImageIndex={galleryLogic.setSelectedImageIndex}
+                    isWindowFullscreen={galleryLogic.isWindowFullscreen}
+                    setIsWindowFullscreen={galleryLogic.setIsWindowFullscreen}
+                    imageContainerRef={galleryLogic.imageContainerRef}
+                    prevButtonRef={galleryLogic.prevButtonRef}
+                    thumbnailStripRef={galleryLogic.thumbnailStripRef}
+                    handlePreviousImage={galleryLogic.handlePreviousImage}
+                    handleNextImage={galleryLogic.handleNextImage}
+                    handleToggleFullscreen={galleryLogic.handleToggleFullscreen}
 
-                  // Edit Logic Interaction
-                  isEditing={editLogic.isEditing}
-                  handleCapturedImage={editLogic.handleCapturedImage}
-                  handleAddImageClick={(e) => {
-                    e.stopPropagation();
-                    if (!editLogic.isEditing) return;
-                    addImageInputRef.current?.click();
-                  }}
-                  addImageInputRef={addImageInputRef}
-                  handleAddImageFile={editLogic.handleAddImageFile}
-                  addImageProgress={editLogic.addImageProgress}
-                  addImageError={editLogic.addImageError}
+                    // Edit Logic Interaction
+                    isEditing={editLogic.isEditing}
+                    handleCapturedImage={editLogic.handleCapturedImage}
+                    handleAddImageClick={(e) => {
+                      e.stopPropagation();
+                      if (!editLogic.isEditing) return;
+                      addImageInputRef.current?.click();
+                    }}
+                    addImageInputRef={addImageInputRef}
+                    handleAddImageFile={editLogic.handleAddImageFile}
+                    addImageProgress={editLogic.addImageProgress}
+                    addImageError={editLogic.addImageError}
 
-                  // Drag & Drop
-                  toggleImageSelection={(idx) => editLogic.toggleImageSelection(idx, galleryLogic.isWindowFullscreen)}
-                  isImageSelected={(idx) => editLogic.selectedImageIndexes.includes(idx)}
-                  handleDragStart={(e, idx) => editLogic.handleDragStart(e, idx, galleryLogic.isWindowFullscreen)}
-                  handleDragOver={(e, idx) => editLogic.handleDragOver(e, idx, galleryLogic.isWindowFullscreen)}
-                  handleDrop={(e, idx) => {
-                    const newIdx = editLogic.handleDrop(e, idx, galleryLogic.isWindowFullscreen);
-                    if (typeof newIdx === 'number') galleryLogic.setSelectedImageIndex(newIdx);
-                  }}
-                  handleDragLeave={() => editLogic.setDragOverIndex(null)}
-                  handleDragEnd={() => editLogic.setDragOverIndex(null)}
-                  dragOverIndex={editLogic.dragOverIndex}
+                    // Drag & Drop
+                    toggleImageSelection={(idx) => editLogic.toggleImageSelection(idx, galleryLogic.isWindowFullscreen)}
+                    isImageSelected={(idx) => editLogic.selectedImageIndexes.includes(idx)}
+                    handleDragStart={(e, idx) => editLogic.handleDragStart(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDragOver={(e, idx) => editLogic.handleDragOver(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDrop={(e, idx) => {
+                      const newIdx = editLogic.handleDrop(e, idx, galleryLogic.isWindowFullscreen);
+                      if (typeof newIdx === 'number') galleryLogic.setSelectedImageIndex(newIdx);
+                    }}
+                    handleDragLeave={() => editLogic.setDragOverIndex(null)}
+                    handleDragEnd={() => editLogic.setDragOverIndex(null)}
+                    dragOverIndex={editLogic.dragOverIndex}
 
-                  handleSetAsMain={(idx) => {
-                    editLogic.handleSetAsMain(idx);
-                    galleryLogic.setSelectedImageIndex(0);
-                  }}
+                    handleSetAsMain={(idx) => {
+                      editLogic.handleSetAsMain(idx);
+                      galleryLogic.setSelectedImageIndex(0);
+                    }}
 
-                  defaultModelColor={defaultModelColor || undefined}
-                  onTogglePrinted={(val) => handleModelUpdateParams({ ...model, isPrinted: val } as any)}
-                />
+                    defaultModelColor={defaultModelColor || undefined}
+                    onTogglePrinted={(val) => handleModelUpdateParams({ ...model, isPrinted: val } as any)}
+                  />
+                )}
               </div>
 
               {/* TABS */}
@@ -497,20 +528,143 @@ export function ModelHubView_DB({
                   />
                 </TabsContent>
               </Tabs>
-            </div>
+            </div>{/* end Zone A */}
 
-            {/* RIGHT COLUMN */}
-            <aside className="lg:col-span-5 space-y-6">
-              {!editLogic.isEditing && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Button onClick={() => setIsAddToCollectionOpen(true)} variant="outline" size="sm" className="justify-start gap-2 bg-card hover:bg-accent" disabled={!collections || collections.length === 0}>
-                    <List className="h-4 w-4" /> Add to Collection
-                  </Button>
-                  <Button onClick={() => setIsRemoveFromCollectionOpen(true)} variant="outline" size="sm" className="justify-start gap-2 bg-card hover:bg-accent" disabled={!collections.some(c => c.modelIds?.includes(model.id))}>
-                    <MinusCircle className="h-4 w-4" /> Remove from Collection
-                  </Button>
-                </div>
-              )}
+            {/* XL LEFT BLOCK: xl:col-span-9, inner 2-col grid
+                col 1 : Viewer (square, only mounted at xl — prevents double WebGL ctx)
+                col 2 : Description | Notes tabs (scrolls independently)
+                col-span-2 : Zone AB — Related Files | Collection
+            */}
+            <div className="hidden xl:grid xl:col-span-9 xl:grid-cols-2 xl:gap-x-8 xl:gap-y-8">
+
+              {/* col 1: Viewer */}
+              <div className="col-span-1 rounded-2xl overflow-hidden border bg-card shadow-sm self-start">
+                {isXl && (
+                  <ModelPreviewSection_DB
+                    viewMode={galleryLogic.viewMode}
+                    setViewMode={galleryLogic.setViewMode}
+                    currentModel={activeModel as any}
+                    activeDocUrl={galleryLogic.activeDocUrl}
+                    handleViewDocument={galleryLogic.handleViewDocument}
+                    active3DFile={galleryLogic.active3DFile}
+                    setActive3DFile={galleryLogic.setActive3DFile}
+                    allImages={galleryLogic.allImages}
+                    selectedImageIndex={galleryLogic.selectedImageIndex}
+                    setSelectedImageIndex={galleryLogic.setSelectedImageIndex}
+                    isWindowFullscreen={galleryLogic.isWindowFullscreen}
+                    setIsWindowFullscreen={galleryLogic.setIsWindowFullscreen}
+                    imageContainerRef={galleryLogic.imageContainerRef}
+                    prevButtonRef={galleryLogic.prevButtonRef}
+                    thumbnailStripRef={galleryLogic.thumbnailStripRef}
+                    handlePreviousImage={galleryLogic.handlePreviousImage}
+                    handleNextImage={galleryLogic.handleNextImage}
+                    handleToggleFullscreen={galleryLogic.handleToggleFullscreen}
+                    isEditing={editLogic.isEditing}
+                    handleCapturedImage={editLogic.handleCapturedImage}
+                    handleAddImageClick={(e) => {
+                      e.stopPropagation();
+                      if (!editLogic.isEditing) return;
+                      addImageInputRef.current?.click();
+                    }}
+                    addImageInputRef={addImageInputRef}
+                    handleAddImageFile={editLogic.handleAddImageFile}
+                    addImageProgress={editLogic.addImageProgress}
+                    addImageError={editLogic.addImageError}
+                    toggleImageSelection={(idx) => editLogic.toggleImageSelection(idx, galleryLogic.isWindowFullscreen)}
+                    isImageSelected={(idx) => editLogic.selectedImageIndexes.includes(idx)}
+                    handleDragStart={(e, idx) => editLogic.handleDragStart(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDragOver={(e, idx) => editLogic.handleDragOver(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDrop={(e, idx) => {
+                      const newIdx = editLogic.handleDrop(e, idx, galleryLogic.isWindowFullscreen);
+                      if (typeof newIdx === 'number') galleryLogic.setSelectedImageIndex(newIdx);
+                    }}
+                    handleDragLeave={() => editLogic.setDragOverIndex(null)}
+                    handleDragEnd={() => editLogic.setDragOverIndex(null)}
+                    dragOverIndex={editLogic.dragOverIndex}
+                    handleSetAsMain={(idx) => {
+                      editLogic.handleSetAsMain(idx);
+                      galleryLogic.setSelectedImageIndex(0);
+                    }}
+                    defaultModelColor={defaultModelColor || undefined}
+                    onTogglePrinted={(val) => handleModelUpdateParams({ ...model, isPrinted: val } as any)}
+                    compact
+                  />
+                )}
+              </div>
+
+              {/* col 2: Description + Notes as tabs — scrolls in-place if taller than viewer */}
+              <div className="col-span-1 bg-card border rounded-2xl shadow-sm self-start overflow-y-auto" style={{ maxHeight: 'min(600px, 90vh)' }}>
+                <Tabs defaultValue="description" className="w-full">
+                  <TabsList className="w-full justify-start bg-transparent border-b rounded-none h-11 p-0 gap-8 px-6">
+                    <TabsTrigger value="description" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Description</TabsTrigger>
+                    <TabsTrigger value="notes" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Notes</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="description" className="p-6 pt-4">
+                    <DescriptionSection_DB
+                      isEditing={editLogic.isEditing}
+                      currentModel={activeModel as any}
+                      originalUserDefinedDescriptionRef={editLogic.originalUserDefinedDescriptionRef}
+                      originalTopLevelDescriptionRef={editLogic.originalTopLevelDescriptionRef}
+                      restoreOriginalDescription={editLogic.restoreOriginalDescription}
+                      setRestoreOriginalDescription={editLogic.setRestoreOriginalDescription}
+                      setEditedModel={editLogic.setEditedModel as any}
+                      editedModel={editLogic.editedModel as any}
+                      onModelUpdate={(updated) => handleModelUpdateParams({ ...model, ...updated } as any)}
+                    />
+                  </TabsContent>
+                  <TabsContent value="notes" className="p-6 pt-4">
+                    <NotesSection_DB
+                      currentModel={model as any}
+                      onSave={(newNotes) => handleModelUpdateParams({ ...model, notes: newNotes } as any)}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+
+              {/* Zone AB: Related + Collection — spans both cols */}
+              <div className="col-span-2">
+                <Tabs defaultValue="related" className="w-full">
+                  <TabsList className="w-full justify-start bg-transparent border-b rounded-none h-11 p-0 gap-8">
+                    <TabsTrigger value="related" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Related Files</TabsTrigger>
+                    <TabsTrigger value="siblings" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Collection</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="related" className="pt-6">
+                    <RelatedFilesSection_DB
+                      isEditing={editLogic.isEditing}
+                      currentModel={activeModel as any}
+                      active3DFile={galleryLogic.active3DFile}
+                      setActive3DFile={galleryLogic.setActive3DFile}
+                      relatedVerifyStatus={relatedVerifyStatus}
+                      setRelatedVerifyStatus={setRelatedVerifyStatus}
+                      invalidRelated={editLogic.invalidRelated as any}
+                      serverRejectedRelated={[]}
+                      onModelUpdate={handleModelUpdateParams as any}
+                      onNavigate={onSelectModel as any}
+                      triggerDownload={triggerDownload_db}
+                      availableRelatedMunchie={relatedLogic.availableRelatedMunchie}
+                      detailsViewportRef={detailsViewportRef}
+                      toast={toast}
+                      handleViewDocument={galleryLogic.handleViewDocument}
+                      handleTargetedUpload={uploadLogic.handleTargetedUpload}
+                      onAnalyze={gcodeLogic.handleReanalyzeGcode}
+                    />
+                  </TabsContent>
+                  <TabsContent value="siblings" className="pt-6">
+                    <SiblingsSection_DB
+                      siblings={siblingsLogic.siblings}
+                      onNavigate={(id) => {
+                        const target = models.find(m => m.id === id);
+                        if (target) onSelectModel(target);
+                      }}
+                      detailsViewportRef={detailsViewportRef}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </div>{/* end xl left block */}
+
+            {/* RIGHT COLUMN: sidebar, xl:col-span-3 */}
+            <aside className="lg:col-span-5 xl:col-span-3 space-y-6">
 
               <section className="bg-card border rounded-2xl p-6 shadow-sm space-y-6">
                 <PrintSettingsSection_DB currentModel={activeModel as any} safePrintSettings={safePrintSettings} />

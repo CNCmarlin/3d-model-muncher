@@ -1,15 +1,16 @@
 import { CollectionEditorDialog_DB } from "@/components/collections/CollectionEditorDialog_DB";
+import { ConvertToModelFolderDialog_DB } from "@/components/collections/ConvertToModelFolderDialog_DB";
 import { ConfirmDialog_DB } from "@/components/shared/ConfirmDialog_DB";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useConfig } from "@/context/AppConfigContext";
 import { useDialog_db } from "@/hooks/useDialog_db";
 import type { Category } from "@/types/category";
 import type { Collection } from "@/types/collection_db";
 import { getDynamicModelCount } from "@/utils/collectionUtils_db";
-import { ChevronRight, Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, FolderSymlink, MoreVertical, Pencil, RefreshCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -28,7 +29,10 @@ export interface CollectionCardProps {
 export const CollectionCard_DB = ({ collection, collections, categories, onOpen, onChanged, onDeleted, fallbackImage }: CollectionCardProps) => {
   const editDialog = useDialog_db(false);
   const deleteDialog = useDialog_db(false);
+  const convertDialog = useDialog_db(false);
+  const revertDialog = useDialog_db(false);
   const [deletePhysicalFiles, setDeletePhysicalFiles] = useState(false);
+  const [isReverting, setIsReverting] = useState(false);
   const { appConfig } = useConfig();
   const collectionMode = appConfig?.settings?.collectionMode || 'strict';
 
@@ -126,12 +130,34 @@ export const CollectionCard_DB = ({ collection, collections, categories, onOpen,
                 <DropdownMenuItem onClick={editDialog.open}>
                   <Pencil className="h-4 w-4 mr-2" /> Edit
                 </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                {/* Convert ↔ Revert */}
+                {!collection.isModelFolder ? (
+                  <DropdownMenuItem onClick={convertDialog.open}>
+                    <FolderSymlink className="h-4 w-4 mr-2" /> Convert to Model Folder
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={revertDialog.open}>
+                    <RefreshCcw className="h-4 w-4 mr-2" /> Revert to Collection
+                  </DropdownMenuItem>
+                )}
+
+                <DropdownMenuSeparator />
+
                 <DropdownMenuItem onClick={() => { setDeletePhysicalFiles(false); deleteDialog.open(); }} className="text-destructive focus:text-destructive">
                   <Trash2 className="h-4 w-4 mr-2" /> Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          {/* Folder icon: open if model folder */}
+          {collection.isModelFolder && (
+            <span title="Model Folder" className="pointer-events-none">
+              <FolderOpen className="h-4 w-4 text-primary/60" />
+            </span>
+          )}
         </div>
       </CardHeader>
       <CardContent className="p-2 pt-1 flex-1">
@@ -158,12 +184,40 @@ export const CollectionCard_DB = ({ collection, collections, categories, onOpen,
           collection={collection ?? null}
           collections={collections}
           categories={categories}
-          onSave={async (c) => {
-            // Adapt to promise interface if needed, legacy might expect void
-            handleSaved(c);
-          }}
-          onDelete={async (_id) => {
-            await confirmDelete();
+          onSave={async (c) => { handleSaved(c); }}
+          onDelete={async (_id) => { await confirmDelete(); }}
+        />
+
+        {/* Convert to Model Folder */}
+        <ConvertToModelFolderDialog_DB
+          open={convertDialog.isOpen}
+          onOpenChange={convertDialog.setIsOpen}
+          collection={collection}
+          onConverted={() => { onChanged?.(); }}
+        />
+
+        {/* Revert to Collection */}
+        <ConfirmDialog_DB
+          open={revertDialog.isOpen}
+          onOpenChange={revertDialog.setIsOpen}
+          title="Revert to Collection?"
+          description={`This will remove the model folder marker from disk and restore "${collection.name}" as a regular cloud collection. Previously demoted model records will be un-hidden.`}
+          confirmLabel={isReverting ? 'Reverting…' : 'Revert to Collection'}
+          variant="default"
+          onConfirm={async () => {
+            setIsReverting(true);
+            try {
+              const res = await fetch(`/api/collections/${encodeURIComponent(collection.id)}/revert-to-collection`, { method: 'POST' });
+              const json = await res.json();
+              if (!res.ok || !json.success) throw new Error(json.error || 'Revert failed');
+              toast.success(`"${collection.name}" reverted to collection`);
+              onChanged?.();
+              revertDialog.close();
+            } catch (e: any) {
+              toast.error(e.message);
+            } finally {
+              setIsReverting(false);
+            }
           }}
         />
       </div>

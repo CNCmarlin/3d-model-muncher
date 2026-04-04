@@ -162,6 +162,7 @@ const ModelQuerySchema = CommonFiltersSchema.merge(SortOptionsSchema).extend({
     page: QueryIntSchema.default(0),
     limit: QueryIntSchema.default(10000), // High default to match legacy
     modelUrl: z.string().optional(),
+    exactUrl: QueryBooleanSchema.optional(),
     ids: z.union([z.string(), z.array(z.string())]).optional().transform(val => {
         if (!val) return undefined;
         if (Array.isArray(val)) return val;

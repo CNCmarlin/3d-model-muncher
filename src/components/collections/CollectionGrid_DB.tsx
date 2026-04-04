@@ -5,7 +5,7 @@ import { ImageWithFallback_DB } from "@/components/common/ImageWithFallback_DB";
 import { LayoutControls_DB } from "@/components/layout/LayoutControls_DB";
 import { useLayoutSettings } from "@/components/layout/LayoutSettingsContext_DB";
 import { SelectionModeControls_DB } from '@/components/layout/SelectionModeControls_DB';
-//import { ProjectView_DB } from '@/components/management/ProjectView_DB';
+import { ProjectView as ProjectView_DB } from '@/components/management/ProjectView_DB';
 import { ModelCard_DB } from '@/components/models/ModelCard_DB';
 import { Badge } from "@/components/ui/badge";
 import { Button } from '@/components/ui/button';
@@ -102,6 +102,13 @@ export default function CollectionGrid_DB({
     const mode = config?.settings?.collectionMode || 'strict';
     let targetModelIds: string[] = activeCollection?.modelIds || [];
 
+    // NEW: Hoist model folders up!
+    // For any child collection that is a model folder, we want its models to appear here instead!
+    const modelFolderChildren = collections.filter(c => c.parentId === activeCollection?.id && c.isModelFolder);
+    modelFolderChildren.forEach(mfc => {
+      targetModelIds = [...targetModelIds, ...(mfc.modelIds || [])];
+    });
+
     // Aggregation mode: Recursively fetch all modelIds inside this folder and all subfolders
     if (mode === 'top-level' && activeCollection) {
       targetModelIds = getDescendantModelIds(activeCollection.id, collections);
@@ -136,7 +143,8 @@ export default function CollectionGrid_DB({
       return [];
     }
 
-    let children = collections.filter(c => c.parentId === activeCollection.id);
+    // EXCLUDE Model Folders (they are hoisted into the models grid)
+    let children = collections.filter(c => c.parentId === activeCollection.id && !c.isModelFolder);
 
     if (mode === 'strict') {
       // Hide child collections that are completely empty (0 models deep) unless they are Manual
@@ -339,21 +347,21 @@ export default function CollectionGrid_DB({
     return "grid-cols-1 min-[500px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
   }, [showDetailsPanel, getGridClasses]);
 
-  // // [PASTE THE INTERCEPT HERE]
-  // // If this collection is a PROJECT, show the Project View instead of the Grid
-  // if (activeCollection && activeCollection.isModelFolder) {
-  //   return (
-  //     <ProjectView_DB
-  //       collection={activeCollection}
-  //       models={models}
-  //       onModelClick={onModelClick}
-  //       onBack={onBack}
-  //       onUpdateCollection={() => {
-  //         onCollectionChanged?.();
-  //       }}
-  //     />
-  //   );
-  // }
+  // [PASTE THE INTERCEPT HERE]
+  // If this collection is a PROJECT, show the Project View instead of the Grid
+  if (activeCollection && activeCollection.isModelFolder) {
+    return (
+      <ProjectView_DB
+        collection={activeCollection}
+        models={models}
+        onModelClick={onModelClick}
+        onBack={onBack}
+        onUpdateCollection={() => {
+          onCollectionChanged?.();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
