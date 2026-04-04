@@ -71,6 +71,7 @@ export function IntegritySettings_DB({
     type HealDetail = { model: string; additions: string[]; deletions: string[]; modifications: string[] };
     type HealReport = {
         dryRun: boolean;
+        normalize?: { processed: number; fixed: number; skipped: number };
         embedded: { processed: number; extracted: number; alreadyDone: number; noEmbed: number; errors: { model?: string; error: string }[] };
         gallery: { processed: number; added: number; errors: { model?: string; error: string }[] };
         stale: { processed: number; removed: number; errors: { imageId?: string; error: string }[] };
@@ -566,6 +567,7 @@ export function IntegritySettings_DB({
                                                 <span className="font-medium text-sm text-green-800 dark:text-green-400">Gallery & Thumbnails Repair Available</span>
                                             </div>
                                             <div className="text-xs text-muted-foreground flex items-center gap-3">
+                                                {(healReport.normalize?.fixed ?? 0) > 0 && <span>• {healReport.normalize?.fixed} paths normalized</span>}
                                                 {healReport.embedded.extracted > 0 && <span>• {healReport.embedded.extracted} thumbnails</span>}
                                                 {healReport.gallery.added > 0 && <span>• {healReport.gallery.added} untracked images</span>}
                                                 {healReport.stale.removed > 0 && <span>• {healReport.stale.removed} stale links</span>}

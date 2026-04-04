@@ -1,10 +1,11 @@
 /**
  * DB-Mode Heal Service
  *
- * Three DB-native operations (no munchie JSON reading/writing):
- *   1. Extract embedded thumbnails from 3MF files → ModelImage rows
- *   2. Claim untracked sibling gallery images     → ModelImage rows
- *   3. Scrub stale ModelImage rows (file missing) → DELETE
+ * Four DB-native operations (no munchie JSON reading/writing):
+ *   0. Normalize ModelImage paths missing /models/ prefix  → UPDATE
+ *   1. Extract embedded thumbnails from 3MF files          → ModelImage rows
+ *   2. Claim untracked sibling gallery images              → ModelImage rows
+ *   3. Scrub stale ModelImage rows (file missing)          → DELETE
  *
  * All operations are driven by Prisma queries and write only to:
  *   - The filesystem (extracted PNG thumbnails)
@@ -44,11 +45,44 @@ async function heal(dryRun = false) {
 
     const report = {
         dryRun,
+        normalize: { processed: 0, fixed: 0, skipped: 0 },
         embedded: { processed: 0, extracted: 0, alreadyDone: 0, noEmbed: 0, errors: [] },
         gallery: { processed: 0, added: 0, errors: [] },
         stale: { processed: 0, removed: 0, errors: [] },
         details: [], // per-model summary entries for the preview dialog
     };
+
+    // ═══════════════════════════════════════════════════════════════
+    // STEP 0 — Normalize ModelImage paths missing /models/ prefix
+    // Idempotent: rows already prefixed are untouched.
+    // ═══════════════════════════════════════════════════════════════
+    const unprefixedImages = await prisma.modelImage.findMany({
+        select: { id: true, path: true },
+        where: {
+            NOT: [
+                { path: { startsWith: '/models/' } },
+                { path: { startsWith: 'data:image' } },
+            ],
+        },
+    });
+
+    report.normalize.processed = unprefixedImages.length;
+
+    for (const img of unprefixedImages) {
+        const corrected = `/models/${img.path}`;
+        const absPath = path.join(modelsDir, img.path);
+        if (!fs.existsSync(absPath)) {
+            report.normalize.skipped++;
+            continue; // Stale — Step 3 will delete it
+        }
+        report.normalize.fixed++;
+        if (!dryRun) {
+            await prisma.modelImage.update({
+                where: { id: img.id },
+                data: { path: corrected },
+            });
+        }
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // STEP 1 — Extract embedded thumbnails from 3MF ModelFile rows
