@@ -80,16 +80,22 @@ function protectModelFileWrite(targetPath) {
 }
 
 // Helper: Get Models Directory
+// Priority order (DB mode — config.json is authoritative):
+//   1. data/config.json → settings.modelDirectory  (set via UI Settings page)
+//   2. MODELS_PATH env var                          (Docker / headless fallback)
+//   3. ConfigManager compiled default               (last resort)
+// NOTE: env var is intentionally a FALLBACK so that UI changes take effect
+// immediately without requiring .env edits or a server restart.
 function getModelsDirectory() {
-    if (process.env.MODELS_PATH) return process.env.MODELS_PATH;
     try {
-        const dataDir = path.join(process.cwd(), 'data');
-        const globalPath = path.join(dataDir, 'config.json');
+        const globalPath = path.join(process.cwd(), 'data', 'config.json');
         if (fs.existsSync(globalPath)) {
             const parsed = JSON.parse(fs.readFileSync(globalPath, 'utf8') || '{}');
             if (parsed?.settings?.modelDirectory) return parsed.settings.modelDirectory;
         }
     } catch (e) { }
+    // Fall back to env var (Docker / CI deployments without a config.json)
+    if (process.env.MODELS_PATH) return process.env.MODELS_PATH;
     const config = ConfigManager.loadConfig();
     return (config.settings && config.settings.modelDirectory) || './models';
 }
