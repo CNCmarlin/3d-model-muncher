@@ -804,7 +804,20 @@ router.post('/library-resync', async (req, res) => {
         const modelsDir = getAbsoluteModelsPath();
 
         if (!modelsDir || !fs.existsSync(modelsDir)) {
-            return res.status(400).json({ success: false, error: 'Models directory not found' });
+            return res.status(400).json({ success: false, error: 'Models directory not found or inaccessible. Verify the path in Settings and that the drive is connected.' });
+        }
+
+        // ── Track 6: Network/drive guard ──
+        // Verify the directory is actually readable before running a full scan.
+        // If the drive is offline, readdirSync will throw and we return a clear error
+        // instead of reporting every model as a ghost.
+        try {
+            fs.readdirSync(modelsDir);
+        } catch (guardErr) {
+            return res.status(400).json({
+                success: false,
+                error: `Models directory exists but cannot be read — is the drive connected? (${guardErr.message})`
+            });
         }
 
         // ── 1. Scan filesystem recursively for model & source files ──
@@ -958,18 +971,24 @@ router.post('/resync-purge-ghosts', async (req, res) => {
     }
 });
 
-// POST /api/admin/resync-purge-model-ghosts (delete Model records whose filePath points to missing files)
+// POST /api/admin/resync-purge-model-ghosts
+// Soft-deletes Model records whose modelUrl points to a missing file.
+// Uses isDeleted flag instead of hard-delete to preserve metadata, tags, and images.
+// Soft-deleted models can be restored or permanently purged from a future Trash UI.
 router.post('/resync-purge-model-ghosts', async (req, res) => {
     try {
         const prisma = require('../../server-utils/db');
-        const { ids } = req.body; // Array of Model IDs to delete
+        const { ids } = req.body; // Array of Model IDs to soft-delete
         if (!ids || !Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ success: false, error: 'No IDs provided' });
         }
-        const result = await prisma.model.deleteMany({ where: { id: { in: ids } } });
-        res.json({ success: true, deleted: result.count });
+        const result = await prisma.model.updateMany({
+            where: { id: { in: ids } },
+            data: { isDeleted: true }
+        });
+        res.json({ success: true, softDeleted: result.count });
     } catch (err) {
-        console.error('Purge Model Ghosts Error:', err);
+        console.error('Soft-Delete Model Ghosts Error:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -1071,13 +1090,16 @@ router.post('/resync-apply-batch', async (req, res) => {
             }
         }
 
-        // 2. Purge Model Ghosts
+        // 2. Soft-delete Model Ghosts (preserve metadata; recoverable from future Trash UI)
         if (purgeModelGhostIds && Array.isArray(purgeModelGhostIds) && purgeModelGhostIds.length > 0) {
             try {
-                const result = await prisma.model.deleteMany({ where: { id: { in: purgeModelGhostIds } } });
+                const result = await prisma.model.updateMany({
+                    where: { id: { in: purgeModelGhostIds } },
+                    data: { isDeleted: true }
+                });
                 results.modelGhostsPurged = result.count;
             } catch (e) {
-                results.errors.push(`Failed to purge model ghosts: ${e.message}`);
+                results.errors.push(`Failed to soft-delete model ghosts: ${e.message}`);
             }
         }
 

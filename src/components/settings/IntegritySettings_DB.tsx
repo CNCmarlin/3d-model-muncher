@@ -19,7 +19,7 @@ import { Model } from '@/types/model_db';
 import { getDisplayPath_db } from '@/utils/clientUtils_db';
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils_db";
 import { AlertTriangle, Box, Check, ChevronDown, Cpu, FileCheck, Files, FolderSync, Ghost, HardDrive, Hash, HeartPulse, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 type IntegritySettingsProps = ReturnType<typeof useIntegrityCheck_db> & {
     models: Model[];
@@ -84,10 +84,39 @@ export function IntegritySettings_DB({
         : 0;
 
     // ── Library Resync State (self-contained) ──
+    const CACHE_KEY = 'resync_scan_cache';
+    const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+
     const [resyncResult, setResyncResult] = useState<ResyncResult | null>(null);
     const [isResyncing, setIsResyncing] = useState(false);
     const [resyncError, setResyncError] = useState<string | null>(null);
     const [expandedSection, setExpandedSection] = useState<string | null>(null);
+    const [lastScannedAt, setLastScannedAt] = useState<Date | null>(null);
+
+    // ── Load cached scan result on mount ──
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(CACHE_KEY);
+            if (!raw) return;
+            const cached = JSON.parse(raw) as {
+                timestamp: string;
+                resyncResult: ResyncResult;
+                healReport: HealReport | null;
+            };
+            const age = Date.now() - new Date(cached.timestamp).getTime();
+            if (age > CACHE_MAX_AGE_MS) {
+                localStorage.removeItem(CACHE_KEY);
+                return;
+            }
+            setResyncResult(cached.resyncResult);
+            setHealReport(cached.healReport);
+            setLastScannedAt(new Date(cached.timestamp));
+        } catch {
+            // Ignore corrupt cache
+            localStorage.removeItem(CACHE_KEY);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Batch Apply State
     const [includeOrphans, setIncludeOrphans] = useState(true);
@@ -130,6 +159,9 @@ export function IntegritySettings_DB({
         setResyncError(null);
         setResyncResult(null);
         setHealReport(null);
+        setLastScannedAt(null);
+        // Clear stale cache before a fresh scan
+        localStorage.removeItem(CACHE_KEY);
         try {
             // Step 1: Filesystem resync
             const resp = await fetch('/api/admin/library-resync', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
@@ -137,23 +169,38 @@ export function IntegritySettings_DB({
             if (!data.success) throw new Error(data.error || 'Resync failed');
             setResyncResult(data);
 
-            // Step 2: DB heal (extract embedded thumbnails, claim images, scrub stale links)
+            // Step 2: DB heal (dry-run preview)
+            let healData: { success: boolean; report?: HealReport } | null = null;
             try {
                 const healResp = await fetch('/api/admin/db-heal', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ dryRun: true }),
                 });
-                const healData = await healResp.json();
-                if (healData.success) setHealReport(healData.report);
+                healData = await healResp.json();
+                if (healData?.success && healData.report) setHealReport(healData.report);
             } catch {
                 // Non-fatal — resync result is still valid
             }
+
+            // ── Persist to localStorage so results survive page refresh ──
+            const scannedAt = new Date();
+            try {
+                localStorage.setItem(CACHE_KEY, JSON.stringify({
+                    timestamp: scannedAt.toISOString(),
+                    resyncResult: data,
+                    healReport: healData?.success ? healData.report ?? null : null,
+                }));
+            } catch {
+                // localStorage may be full — non-fatal
+            }
+            setLastScannedAt(scannedAt);
         } catch (err: any) {
             setResyncError(err.message || 'Unknown error');
         } finally {
             setIsResyncing(false);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const toggleSection = (key: string) => setExpandedSection(prev => prev === key ? null : key);
@@ -457,6 +504,23 @@ export function IntegritySettings_DB({
                             {isResyncing ? 'Scanning…' : 'Run Resync Scan'}
                         </Button>
                     </div>
+                    {lastScannedAt && !isResyncing && (
+                        <p className="text-xs text-muted-foreground">
+                            Last scanned: {lastScannedAt.toLocaleDateString()} at {lastScannedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {' · '}
+                            <button
+                                onClick={() => {
+                                    localStorage.removeItem(CACHE_KEY);
+                                    setResyncResult(null);
+                                    setHealReport(null);
+                                    setLastScannedAt(null);
+                                }}
+                                className="underline underline-offset-2 hover:text-foreground transition-colors"
+                            >
+                                Clear
+                            </button>
+                        </p>
+                    )}
 
                     {resyncError && (
                         <Alert variant="destructive">
