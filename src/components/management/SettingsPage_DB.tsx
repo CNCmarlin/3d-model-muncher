@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
+import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, FolderOpen, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
 import React, { Suspense } from 'react';
 // Sub-components
 import { MigrationStatus_DB } from '@/components/admin/MigrationStatus_DB';
@@ -14,6 +14,7 @@ import { CollectionsSettings_DB } from '@/components/settings/CollectionsSetting
 import { GeneralSettings_DB } from '@/components/settings/GeneralSettings_DB';
 import { IntegrationsSettings_DB } from '@/components/settings/IntegrationsSettings_DB';
 import { IntegritySettings_DB } from '@/components/settings/IntegritySettings_DB';
+import { ModelFilesSettings_DB } from '@/components/settings/ModelFilesSettings_DB';
 import { TagsTab_DB } from '@/components/settings/TagsTab_DB';
 
 // Hooks
@@ -62,11 +63,22 @@ export function SettingsPage_DB({
   onActionHandled
 }: SettingsPageProps) {
   const { setCurrentView: _setCurrentView } = useNavigation();
-  const [selectedTab, setSelectedTab] = React.useState(initialTab || 'general');
+  const SETTINGS_TAB_KEY = 'settings_active_tab';
+  const [selectedTab, setSelectedTab] = React.useState<string>(() => {
+    // Honour explicit initialTab prop first (e.g. deep-linked navigation)
+    // then fall back to the last tab the user had open, then 'general'
+    return initialTab || localStorage.getItem(SETTINGS_TAB_KEY) || 'general';
+  });
+
+  // Keep localStorage in sync whenever the tab changes
+  const handleTabChange = React.useCallback((tab: string) => {
+    setSelectedTab(tab);
+    try { localStorage.setItem(SETTINGS_TAB_KEY, tab); } catch { /* quota full */ }
+  }, []);
 
   React.useEffect(() => {
     if (initialTab) {
-      setSelectedTab(initialTab);
+      handleTabChange(initialTab);
     }
   }, [initialTab]);
 
@@ -168,7 +180,7 @@ export function SettingsPage_DB({
       {/* Settings Tabs Container */}
       <Tabs
         value={selectedTab}
-        onValueChange={setSelectedTab}
+        onValueChange={handleTabChange}
         orientation="vertical"
         className="flex flex-col md:flex-row flex-1 overflow-hidden"
       >
@@ -180,6 +192,9 @@ export function SettingsPage_DB({
             </TabsTrigger>
             <TabsTrigger value="collections" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Boxes className="mr-2 h-4 w-4" /> Collections
+            </TabsTrigger>
+            <TabsTrigger value="model-files" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              <FolderOpen className="mr-2 h-4 w-4" /> Model Files
             </TabsTrigger>
             <TabsTrigger value="categories" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Layers className="mr-2 h-4 w-4" /> Categories
@@ -213,6 +228,7 @@ export function SettingsPage_DB({
           <TabsList className="flex w-max p-2 space-x-1 bg-transparent">
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="collections">Collections</TabsTrigger>
+            <TabsTrigger value="model-files">Model Files</TabsTrigger>
             <TabsTrigger value="categories">Categories</TabsTrigger>
             <TabsTrigger value="tags">Tags</TabsTrigger>
             <TabsTrigger value="backup">Backup</TabsTrigger>
@@ -242,6 +258,10 @@ export function SettingsPage_DB({
               categories={categories}
               models={models}
             />
+          </TabsContent>
+
+          <TabsContent value="model-files" className="space-y-6 mt-0">
+            <ModelFilesSettings_DB />
           </TabsContent>
 
           <TabsContent value="categories" className="space-y-6 mt-0">
