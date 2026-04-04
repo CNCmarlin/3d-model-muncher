@@ -26,6 +26,7 @@ export interface ProjectItem {
     modelId: string;
     quantityDesired: number;
     quantityAssigned: number;
+    colorHex?: string | null;
 
     model?: Model;
 }
@@ -55,7 +56,12 @@ export interface BuildPlateItem {
 
     positionX: number | null;
     positionY: number | null;
-    rotation: number | null;
+    rotationX: number | null;
+    rotationY: number | null;
+    rotationZ: number | null;
+    colorHex?: string | null;
+    createdAt: string;
+    updatedAt: string;
 
     projectItem?: ProjectItem;
 }

@@ -1,11 +1,10 @@
-import { CollectionCard_DB } from '@/components/collections/CollectionCard_DB';
+﻿import { CollectionCard_DB } from '@/components/collections/CollectionCard_DB';
 import { CollectionEditorDialog_DB } from '@/components/collections/CollectionEditorDialog_DB';
 import { CollectionListRow_DB } from '@/components/collections/CollectionListRow_DB';
 import { ImageWithFallback_DB } from "@/components/common/ImageWithFallback_DB";
 import { LayoutControls_DB } from "@/components/layout/LayoutControls_DB";
 import { useLayoutSettings } from "@/components/layout/LayoutSettingsContext_DB";
 import { SelectionModeControls_DB } from '@/components/layout/SelectionModeControls_DB';
-import { ProjectView as ProjectView_DB } from '@/components/management/ProjectView_DB';
 import { ModelCard_DB } from '@/components/models/ModelCard_DB';
 import { Badge } from "@/components/ui/badge";
 import { Button } from '@/components/ui/button';
@@ -102,9 +101,12 @@ export default function CollectionGrid_DB({
     const mode = config?.settings?.collectionMode || 'strict';
     let targetModelIds: string[] = activeCollection?.modelIds || [];
 
-    // NEW: Hoist model folders up!
-    // For any child collection that is a model folder, we want its models to appear here instead!
+    // HOIST: For child collections that are model folders, surface their primary model
+    // into this grid so the user sees a model card (with "N parts" badge) rather than
+    // a collection card. Clicking opens ModelHubView_DB, not the deprecated ProjectView_DB.
     const modelFolderChildren = collections.filter(c => c.parentId === activeCollection?.id && c.isModelFolder);
+    // Build a lookup so we can annotate primary models with collection data for the badge
+    const modelFolderByColId = new Map(modelFolderChildren.map(mfc => [mfc.id, mfc]));
     modelFolderChildren.forEach(mfc => {
       targetModelIds = [...targetModelIds, ...(mfc.modelIds || [])];
     });
@@ -119,10 +121,27 @@ export default function CollectionGrid_DB({
       return [];
     }
 
-    // Legacy: Filter by modelIds array  
+    // Legacy: Filter by modelIds array
     const set = new Set(targetModelIds);
     const filtered = models.filter(m => set.has(m.id));
-    return filtered;
+
+    // Annotate hoisted primary models with collection.isModelFolder + _count.models so
+    // ModelCard_DB can display the "N parts" badge without a separate API call.
+    // model.collection is null by default (includeCollection=false in the models API).
+    return filtered.map(m => {
+      const mfc = m.collectionId ? modelFolderByColId.get(m.collectionId as string) : undefined;
+      if (mfc && (m as any).isMainModel) {
+        return {
+          ...m,
+          collection: {
+            ...((m as any).collection || {}),
+            isModelFolder: true,
+            _count: { models: mfc.modelIds?.length ?? 0 },
+          },
+        };
+      }
+      return m;
+    });
   }, [activeCollection, activeCollection?.modelIds, models, isFiltering, collections, config?.settings?.collectionMode]);
 
   const modelIndexMap = useMemo(() => {
@@ -347,21 +366,10 @@ export default function CollectionGrid_DB({
     return "grid-cols-1 min-[500px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
   }, [showDetailsPanel, getGridClasses]);
 
-  // [PASTE THE INTERCEPT HERE]
-  // If this collection is a PROJECT, show the Project View instead of the Grid
-  if (activeCollection && activeCollection.isModelFolder) {
-    return (
-      <ProjectView_DB
-        collection={activeCollection}
-        models={models}
-        onModelClick={onModelClick}
-        onBack={onBack}
-        onUpdateCollection={() => {
-          onCollectionChanged?.();
-        }}
-      />
-    );
-  }
+  // NOTE: The deprecated ProjectView_DB intercept (if activeCollection.isModelFolder -> render ProjectView)
+  // has been removed. Model folders are accessed exclusively via the hoisted primary model card
+  // which opens ModelHubView_DB. If a user somehow navigates directly into a model folder collection,
+  // they will see the standard grid (showing only the non-hidden primary model).
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">

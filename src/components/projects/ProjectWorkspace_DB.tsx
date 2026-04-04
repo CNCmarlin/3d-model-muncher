@@ -1,8 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
-import { Box, ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from 'lucide-react';
+
+import { Box, ChevronDown, ChevronUp, GripVertical, Minus, Plus, Trash2 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import { useProjectMutations } from '../../hooks/useProjects_db';
-import { BuildPlate, BuildPlateItem, Project, ProjectItem } from '../../types/project';
+import { useGetProjectDetails, useProjectMutations } from '../../hooks/useProjects_db';
+import { BuildPlate, BuildPlateItem, ProjectItem } from '../../types/project';
+// Removed unused dbAdapter
 import { resolveModelThumbnail } from '../../utils/thumbnailUtils_db';
 import { ImageWithFallback } from '../common/ImageWithFallback';
 import { Badge } from '../ui/badge';
@@ -15,21 +16,14 @@ import { PlateSettingsPopover_DB } from './PlateSettingsPopover_DB';
 import { ProjectModelSelector_DB } from './ProjectModelSelector_DB';
 
 // --- COMPONENT ---
-export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onBack: () => void }) {
+export function ProjectWorkspace_DB({ projectId, onBack }: { projectId: string, onBack: () => void }) {
 
-    // Queries
-    const { data: platesData, isLoading: platesLoading } = useQuery<BuildPlate[]>({
-        queryKey: ['buildPlates', project.id],
-        queryFn: async () => {
-            const res = await fetch(`/api/projects/${project.id}/plates`);
-            if (!res.ok) throw new Error('Failed to fetch build plates');
-            const json = await res.json();
-            return json.plates ?? json;
-        }
-    });
-    const plates: BuildPlate[] = platesData || [];
+    const { data: projectData, isLoading: projectLoading } = useGetProjectDetails(projectId);
+    const updatedProject = projectData?.project;
+    const project = updatedProject; // Alias for internal use
+    const plates = updatedProject?.buildPlates || [];
 
-    const { createBuildPlate, assignToPlate, unassignFromPlate, stageItems, deleteBuildPlate } = useProjectMutations();
+    const { createBuildPlate, assignToPlate, unassignFromPlate, stageItems, deleteBuildPlate, updateProjectItemQuantity, updateProjectItemColor } = useProjectMutations();
 
     // State
     const [activePlateId, setActivePlateId] = useState<string | null>(null);
@@ -39,6 +33,7 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
 
     // Dock State
     const [dockMode, setDockMode] = useState<'plates' | 'models'>('plates');
+    const [zoneBMode, setZoneBMode] = useState<'warehouse' | 'parts-list'>('warehouse');
     const [dockExpanded, setDockExpanded] = useState(false);
 
     // --- Derived State ---
@@ -62,8 +57,8 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
     }, [items]);
 
 
-    if (platesLoading) return <div className="p-8 text-center animate-pulse">Loading Workspace...</div>;
-    if (!project) return <div className="p-8 text-center">Project not found</div>;
+    if (projectLoading) return <div className="p-8 text-center animate-pulse">Loading Workspace...</div>;
+    if (!updatedProject) return <div className="p-8 text-center">Project not found</div>;
 
     // --- Handlers ---
 
@@ -85,13 +80,17 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
         try {
             const data = JSON.parse(e.dataTransfer.getData("application/json"));
             if (data.source === 'warehouse' && data.projectItemId) {
-                if (!activePlate) return;
-
-                let sum = 0;
-                activePlate.items?.forEach((item: any) => {
-                    sum += item.projectItem?.model?.fileSize || 0;
+                await assignToPlate.mutateAsync({
+                    plateId: targetPlateId,
+                    projectItemId: data.projectItemId,
+                    projectId: projectId
                 });
-                return sum;
+            } else if (data.source === 'parts-list' && data.projectItemId) {
+                await assignToPlate.mutateAsync({
+                    plateId: targetPlateId,
+                    projectItemId: data.projectItemId,
+                    projectId: projectId
+                });
             }
         } catch (err) {
             console.error(err);
@@ -100,19 +99,19 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
 
     const handleCreatePlate = async () => {
         if (!newPlateName.trim()) return;
-        await createBuildPlate.mutateAsync({ projectId: project.id, name: newPlateName });
+        await createBuildPlate.mutateAsync({ projectId: projectId, name: newPlateName });
         setNewPlateName("");
         setIsNewPlateOpen(false);
     };
 
     const handleAddModels = async (modelIds: string[]) => {
         if (!modelIds.length) return;
-        await stageItems.mutateAsync({ projectId: project.id, modelIds });
+        await stageItems.mutateAsync({ projectId: projectId, modelIds });
     };
 
     // Calculate Active Plate size for performance mitigation
-    const activePlateTotalBytes = activePlate?.items?.reduce((sum, item) => {
-        const primaryFile = item.projectItem?.model?.files?.find((f: any) => f.isPrimary) || item.projectItem?.model?.files?.[0];
+    const activePlateTotalBytes = activePlate?.items?.reduce((sum: number, item: BuildPlateItem) => {
+        const primaryFile = item.projectItem?.model?.files?.find((f) => f.isPrimary) || item.projectItem?.model?.files?.[0];
         const size = primaryFile?.size || 0;
         return sum + (Number(size) * item.quantity);
     }, 0) || 0;
@@ -150,8 +149,8 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                     </>
                                 ) : (
                                     <>
-                                        {project.name}
-                                        <Badge variant="secondary" className="text-xs ml-2 font-normal">{project.status}</Badge>
+                                        {project?.name}
+                                        <Badge variant="secondary" className="text-xs ml-2 font-normal">{project?.status}</Badge>
                                     </>
                                 )}
                             </h2>
@@ -178,7 +177,7 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                     }
 
                                     return activePlateTotalBytes > 0 ? (
-                                        <Badge className={`shadow - sm cursor - help transition - colors ${badgeColor} `} title={warningTooltip}>
+                                        <Badge className={`shadow-sm cursor-help transition-colors ${badgeColor}`} title={warningTooltip}>
                                             {formatBytes(activePlateTotalBytes)}
                                         </Badge>
                                     ) : null;
@@ -186,7 +185,7 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                 <div className="h-4 w-px bg-border mx-1" />
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => {
                                     if (confirm("Delete this plate? Items will return to warehouse.")) {
-                                        deleteBuildPlate.mutate({ plateId: activePlate.id, projectId: project.id });
+                                        deleteBuildPlate.mutate({ plateId: activePlate.id, projectId });
                                         setActivePlateId(null);
                                     }
                                 }}>
@@ -204,7 +203,10 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                 {/* Main Content Area */}
                 <div className="flex-1 flex flex-col bg-muted/10 relative overflow-hidden">
                     {/* Background Layer: 3D Workspace or Empty State */}
-                    <div className="absolute inset-0 z-0">
+                    <div
+                        className="absolute top-0 left-0 right-0 z-0 transition-all duration-300 ease-in-out"
+                        style={{ bottom: dockExpanded ? '66%' : '280px' }}
+                    >
                         {activePlate ? (
                             <div
                                 className="w-full h-full pointer-events-auto"
@@ -226,7 +228,7 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
 
                     {/* Foreground Layer: The Interactive Dock */}
                     <div
-                        className={`absolute bottom - 0 left - 0 right - 0 bg - background / 95 backdrop - blur - md border - t shadow - [0_ - 10px_40px_rgba(0, 0, 0, 0.1)] transition - all duration - 300 ease -in -out z - 10 flex flex - col ${dockExpanded ? 'h-[66%]' : 'h-[240px]'} `}
+                        className={`absolute bottom-0 left-0 right-0 bg-background/95 backdrop-blur-md border-t shadow-[0_-10px_40px_rgba(0,0,0,0.1)] transition-all duration-300 ease-in-out z-20 flex flex-col pb-4 ${dockExpanded ? 'h-[66%]' : 'h-[280px]'}`}
                     >
                         {/* Dock Header & Controls */}
                         <div className="flex justify-between items-center p-3 border-b bg-card/50 shrink-0">
@@ -279,7 +281,7 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                                 <div
                                                     key={p.id}
                                                     onClick={() => { setActivePlateId(p.id); setDockMode('models'); setDockExpanded(false); }}
-                                                    className={`bg - card border - 2 cursor - pointer transition - all rounded - xl flex flex - col group overflow - hidden ${activePlate?.id === p.id ? 'border-primary shadow-md ring-2 ring-primary/20' : 'border-border hover:border-primary/50'} `}
+                                                    className={`bg-card border-2 cursor-pointer transition-all rounded-xl flex flex-col group overflow-hidden ${activePlate?.id === p.id ? 'border-primary shadow-md ring-2 ring-primary/20' : 'border-border hover:border-primary/50'}`}
                                                 >
                                                     <div className="p-3 border-b flex justify-between items-center bg-muted/10 group-hover:bg-primary/5 transition-colors">
                                                         <span className="font-bold text-sm truncate pr-2 group-hover:text-primary transition-colors">{p.name}</span>
@@ -314,29 +316,35 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                         </div>
                                     ) : (
                                         // Collapsed Horizontal View
-                                        <div className="flex gap-4 p-4 pb-4 h-full w-max min-w-full">
+                                        <div
+                                            className="flex gap-4 p-4 h-full w-max min-w-full"
+                                            onWheel={(e) => {
+                                                const container = e.currentTarget.closest('[data-radix-scroll-area-viewport]');
+                                                if (container) container.scrollLeft += e.deltaY;
+                                            }}
+                                        >
                                             {plates.map((p: BuildPlate) => (
                                                 <div
                                                     key={p.id}
                                                     onClick={() => { setActivePlateId(p.id); setDockMode('models'); }}
-                                                    className={`shrink - 0 w - 64 rounded - xl border - 2 transition - all cursor - pointer flex flex - col ${activePlate?.id === p.id ? 'border-primary ring-2 ring-primary/20 shadow-md' : 'border-border hover:border-primary/50 hover:bg-muted/50'} `}
+                                                    className={`shrink-0 w-64 h-full rounded-xl border-2 transition-all cursor-pointer flex flex-col ${activePlate?.id === p.id ? 'border-primary ring-2 ring-primary/20 shadow-md' : 'border-border hover:border-primary/50 hover:bg-muted/50'}`}
                                                 >
                                                     <div className="p-3 border-b bg-card rounded-t-xl flex justify-between items-center">
                                                         <span className="font-semibold text-sm truncate pr-2">{p.name}</span>
                                                         <Badge variant="outline" className="text-[10px] h-5">{p.items?.reduce((acc: number, i: any) => acc + i.quantity, 0) || 0} items</Badge>
                                                     </div>
-                                                    <div className="flex-1 p-2 bg-muted/20 rounded-b-xl flex gap-1 overflow-hidden"
+                                                    <div className="flex-1 p-2 bg-muted/20 rounded-b-xl flex flex-wrap content-start gap-1 overflow-hidden"
                                                         onDragOver={handleDragOver}
                                                         onDrop={(e) => handleDropOnPlate(e, p.id)}
                                                     >
-                                                        {p.items?.slice(0, 4).map((i: any) => i.projectItem?.model && (
-                                                            <div key={i.id} className="h-12 w-12 rounded border bg-background overflow-hidden shrink-0">
+                                                        {p.items?.slice(0, 8).map((i: any) => i.projectItem?.model && (
+                                                            <div key={i.id} className="h-11 w-11 rounded border bg-background overflow-hidden shrink-0">
                                                                 <ImageWithFallback src={resolveModelThumbnail(i.projectItem.model)} className="h-full w-full object-cover" />
                                                             </div>
                                                         ))}
-                                                        {(p.items?.length || 0) > 4 && (
-                                                            <div className="h-12 w-12 rounded border bg-background flex items-center justify-center text-xs font-bold text-muted-foreground">
-                                                                +{p.items!.length - 4}
+                                                        {(p.items?.length || 0) > 8 && (
+                                                            <div className="h-11 w-11 rounded border bg-background flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
+                                                                +{p.items!.length - 8}
                                                             </div>
                                                         )}
                                                         {!p.items?.length && (
@@ -347,7 +355,7 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                             ))}
                                             <div
                                                 onClick={() => setIsNewPlateOpen(true)}
-                                                className="shrink-0 w-48 border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer transition-all rounded-xl flex flex-col items-center justify-center p-4 text-muted-foreground"
+                                                className="shrink-0 w-48 h-full border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer transition-all rounded-xl flex flex-col items-center justify-center p-4 text-muted-foreground"
                                             >
                                                 <Plus className="w-6 h-6 mb-2 opacity-50" />
                                                 <span className="font-medium text-sm">New Plate</span>
@@ -362,8 +370,13 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                             {dockMode === 'models' && activePlate && (
                                 <ScrollArea className="h-full w-full bg-muted/10">
                                     <div
-                                        className={`p - 4 gap - 4 pb - 20 min - h - full ${!activePlate.items?.length ? 'flex items-center justify-center border-2 border-dashed border-primary/20 m-4 rounded-xl bg-muted/30' : ''} ${dockExpanded ? 'grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8' : 'flex w-max min-w-full'} `}
+                                        className={`p-4 gap-4 min-h-full ${!activePlate.items?.length ? 'flex items-center justify-center border-2 border-dashed border-primary/20 m-4 rounded-xl bg-muted/30' : ''} ${dockExpanded ? 'grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 pb-12' : 'flex w-max min-w-full'}`}
                                         onDragOver={handleDragOver}
+                                        onWheel={(e) => {
+                                            if (dockExpanded) return;
+                                            const container = e.currentTarget.closest('[data-radix-scroll-area-viewport]');
+                                            if (container) container.scrollLeft += e.deltaY;
+                                        }}
                                         onDrop={(e) => handleDropOnPlate(e, activePlate.id)}
                                     >
                                         {activePlate.items?.length === 0 ? (
@@ -379,9 +392,9 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                                 return (
                                                     <div
                                                         key={plateItem.id}
-                                                        className={`relative group bg - background border rounded - lg overflow - hidden shadow - sm shrink - 0 ${dockExpanded ? 'w-full' : 'w-32'} `}
+                                                        className={`relative group bg-background border rounded-lg overflow-hidden shadow-sm shrink-0 ${dockExpanded ? 'w-full' : 'w-32'}`}
                                                     >
-                                                        <div className="aspect-square relative">
+                                                        <div className="aspect-square relative flex items-center justify-center bg-muted/10">
                                                             <ImageWithFallback src={resolveModelThumbnail(m)} className="object-cover w-full h-full" />
                                                             {plateItem.quantity > 1 && (
                                                                 <Badge className="absolute top-1 left-1 bg-black/70 text-white">x{plateItem.quantity}</Badge>
@@ -390,12 +403,12 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
                                                                 size="icon"
                                                                 variant="destructive"
                                                                 className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                onClick={() => unassignFromPlate.mutate({ plateItemId: plateItem.id, projectId: project.id })}
+                                                                onClick={() => unassignFromPlate.mutate({ plateItemId: plateItem.id, projectId })}
                                                             >
                                                                 <Trash2 className="w-3 h-3" />
                                                             </Button>
                                                         </div>
-                                                        <div className="p-2 bg-card">
+                                                        <div className="p-2 bg-card border-t">
                                                             <p className="text-xs truncate font-medium" title={m.name}>{m.name}</p>
                                                         </div>
                                                     </div>
@@ -421,61 +434,160 @@ export function ProjectWorkspace_DB({ project, onBack }: { project: Project, onB
             </div>
 
             {/* ZONE B: WAREHOUSE SIDEBAR */}
-            <div className="w-full lg:w-80 bg-card border-t lg:border-t-0 lg:border-l flex flex-col min-h-[500px] shrink-0 shadow-xl z-20">
+            <div className="w-full lg:w-96 bg-card border-t lg:border-t-0 lg:border-l flex flex-col min-h-[500px] shrink-0 shadow-xl z-20">
                 <div className="p-4 border-b bg-muted/10 shrink-0">
                     <h3 className="font-semibold flex justify-between items-center">
-                        Warehouse
+                        Project Assets
                         <Badge variant="secondary">{unassignedItems.reduce((acc: number, i: any) => acc + (i.quantityDesired - i.quantityAssigned), 0)} unassigned</Badge>
                     </h3>
-                    <p className="text-xs text-muted-foreground mt-1">Drag parts from here onto plates.</p>
+                    <div className="flex bg-muted p-1 rounded-lg mt-3">
+                        <Button
+                            variant={zoneBMode === 'warehouse' ? 'default' : 'ghost'}
+                            size="sm"
+                            className="flex-1 h-7 text-xs"
+                            onClick={() => setZoneBMode('warehouse')}
+                        >
+                            Warehouse
+                        </Button>
+                        <Button
+                            variant={zoneBMode === 'parts-list' ? 'default' : 'ghost'}
+                            size="sm"
+                            className="flex-1 h-7 text-xs"
+                            onClick={() => setZoneBMode('parts-list')}
+                        >
+                            Parts List
+                        </Button>
+                    </div>
                 </div>
 
-                <div className="p-2 border-b shrink-0">
-                    <Button variant="outline" size="sm" className="w-full text-xs items-center gap-2" onClick={() => setIsModelSelectorOpen(true)}>
-                        <Plus className="w-3 h-3" /> Add Parts from Library
-                    </Button>
-                </div>
+                {zoneBMode === 'warehouse' ? (
+                    <>
+                        <div className="p-2 border-b shrink-0 bg-card">
+                            <Button variant="outline" size="sm" className="w-full text-xs items-center gap-2" onClick={() => setIsModelSelectorOpen(true)}>
+                                <Plus className="w-3 h-3" /> Add Parts from Library
+                            </Button>
+                        </div>
 
-                <ScrollArea className="flex-1 p-3 bg-muted/5">
-                    <div className="grid grid-cols-2 gap-3 pb-20">
-                        {unassignedItems.map((item: ProjectItem) => {
-                            const m = item.model;
-                            if (!m) return null;
-                            const qty = item.quantityDesired - item.quantityAssigned;
+                        <ScrollArea className="flex-1 p-3 bg-muted/5">
+                            <div className="grid grid-cols-2 gap-3 pb-20">
+                                {unassignedItems.map((item: ProjectItem) => {
+                                    const m = item.model;
+                                    if (!m) return null;
+                                    const qty = item.quantityDesired - item.quantityAssigned;
 
-                            return (
-                                <div
-                                    key={item.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, item.id)}
-                                    className="group relative bg-background border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/50 transition-all cursor-grab active:cursor-grabbing"
-                                >
-                                    <div className="aspect-square relative">
-                                        <ImageWithFallback src={resolveModelThumbnail(m)} className="object-cover w-full h-full" />
-                                        <Badge variant="default" className="absolute top-1 right-1 font-mono text-[10px] h-4 min-w-[16px] p-0 flex items-center justify-center shadow-sm">
-                                            {qty}
-                                        </Badge>
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, item.id)}
+                                            className="group relative bg-background border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/50 transition-all cursor-grab active:cursor-grabbing"
+                                        >
+                                            <div className="aspect-square relative flex items-center justify-center bg-muted/10">
+                                                <ImageWithFallback src={resolveModelThumbnail(m)} className="object-cover w-full h-full" />
+                                                <Badge variant="default" className="absolute top-1 right-1 font-mono text-[10px] h-4 min-w-[16px] p-0 flex items-center justify-center shadow-sm">
+                                                    {qty}
+                                                </Badge>
 
-                                        {/* Drag Overlay Affordance */}
-                                        <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none">
-                                            <div className="bg-background/90 text-primary px-2 py-1 rounded-full shadow-lg flex items-center gap-1 text-[10px] font-bold">
-                                                <GripVertical className="w-3 h-3" /> DRAG
+                                                {/* Drag Overlay Affordance */}
+                                                <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none">
+                                                    <div className="bg-background/90 text-primary px-2 py-1 rounded-full shadow-lg flex items-center gap-1 text-[10px] font-bold">
+                                                        <GripVertical className="w-3 h-3" /> DRAG
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="p-1.5 px-2 bg-card border-t">
+                                                <p className="text-xs truncate font-medium" title={m.name}>{m.name}</p>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="p-1.5 px-2 bg-card">
-                                        <p className="text-xs truncate font-medium" title={m.name}>{m.name}</p>
-                                    </div>
+                                    );
+                                })}
+                            </div>
+                            {unassignedItems.length === 0 && (
+                                <div className="text-center py-12 text-muted-foreground text-sm px-4">
+                                    All parts are assigned to plates! Add more from the library.
                                 </div>
-                            );
-                        })}
-                    </div>
-                    {unassignedItems.length === 0 && (
-                        <div className="text-center py-12 text-muted-foreground text-sm px-4">
-                            All parts are assigned to plates! Add more from the library.
+                            )}
+                        </ScrollArea>
+                    </>
+                ) : (
+                    <ScrollArea className="flex-1 p-3 bg-muted/5">
+                        <div className="flex flex-col gap-3 pb-20">
+                            {!items?.length ? (
+                                <div className="text-center py-12 text-muted-foreground text-sm px-4">
+                                    Empty Parts List. Add parts from the Library to begin.
+                                </div>
+                            ) : (
+                                items.map((projectItem: ProjectItem) => {
+                                    const m = projectItem.model;
+                                    if (!m) return null;
+                                    const qtyDesired = projectItem.quantityDesired;
+                                    const qtyAssigned = projectItem.quantityAssigned;
+                                    const isWarning = qtyDesired !== qtyAssigned;
+
+                                    return (
+                                        <div
+                                            key={projectItem.id}
+                                            draggable={qtyDesired > qtyAssigned}
+                                            onDragStart={(e) => {
+                                                e.dataTransfer.setData("application/json", JSON.stringify({ projectItemId: projectItem.id, source: 'parts-list' }));
+                                                e.dataTransfer.effectAllowed = 'copy';
+                                            }}
+                                            className={`relative group bg-background border transition-all rounded-lg overflow-hidden shrink-0 flex items-stretch h-24 ${isWarning ? 'border-yellow-500 shadow-yellow-500/20 shadow-sm ring-1 ring-yellow-500' : 'border-border'}`}
+                                        >
+                                            <div className="w-24 shrink-0 relative flex items-center justify-center bg-muted/10 border-r">
+                                                <ImageWithFallback src={resolveModelThumbnail(m)} className="object-cover w-full h-full" />
+
+                                                <div className="absolute top-1 left-1 flex flex-col gap-1 transition-opacity">
+                                                    <div className="relative">
+                                                        <div className="w-6 h-6 rounded border shadow-sm cursor-pointer bg-background overflow-hidden relative" title="Global Part Color">
+                                                            <input
+                                                                type="color"
+                                                                value={projectItem.colorHex || '#6366f1'}
+                                                                onChange={(e) => updateProjectItemColor.mutate({ projectItemId: projectItem.id, colorHex: e.target.value, projectId: projectId })}
+                                                                className="absolute -top-2 -left-2 w-10 h-10 p-0 cursor-pointer border-0"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                {isWarning && (
+                                                    <div className="absolute bottom-1 right-1 text-[10px] font-bold bg-yellow-500 text-yellow-950 px-1 py-0 rounded shadow pointer-events-none" title={`${Math.abs(qtyDesired - qtyAssigned)} items mismatch`}>
+                                                        !
+                                                    </div>
+                                                )}
+
+                                                {qtyDesired > qtyAssigned && (
+                                                    <div className="absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity pointer-events-none">
+                                                        <div className="bg-background/90 text-primary p-1 rounded-full shadow-lg flex items-center">
+                                                            <GripVertical className="w-4 h-4" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="p-2 bg-card flex flex-col justify-between flex-1 min-w-0">
+                                                <p className="text-sm truncate font-medium" title={m.name}>{m.name}</p>
+
+                                                <div className="flex items-end justify-between">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="text-[10px] text-muted-foreground uppercase font-bold">Placed</span>
+                                                        <span className={`text-sm ${isWarning ? 'text-yellow-600 font-bold dark:text-yellow-500' : ''}`}>{qtyAssigned}</span>
+                                                    </div>
+                                                    <div className="flex flex-col gap-0.5 items-end">
+                                                        <span className="text-[10px] text-muted-foreground uppercase font-bold">Desired</span>
+                                                        <div className="flex items-center gap-1 border rounded bg-background">
+                                                            <Button variant="ghost" className="h-6 w-6 p-0 shrink-0" onClick={() => updateProjectItemQuantity.mutate({ projectItemId: projectItem.id, quantityDesired: Math.max(0, qtyDesired - 1), projectId: projectId })}><Minus className="w-3 h-3" /></Button>
+                                                            <span className="text-xs font-mono font-bold w-6 text-center">{qtyDesired}</span>
+                                                            <Button variant="ghost" className="h-6 w-6 p-0 shrink-0" onClick={() => updateProjectItemQuantity.mutate({ projectItemId: projectItem.id, quantityDesired: qtyDesired + 1, projectId: projectId })}><Plus className="w-3 h-3" /></Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
                         </div>
-                    )}
-                </ScrollArea>
+                    </ScrollArea>
+                )}
             </div>
 
             {/* Modals */}

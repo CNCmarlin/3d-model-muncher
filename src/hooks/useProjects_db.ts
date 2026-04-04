@@ -159,6 +159,87 @@ export function useProjectMutations() {
         }
     });
 
+    const updatePlateItemTransforms = useMutation({
+        mutationFn: async ({ plateId, transforms }: { plateId: string; transforms: { id: string; positionX: number; positionY: number; rotationX: number; rotationY: number; rotationZ: number }[], projectId?: string }) => {
+            const res = await fetch(`/api/plates/${plateId}/transforms`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ transforms })
+            });
+            if (!res.ok) throw new Error('Failed to update transforms');
+            return res.json();
+        },
+        onSuccess: (_, variables) => {
+            if (variables.projectId) {
+                // Background update without aggressive toast to not spam the user during dragging
+                queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] });
+            }
+        }
+    });
+
+    // --- Phase 5: Parts List & Colors ---
+
+    const clonePlateItem = useMutation({
+        mutationFn: async ({ plateItemId }: { plateItemId: string; projectId: string }) => {
+            const res = await fetch(`/api/plate-items/${plateItemId}/clone`, { method: 'POST' });
+            if (!res.ok) throw new Error('Failed to clone item');
+            return res.json();
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] });
+            toast.success("Item cloned");
+        },
+        onError: (err) => toast.error(err.message)
+    });
+
+    const updatePlateItemColor = useMutation({
+        mutationFn: async ({ plateItemId, colorHex }: { plateItemId: string; colorHex: string | null; projectId: string }) => {
+            const res = await fetch(`/api/plate-items/${plateItemId}/color`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colorHex })
+            });
+            if (!res.ok) throw new Error('Failed to update item color');
+            return res.json();
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] });
+        },
+        onError: (err) => toast.error(err.message)
+    });
+
+    const updateProjectItemColor = useMutation({
+        mutationFn: async ({ projectItemId, colorHex }: { projectItemId: string; colorHex: string | null; projectId: string }) => {
+            const res = await fetch(`/api/project-items/${projectItemId}/color`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ colorHex })
+            });
+            if (!res.ok) throw new Error('Failed to update project item color');
+            return res.json();
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] });
+        },
+        onError: (err) => toast.error(err.message)
+    });
+
+    const updateProjectItemQuantity = useMutation({
+        mutationFn: async ({ projectItemId, quantityDesired }: { projectItemId: string; quantityDesired: number; projectId: string }) => {
+            const res = await fetch(`/api/project-items/${projectItemId}/quantity`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quantityDesired })
+            });
+            if (!res.ok) throw new Error('Failed to update quantity');
+            return res.json();
+        },
+        onSuccess: (_, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['projects', variables.projectId] });
+        },
+        onError: (err) => toast.error(err.message)
+    });
+
     return {
         createProject,
         deleteProject,
@@ -167,6 +248,11 @@ export function useProjectMutations() {
         deleteBuildPlate,
         stageItems,
         assignToPlate,
-        unassignFromPlate
+        unassignFromPlate,
+        updatePlateItemTransforms,
+        clonePlateItem,
+        updatePlateItemColor,
+        updateProjectItemColor,
+        updateProjectItemQuantity
     };
 }
