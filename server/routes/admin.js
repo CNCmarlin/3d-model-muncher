@@ -1227,5 +1227,14 @@ router.post('/cancel-thumbnails', (req, res) => {
     }
     res.json({ success: false, message: 'No active job' });
 });
+// POST /api/admin/restart
+// Terminates the Node process. Relying on PM2 or Docker (restart: unless-stopped) to automatically reboot it.
+router.post('/restart', (req, res) => {
+    console.log('[Legacy Admin] Restart requested via API.');
+    res.json({ success: true, message: 'Server is restarting...' });
+    setTimeout(() => {
+        process.exit(0);
+    }, 100);
+});
 
 module.exports = router;

@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, 'skip ci')"
     env:
+      # Force Node.js 24 for all actions to fix deprecation warnings
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       REGISTRY: docker.io
       IMAGE_NAME: 3d-model-muncher
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}

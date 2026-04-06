@@ -9,6 +9,8 @@ on:
     branches: [ "main" ]
 
 env:
+  # Force Node.js 24 for all actions to fix deprecation warnings
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Use GitHub Container Registry
   REGISTRY: ghcr.io
   # automatically uses your-username/repo-name
