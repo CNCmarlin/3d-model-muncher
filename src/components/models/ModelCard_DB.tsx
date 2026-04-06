@@ -58,19 +58,15 @@ export function ModelCard_DB({
 
   const VALID_3D_FILE = /\.(stl|3mf|obj)$/i;
 
-  // Signal 1 – annotated collection (ModelGrid_DB / CollectionGrid_DB inject this)
-  const annotatedCol = (model as any).collection;
-  const countFromCollection =
-    annotatedCol?.isModelFolder && (annotatedCol._count?.models ?? 0) > 1
-      ? (annotatedCol._count.models as number)
-      : 0;
-
-  // Signal 2 – cross-linked related files (set by conversion on ANY path)
-  const relatedFilesList = model.relatedFiles ?? [];
+  // Signal 1 – cross-linked related files (set by conversion on ANY path)
+  // We strictly filter for 3D model extensions so .gcode and docs aren't counted
+  const relatedFilesList = (model.relatedFiles ?? []).filter((f: any) =>
+    VALID_3D_FILE.test(f.path || f.fileName || ''),
+  );
   const countFromRelatedFiles =
     relatedFilesList.length > 0 ? relatedFilesList.length + 1 : 0;
 
-  // Signal 3 – multiple viewable 3D files on this model record
+  // Signal 2 – multiple viewable 3D files on this model record
   //            (covers Thingiverse imports, manual multi-file uploads)
   const viewable3DFiles = (model.files ?? []).filter((f: any) =>
     VALID_3D_FILE.test(f.fileName || f.filePath || ''),
@@ -80,11 +76,10 @@ export function ModelCard_DB({
   // Resolve final state
   const isModelFolderPrimary =
     !!(model as any).isMainModel ||
-    relatedFilesList.length > 0 ||
+    countFromRelatedFiles > 0 ||
     countFromFiles > 0;
 
-  const folderComponentCount =
-    countFromCollection || countFromRelatedFiles || countFromFiles;
+  const folderComponentCount = countFromRelatedFiles || countFromFiles;
 
   // ─── DB-First 3D URL Resolution ───────────────────────────────────────────
   // Priority:
