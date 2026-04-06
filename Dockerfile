@@ -62,6 +62,12 @@ COPY --from=builder /app/public ./public
 # Copy configuration files if they exist
 COPY --from=builder /app/src/config ./src/config
 
+# Copy prisma schema so client can be generated and pushed
+COPY --from=builder /app/prisma ./prisma
+
+# Generate Prisma Client (needed because npm ci --only=production doesn't generate it if there's no preinstall script)
+RUN npx prisma generate
+
 # Create models directory
 RUN mkdir -p models
 
@@ -69,4 +75,4 @@ RUN mkdir -p models
 EXPOSE 3001
 
 # Start the server
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "npx prisma db push && node server.js"]

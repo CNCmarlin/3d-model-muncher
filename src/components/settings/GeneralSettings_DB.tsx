@@ -13,7 +13,17 @@ import { AppConfig } from '@/types/config';
 import { Model } from '@/types/model_db';
 import { ConfigManager } from '@/utils/configManager';
 import { applyThemeColor } from '@/utils/themeUtils';
-import { Box, Download, Edit2, Eye, Loader2, Save, Trash2, X } from 'lucide-react';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Box, Download, Edit2, Eye, Loader2, Save, Trash2, X, RefreshCw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -87,6 +97,22 @@ export function GeneralSettings_DB({
         withoutOtherImages: number;
     } | null>(null);
     const [showPurgeDialog, setShowPurgeDialog] = useState(false);
+    const [showDbWarning, setShowDbWarning] = useState(false);
+    const [restarting, setRestarting] = useState(false);
+
+    const handleRestartServer = async () => {
+        try {
+            setRestarting(true);
+            toast.info('Restarting backend server...');
+            await fetch('/api/admin/restart', { method: 'POST' });
+            setTimeout(() => {
+                window.location.reload();
+            }, 3000);
+        } catch (e) {
+            toast.error('Failed to trigger restart.');
+            setRestarting(false);
+        }
+    };
     const [isScanning, setIsScanning] = useState(false);
     const [skipNoImages, setSkipNoImages] = useState(true); // default: protect models with no fallback
     const [only3mf, setOnly3mf] = useState(false); // New: Target only 3MF thumbnails
@@ -453,33 +479,79 @@ export function GeneralSettings_DB({
                         </div>
 
                         {/* Database Backend Toggle */}
-                        <div className="flex items-center justify-between border-l-4 border-yellow-500 pl-4 bg-yellow-50 dark:bg-yellow-950/20 p-4 rounded-r-md">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    <Label htmlFor="database-backend">Database Backend</Label>
-                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${localConfig.settings?.useDatabaseBackend
-                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                        : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
-                                        }`}>
-                                        {localConfig.settings?.useDatabaseBackend ? 'Database Mode' : 'Legacy Mode'}
-                                    </span>
+                        <div className="flex flex-col border-l-4 border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20 rounded-r-md overflow-hidden">
+                            <div className="flex items-center justify-between p-4">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <Label htmlFor="database-backend">Database Backend</Label>
+                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${localConfig.settings?.useDatabaseBackend
+                                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                            : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                            }`}>
+                                            {localConfig.settings?.useDatabaseBackend ? 'Database Mode' : 'Legacy Mode'}
+                                        </span>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                        Use new Prisma database backend (Phase 3+)
+                                    </p>
+                                    <p className="text-xs text-yellow-700 dark:text-yellow-400 font-medium">
+                                        ⚠️ Experimental - Requires server restart to take effect
+                                    </p>
                                 </div>
-                                <p className="text-sm text-muted-foreground">
-                                    Use new Prisma database backend (Phase 3+)
-                                </p>
-                                <p className="text-xs text-yellow-700 dark:text-yellow-400 font-medium">
-                                    ⚠️ Experimental - Requires server restart to take effect
-                                </p>
+                                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4">
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={handleRestartServer}
+                                        disabled={restarting}
+                                        className="h-8 shadow-sm flex items-center gap-2 border-yellow-300 dark:border-yellow-700/50 hover:bg-yellow-100 text-yellow-800 dark:text-yellow-300 dark:hover:bg-yellow-900/50"
+                                    >
+                                        <RefreshCw className={`h-3 w-3 ${restarting ? 'animate-spin' : ''}`} />
+                                        Restart Server
+                                    </Button>
+                                    <Switch
+                                        id="database-backend"
+                                        checked={localConfig.settings?.useDatabaseBackend ?? false}
+                                        onCheckedChange={(checked) => {
+                                            if (checked) {
+                                                setShowDbWarning(true);
+                                            } else {
+                                                handleConfigFieldChange('settings.useDatabaseBackend', false);
+                                                toast.info('Reverted to Legacy Mode. Restart server to apply.');
+                                            }
+                                        }}
+                                    />
+                                </div>
                             </div>
-                            <Switch
-                                id="database-backend"
-                                checked={localConfig.settings?.useDatabaseBackend ?? false}
-                                onCheckedChange={(checked) => {
-                                    handleConfigFieldChange('settings.useDatabaseBackend', checked);
-                                    toast.info('Database mode updated. Restart server to apply changes.');
-                                }}
-                            />
                         </div>
+
+                        {/* DB Migration Warning Dialog */}
+                        <AlertDialog open={showDbWarning} onOpenChange={setShowDbWarning}>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Enable Database Mode?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        <strong>Wait! Have you run the DB Migration tool?</strong>
+                                        <br /><br />
+                                        Enabling this mode without first executing the migration in the <em>Migration</em> tab will result in an empty library that lacks your models and collections.
+                                        <br /><br />
+                                        <em>Note: When you click "Restart Server", your Node environment (e.g. Unraid, Docker, PM2) must be configured with "restart: always" or "unless-stopped" to automatically boot back up. Otherwise, you will need to manually start it in the terminal.</em>
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                        className="bg-blue-600 hover:bg-blue-700"
+                                        onClick={() => {
+                                            handleConfigFieldChange('settings.useDatabaseBackend', true);
+                                            toast.success('Database mode enabled. Please restart server.');
+                                        }}
+                                    >
+                                        I have migrated, Enable
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
                     </div>
                 </CardContent>
             </Card>

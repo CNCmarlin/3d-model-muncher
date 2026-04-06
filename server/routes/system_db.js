@@ -308,5 +308,77 @@ router.get('/printer/job-status', async (req, res) => {
 });
 
 
+// --- Auto-Backup (Safe Restore) Routes (Moved from admin_db.js for Legacy Parity) ---
+
+// GET /api/admin/db-safe-restores
+// Lists all available safeRestore.bak.X files returning metadata so we can show them in UI
+router.get('/admin/db-safe-restores', async (req, res) => {
+    try {
+        const prismaDir = path.join(process.cwd(), 'prisma');
+        const files = fs.readdirSync(prismaDir).filter(f => f.startsWith('safeRestore.bak.'));
+
+        const backups = files.map(file => {
+            const stat = fs.statSync(path.join(prismaDir, file));
+            return {
+                name: file,
+                size: stat.size,
+                timestamp: stat.mtime.toISOString(),
+            };
+        }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        res.json({ success: true, backups });
+    } catch (e) {
+        console.error('Error listing DB safe restores:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/admin/db-safe-restore/:filename
+// Overwrites dev.db with the selected backup and cleans up WAL/SHM files
+router.post('/admin/db-safe-restore/:filename', async (req, res) => {
+    const filename = req.params.filename;
+    // Basic security check to prevent directory traversal
+    if (!filename.match(/^safeRestore\.bak\.[1-9]$/)) {
+        return res.status(400).json({ success: false, error: 'Invalid backup filename.' });
+    }
+
+    try {
+        const prismaDir = path.join(process.cwd(), 'prisma');
+        const sourceFile = path.join(prismaDir, filename);
+        const targetDb = path.join(prismaDir, 'dev.db');
+
+        if (!fs.existsSync(sourceFile)) {
+            return res.status(404).json({ success: false, error: 'Backup file not found.' });
+        }
+
+        console.log(`[DB Admin] Starting safe restore from ${filename}...`);
+
+        // Safely disconnect Prisma to release file locks
+        const prisma = require('../../server-utils/db');
+        await prisma.$disconnect();
+
+        // Perform the copy
+        fs.copyFileSync(sourceFile, targetDb);
+
+        // Clean up write-ahead logs to avoid corruption across completely swapped DB states
+        const shmPath = path.join(prismaDir, 'dev.db-shm');
+        const walPath = path.join(prismaDir, 'dev.db-wal');
+        if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+        if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
+
+        console.log(`[DB Admin] Safe restore from ${filename} complete. Restarting process to ensure clean Prisma connection.`);
+
+        res.json({ success: true, message: 'Database restored successfully! The server is restarting.' });
+
+        // Give the response 100ms to send before we kill the process to allow the manager (pm2/nodemon) to boot us back up
+        setTimeout(() => {
+            process.exit(0);
+        }, 100);
+
+    } catch (e) {
+        console.error(`[DB Admin] Safe restore error:`, e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
 
 module.exports = router;
