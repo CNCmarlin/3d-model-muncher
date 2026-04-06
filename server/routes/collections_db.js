@@ -738,17 +738,11 @@ router.post('/collections/:id/revert-to-collection', async (req, res) => {
             }),
         ]);
 
-        // ── 4. Non-blocking micro-heal ─────────────────────────────────────────
-        try {
-            const healResp = await fetch(`http://localhost:${process.env.PORT || 3001}/api/admin/library-heal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ targetPath: sharedRelativePath })
-            });
-            if (healResp.ok) console.log('[Revert] Micro-heal triggered for:', sharedRelativePath);
-        } catch (healErr) {
-            console.warn('[Revert] Micro-heal failed (non-fatal):', healErr.message);
-        }
+        // NOTE: Micro-heal intentionally NOT called here.
+        // Same reason as convert-to-model-folder: the heal treats the folder as a
+        // single-model directory and would re-crosslink all sibling thumbnails to every
+        // model (adding source='thumbnail' records), corrupting per-model thumbnail display.
+        // After revert, each model already has its own correct thumbnailPath in the DB.
 
         console.log(`[Revert] "${collection.name}" → cloud collection. Restored ${allModelIds.length} models.`);
         return res.json({ success: true, restoredModelCount: allModelIds.length });
