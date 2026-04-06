@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.3.1...v1.3.2) (2026-04-06)
+
+
+### Bug Fixes
+
+* resolve database initialization and secure persistent volume ([19b2977](https://github.com/CNCmarlin/3d-model-muncher/commit/19b297776b0fcf54a2783577ea389d7e241ea8c7))
+
 ## [1.3.1](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.3.0...v1.3.1) (2026-04-06)
 
 
