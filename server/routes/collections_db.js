@@ -675,11 +675,11 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
             modelUrl: m.modelUrl
         }));
 
-        console.log(`[Convert] "${collection.name}" → model folder. Primary: ${primaryFilename}, crosslinked: ${allDocPaths.size + allImagePaths.size}, demoted: ${secondaryIds.length}, missing thumbs: ${missingThumbs.length}`);
+        console.log(`[Convert] "${collection.name}" → model folder. Primary: ${primaryFilename}, crosslinked: ${allModelPaths.size + allImagePaths.size}, demoted: ${secondaryIds.length}, missing thumbs: ${missingThumbs.length}`);
         return res.json({
             success: true,
             primaryModel: primaryFilename,
-            mergedFileCount: allDocPaths.size + allImagePaths.size,
+            mergedFileCount: allModelPaths.size + allImagePaths.size,
             secondaryDemotedCount: secondaryIds.length,
             missingThumbnails: missingThumbs
         });

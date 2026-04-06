@@ -213,7 +213,7 @@ export const RelatedFilesSection_DB = ({
             if (path === currentModel.filePath) return;
 
             const ext = path.split('.').pop()?.toLowerCase() || '';
-            if (['stl', '3mf', 'obj', 'step'].includes(ext)) {
+            if (['stl', '3mf', 'obj'].includes(ext)) {
                 categories.models.push(path);
             } else if (['gcode', 'bgcode'].includes(ext)) {
                 categories.gcode.push(path);
