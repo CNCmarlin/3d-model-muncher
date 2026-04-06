@@ -9,9 +9,9 @@ const baseDb = globalForPrisma.prisma || new PrismaClient({
     log: ['error', 'warn'], // 'query' can be noisy, enable if needed
 });
 
-// Calculate path to standard dev.db defined in .env
+// Calculate path to standard modellibrary.db defined in .env
 // We do this relative to the process working dir since sqlite is generated in prisma/
-const defaultDbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+const defaultDbPath = path.join(process.cwd(), 'prisma', 'modellibrary.db');
 
 // Inject our Auto-Backup Middleware
 const db = baseDb.$extends({
