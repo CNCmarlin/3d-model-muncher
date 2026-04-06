@@ -46,19 +46,45 @@ export function ModelCard_DB({
 
   const showBadge = config?.settings?.showPrintedBadge !== false;
 
-  // Model folder: this model is the primary of a folder if isMainModel=true.
-  // Count comes from the grid annotation (injected by ModelGrid_DB / CollectionGrid_DB)
-  // when the folder collection still exists ("Keep Collection" path).
-  // For the "Remove Collection" path the collection is gone, so we show the badge
-  // without a count — the isMainModel flag itself is always reliable.
-  const isModelFolderPrimary = !!(model as any).isMainModel;
-  const folderComponentCount = (() => {
-    if (!isModelFolderPrimary) return 0;
-    const col = (model as any).collection;
-    if (!col?.isModelFolder) return 0;
-    const total = col._count?.models ?? 0;
-    return total > 1 ? total : 0;
-  })();
+  // ── Model Folder Badge ─────────────────────────────────────────────────────
+  // Badge is "database-wide": any model that is a compound / multi-file model
+  // should show it, regardless of how it was created.
+  //
+  // Signal priority (first match wins for the count):
+  //   1. isMainModel + annotated collection  → "N parts" (Keep Collection path)
+  //   2. isMainModel + relatedFiles          → "N parts" (Remove Collection path)
+  //   3. Multiple viewable 3D files          → "N parts" (Thingiverse / upload)
+  //   4. isMainModel alone                   → "Model Folder" (no count available)
+
+  const VALID_3D_FILE = /\.(stl|3mf|obj)$/i;
+
+  // Signal 1 – annotated collection (ModelGrid_DB / CollectionGrid_DB inject this)
+  const annotatedCol = (model as any).collection;
+  const countFromCollection =
+    annotatedCol?.isModelFolder && (annotatedCol._count?.models ?? 0) > 1
+      ? (annotatedCol._count.models as number)
+      : 0;
+
+  // Signal 2 – cross-linked related files (set by conversion on ANY path)
+  const relatedFilesList = model.relatedFiles ?? [];
+  const countFromRelatedFiles =
+    relatedFilesList.length > 0 ? relatedFilesList.length + 1 : 0;
+
+  // Signal 3 – multiple viewable 3D files on this model record
+  //            (covers Thingiverse imports, manual multi-file uploads)
+  const viewable3DFiles = (model.files ?? []).filter((f: any) =>
+    VALID_3D_FILE.test(f.fileName || f.filePath || ''),
+  );
+  const countFromFiles = viewable3DFiles.length > 1 ? viewable3DFiles.length : 0;
+
+  // Resolve final state
+  const isModelFolderPrimary =
+    !!(model as any).isMainModel ||
+    relatedFilesList.length > 0 ||
+    countFromFiles > 0;
+
+  const folderComponentCount =
+    countFromCollection || countFromRelatedFiles || countFromFiles;
 
   // ─── DB-First 3D URL Resolution ───────────────────────────────────────────
   // Priority:
