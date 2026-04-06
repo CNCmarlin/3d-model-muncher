@@ -619,10 +619,10 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
             // Move ALL models (primary + components) to the parent collection, then
             // delete the original collection wrapper.
             await prisma.$transaction([
-                // Rename primary to the collection name (preserves user's meaningful label)
+                // Rename primary to the collection name (preserves user's meaningful label), hide it from root
                 prisma.model.update({
                     where: { id: primaryModelId },
-                    data: { name: collection.name, isMainModel: true, isHidden: false, isComponent: false, collectionId: collection.parentId }
+                    data: { name: collection.name, isMainModel: true, isHidden: true, isComponent: false, collectionId: collection.parentId }
                 }),
                 // Move + demote all secondaries to parent collection
                 ...(secondaryIds.length > 0 ? [prisma.model.updateMany({
@@ -636,10 +636,10 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
             // ─── "Keep collection" path (default) ───────────────────────────────────
             // Models stay inside the collection, which becomes a model folder.
             await prisma.$transaction([
-                // Rename primary to the collection name
+                // Rename primary to the collection name, mark as hidden so it doesn't spill onto Home grid
                 prisma.model.update({
                     where: { id: primaryModelId },
-                    data: { name: collection.name, isMainModel: true, isHidden: false, isComponent: false }
+                    data: { name: collection.name, isMainModel: true, isHidden: true, isComponent: false }
                 }),
                 // Demote secondaries
                 ...(secondaryIds.length > 0 ? [prisma.model.updateMany({
