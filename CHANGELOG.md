@@ -1,3 +1,49 @@
+# [1.3.0](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.2.0...v1.3.0) (2026-04-06)
+
+
+### Bug Fixes
+
+* add missing crypto import for Rehash and Hash Check endpoints ([770b349](https://github.com/CNCmarlin/3d-model-muncher/commit/770b3499b6d129d5dc37f7986e1fcaee9d5195fd))
+* always show model folder badge using isMainModel flag ([1deb4d5](https://github.com/CNCmarlin/3d-model-muncher/commit/1deb4d5c84feb5bf132d301532991ebadbd41a97))
+* config.json modelDirectory now wins over MODELS_PATH env var ([1de931a](https://github.com/CNCmarlin/3d-model-muncher/commit/1de931ae6b6dfa6c859239da8b4c1e49c044a1b9))
+* conversion crosslink only primary model + source tag for precise revert ([1c051f2](https://github.com/CNCmarlin/3d-model-muncher/commit/1c051f267712edc47db96b496e9e29425b8c2f45))
+* duplicate dialog overflow - break-all paths, DialogFooter import, green Keep This ([ab5e8ad](https://github.com/CNCmarlin/3d-model-muncher/commit/ab5e8adb77d64dbdbbb2bc2000855c74806b0a29))
+* edit form reads flat Prisma columns instead of virtual printSettings object ([47e0b4f](https://github.com/CNCmarlin/3d-model-muncher/commit/47e0b4f3f9bda0d63d9144e692cccdca513fc248))
+* extension-aware heal for same-name models (.stl/.3mf) ([1e545ac](https://github.com/CNCmarlin/3d-model-muncher/commit/1e545ac038ec3cedf2fce883e4861b8abbb3cd42))
+* guard config.json modelDirectory with existence check before using it ([e822540](https://github.com/CNCmarlin/3d-model-muncher/commit/e822540ca1259ea48878c2537c5e3c7e99ecc648))
+* hash-check filter isPrimary files only (35k -> 1k records) ([529e94f](https://github.com/CNCmarlin/3d-model-muncher/commit/529e94fa5d6a83201b842fd5e25b7f37a79a8944))
+* hash-check ModelFile schema + orphan link-to-related-files remediation ([9e4bac0](https://github.com/CNCmarlin/3d-model-muncher/commit/9e4bac06811cf44dd41fa42a305cfca66e816b1d))
+* make legacy tag filter resilient to non-array model.tags ([89d9ecf](https://github.com/CNCmarlin/3d-model-muncher/commit/89d9ecf9833d9139f9f82579e4a948c45d18b22a))
+* model folder card badge + deprecated ProjectView_DB removed ([eae4419](https://github.com/CNCmarlin/3d-model-muncher/commit/eae4419c58842424d9d541bc5b06b5afd8762636))
+* model folder thumbnail crosslink corruption + correct thumbnail resolution ([9d297c5](https://github.com/CNCmarlin/3d-model-muncher/commit/9d297c5a64598f441ac27820c50e435e08ed4122))
+* persist active settings tab in localStorage to survive HMR reloads ([9f2b927](https://github.com/CNCmarlin/3d-model-muncher/commit/9f2b927d909c354bc13f1e8b5a2807fc04dd3801))
+* print settings read flat columns, save filters to allowed fields, schema adds isHidden/isComponent ([d86d73a](https://github.com/CNCmarlin/3d-model-muncher/commit/d86d73ae4cca8f42fbf5c89da1c2458070b98a80))
+* recover Camera/C-270 tripod models invisible due to botched model folder conversion ([3c6ddeb](https://github.com/CNCmarlin/3d-model-muncher/commit/3c6ddeb63185ccd3a934dc3075da6d0ae4b74316))
+* remove micro-heal from revert-to-collection route ([ca17e35](https://github.com/CNCmarlin/3d-model-muncher/commit/ca17e354535012b80f2c30cd282121ed1162ef63))
+* resync UI overflow + purge buttons with AlertDialog confirmation ([05c8cea](https://github.com/CNCmarlin/3d-model-muncher/commit/05c8ceaf528cba39a8f737ce23dd329c7311fa5c))
+* set isHidden to true for primary models during conversion to prevent main grid spill ([cb12479](https://github.com/CNCmarlin/3d-model-muncher/commit/cb124797df6fc7a60e9fed24f228f5d02c93282a))
+* stale allDocPaths ref causes 500 + step files go to Source Files tab ([cd6a0b4](https://github.com/CNCmarlin/3d-model-muncher/commit/cd6a0b438d9c0c043289cc544fef8013b765c3c5))
+* strictly filter component count to exclude gcode and documents ([ea9de08](https://github.com/CNCmarlin/3d-model-muncher/commit/ea9de0863a51f649f828784ae7afd62166cf45af))
+
+
+### Features
+
+* file manifest editor UX  grouped by type, toast on verify, trash icon ([701cee8](https://github.com/CNCmarlin/3d-model-muncher/commit/701cee83efc332400323204e0ac6809b6f83befa))
+* hash remediation - fileHash column, rehash endpoint, rehash UI button ([80dcaa3](https://github.com/CNCmarlin/3d-model-muncher/commit/80dcaa3b7f0cd4e934ab49068545430461211617))
+* instant UI update after model folder conversion (no page reload) ([5962664](https://github.com/CNCmarlin/3d-model-muncher/commit/5962664ca8604981cbfcd6e1422ff04a3296dbe0))
+* integrate path normalization into heal service (Step 0) ([825ca9f](https://github.com/CNCmarlin/3d-model-muncher/commit/825ca9f449f2c81107c01f621c4b79c38ca9f676))
+* library resync  DB vs filesystem cross-reference scan with UI ([91888ab](https://github.com/CNCmarlin/3d-model-muncher/commit/91888abc7370172c311a5741efcdaeb5cfa96dcf))
+* make model folder badge database-wide across all import paths ([6087cb4](https://github.com/CNCmarlin/3d-model-muncher/commit/6087cb45d4cab7104bfa886384abd676823ea881))
+* model folder health audit script + fix 3 broken collections ([97d4778](https://github.com/CNCmarlin/3d-model-muncher/commit/97d4778cf3cdecc7693d841b91c4de029da29163))
+* overhaul conversion — crosslink all, keep/remove collection option, rename primary ([7977e42](https://github.com/CNCmarlin/3d-model-muncher/commit/7977e420a77ca307b870b6ba876d176dadcb007e))
+* redesign conversion preview dialog + fix previewFiles duplication ([995095a](https://github.com/CNCmarlin/3d-model-muncher/commit/995095a8e511d7d6cd9bedbf681be2990fcf3cdf))
+* Refine UI for CollectionCard, ModelCard, and Onboarding ([408a595](https://github.com/CNCmarlin/3d-model-muncher/commit/408a59540ee84ad15d7ee1a078a65c01c6888179))
+* restore project workspace functionality and layout ([ab45ad9](https://github.com/CNCmarlin/3d-model-muncher/commit/ab45ad9f5d238f1db59db192df108311624c76ea))
+* resync overhaul tracks 0/3/6/7 - persist scan, soft-delete, drive guard, path normalize script ([ff5af90](https://github.com/CNCmarlin/3d-model-muncher/commit/ff5af90470a6e4de32f633d6ac5bdb797289f851))
+* show model folder 'N parts' badge in main models view ([ff6c6db](https://github.com/CNCmarlin/3d-model-muncher/commit/ff6c6db1cee7d0f6af61a85878e5ce30b5012b67))
+* split AppContent into DB and Legacy branches with lazy loading ([3208775](https://github.com/CNCmarlin/3d-model-muncher/commit/320877532c9a8aaed232b060466feb63d345f239))
+* track 1+2 - ModelFile junk cleanup script and migration engine hardening ([5c0e311](https://github.com/CNCmarlin/3d-model-muncher/commit/5c0e3116a485ec3ddbbfe4e864200f47f994545b))
+
 # [1.2.0](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.1.4...v1.2.0) (2026-02-15)
 
 
