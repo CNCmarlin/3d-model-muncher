@@ -4,6 +4,7 @@ import { useGlobalTagsContext_DB } from "@/components/common/TagsContext_DB";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PluginSlot } from "@/plugins/PluginSlot";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -424,14 +425,7 @@ export function FilterSidebar_DB({
                 <span className="text-sm font-medium">All Models</span>
               </div>
 
-              {/* Project Workspace */}
-              <div
-                className="flex items-center gap-2 py-2 px-2 rounded-md hover:bg-accent cursor-pointer transition-colors text-foreground"
-                onClick={() => onProjectsClick && onProjectsClick()}
-              >
-                <Box className="h-4 w-4 text-primary" />
-                <span className="text-sm font-medium">Project Workspace</span>
-              </div>
+              <PluginSlot name="navigation.primary" context={{ onProjectsClick }} />
             </div>
 
             {/* Collections Accordion */}

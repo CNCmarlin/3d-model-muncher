@@ -134,7 +134,7 @@ class ModelControllerDB {
             const requestedProvider = (req.body && req.body.provider) || process.env.GEMINI_PROVIDER;
             let genaiResult = null;
             try {
-                const adapterPath = path.join(__dirname, '../../server-utils', 'genaiAdapter');
+                const adapterPath = path.join(__dirname, '../plugins/genai', 'genaiAdapter');
                 const adapter = require(adapterPath);
                 genaiResult = await adapter.suggest({ prompt, imageBase64, mimeType, provider: requestedProvider, config: config || {} });
             } catch (e) {

@@ -176,8 +176,8 @@ function getIntegrationRoutes() {
  */
 function getProjectRoutes() {
     if (isDatabaseMode()) {
-        console.log('📊 [RouteSelector] Loading DATABASE project routes (projects_db.js)');
-        return require('../server/routes/projects_db');
+        console.log('📊 [RouteSelector] Loading DATABASE project routes (plugins/projects/projects_db.js)');
+        return require('../server/plugins/projects/projects_db');
     }
     // Fallback for legacy (not fully supported, but prevents crash)
     console.log('📁 [RouteSelector] WARNING: Projects require Database Mode.');

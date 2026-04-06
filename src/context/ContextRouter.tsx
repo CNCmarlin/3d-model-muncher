@@ -6,14 +6,14 @@ import { TagsProvider } from '@/components/common/TagsContext';
 import { ThemeProvider } from '@/components/common/ThemeProvider';
 import { LayoutSettingsProvider } from '@/components/layout/LayoutSettingsContext';
 import { NavigationProvider } from './NavigationContext';
-import { SpoolmanProvider } from './SpoolmanContext';
+import { SpoolmanProvider } from '@/plugins/spoolman/SpoolmanContext';
 
 // DB providers (full independent copies)
 import { TagsProvider_DB } from '@/components/common/TagsContext_DB';
 import { ThemeProvider_DB } from '@/components/common/ThemeProvider_DB';
 import { LayoutSettingsProvider_DB } from '@/components/layout/LayoutSettingsContext_DB';
 import { NavigationProvider_DB } from './NavigationContext_DB';
-import { SpoolmanProvider_DB } from './SpoolmanContext_DB';
+import { SpoolmanProvider_DB } from '@/plugins/spoolman/SpoolmanContext_DB';
 
 /**
  * Frontend ContextRouter

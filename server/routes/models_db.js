@@ -24,6 +24,7 @@ const upload = multer({
 
 // Reuse legacy controller for file-system based operations (gcode parsing)
 const modelController = require('../controllers/legacy/modelController');
+const modelControllerDB = require('../controllers/modelController_db');
 
 // Maintenance controller for file verification
 const maintenanceController = require('../controllers/maintenanceController_db');
@@ -601,6 +602,9 @@ router.get('/models/search', async (req, res) => {
 
 // --- GCode Parse (file-system based, shared with legacy) ---
 router.post('/parse-gcode', upload.single('file'), (req, res) => modelController.parseGcode(req, res));
+
+// --- Gemini Suggest (from GenAI plugin) ---
+router.post('/gemini-suggest', (req, res) => modelControllerDB.suggestModel(req, res));
 
 // --- POST /api/hash-check ---
 // DB-FIRST integrity check: one result per model — verifies the primary file exists on disk.

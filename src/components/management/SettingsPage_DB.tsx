@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, FolderOpen, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
+import { AlertCircle, Archive, ArrowLeft, Blocks, Boxes, Code, FlaskConical, FolderOpen, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
 import React, { Suspense } from 'react';
 // Sub-components
 import { MigrationStatus_DB } from '@/components/admin/MigrationStatus_DB';
@@ -15,6 +15,7 @@ import { GeneralSettings_DB } from '@/components/settings/GeneralSettings_DB';
 import { IntegrationsSettings_DB } from '@/components/settings/IntegrationsSettings_DB';
 import { IntegritySettings_DB } from '@/components/settings/IntegritySettings_DB';
 import { ModelFilesSettings_DB } from '@/components/settings/ModelFilesSettings_DB';
+import { PluginsSettings_DB } from '@/components/settings/PluginsSettings_DB';
 import { TagsTab_DB } from '@/components/settings/TagsTab_DB';
 
 // Hooks
@@ -208,6 +209,9 @@ export function SettingsPage_DB({
             <TabsTrigger value="integrity" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <ShieldCheck className="mr-2 h-4 w-4" /> File Integrity
             </TabsTrigger>
+            <TabsTrigger value="plugins" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
+              <Blocks className="mr-2 h-4 w-4" /> Plugins
+            </TabsTrigger>
             <TabsTrigger value="integrations" className="w-full justify-start px-4 py-3 data-[state=active]:bg-secondary">
               <Plug className="mr-2 h-4 w-4" /> Integrations
             </TabsTrigger>
@@ -233,6 +237,7 @@ export function SettingsPage_DB({
             <TabsTrigger value="tags">Tags</TabsTrigger>
             <TabsTrigger value="backup">Backup</TabsTrigger>
             <TabsTrigger value="integrity">File Integrity</TabsTrigger>
+            <TabsTrigger value="plugins">Plugins</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
             <TabsTrigger value="support">Support</TabsTrigger>
             <TabsTrigger value="experimental">Experimental</TabsTrigger>
@@ -303,6 +308,14 @@ export function SettingsPage_DB({
               {...integrityCheck}
               models={models}
               onModelClick={onModelClick}
+            />
+          </TabsContent>
+
+          <TabsContent value="plugins" className="space-y-6 mt-0">
+            <PluginsSettings_DB
+              config={localConfig}
+              onConfigChange={setLocalConfig}
+              onSave={handleSaveConfig}
             />
           </TabsContent>
 

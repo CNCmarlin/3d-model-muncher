@@ -40,6 +40,13 @@ export interface IntegrationSettings {
   printer?: PrinterConfig;
 }
 
+export interface AppPlugins {
+  genai?: boolean;
+  spoolman?: boolean;
+  projects?: boolean;
+  [key: string]: boolean | undefined;
+}
+
 export interface AppConfig {
   version: string;
   categories: Category[];
@@ -74,6 +81,7 @@ export interface AppConfig {
     defaultSortBy?: string;
   };
   integrations?: IntegrationSettings;
+  plugins?: AppPlugins;
   lastModified: string;
   lastRunTimestamps?: Record<string, string>; // key → ISO date string (e.g. "generateThumbnails" → "2026-02-14T...")
 }

@@ -123,7 +123,9 @@ async function getAllModels(query = {}) {
                 include: { tag: true }
             }
         }),
-        ...(includeCollection && { collection: true }),
+        ...(includeCollection && {
+            collection: { include: { _count: { select: { models: true } } } }
+        }),
         images: { orderBy: { order: 'asc' } }, // Batch 5: Always include images
         relatedFiles: true // Batch 4: Always include related files
     };
@@ -162,7 +164,7 @@ async function getModelById(id) {
             tags: {
                 include: { tag: true }
             },
-            collection: true,
+            collection: { include: { _count: { select: { models: true } } } },
             images: { orderBy: { order: 'asc' } }, // Batch 5
             relatedFiles: true // Batch 4
         }

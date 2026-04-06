@@ -2,7 +2,7 @@ import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { Grid3DViewer } from "@/components/models/Grid3DViewer";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useSpoolman } from '@/context/SpoolmanContext';
+import { useSpoolman } from '@/plugins/spoolman/SpoolmanContext';
 import { AppConfig } from "@/types/config";
 import { Model } from "@/types/model";
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils";

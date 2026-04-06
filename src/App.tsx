@@ -12,15 +12,18 @@ import { Toaster } from "@/components/ui/sonner";
 import { AppConfigProvider } from "@/context/AppConfigContext";
 import { ContextRouter } from "@/context/ContextRouter";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
+import { PluginProvider } from "@/plugins/PluginProvider";
 
 export default function App() {
   return (
     <AppConfigProvider>
       <ContextRouter>
-        <TooltipProvider delayDuration={0}>
-          <AppContentRouter />
-          <Toaster />
-        </TooltipProvider>
+        <PluginProvider>
+          <TooltipProvider delayDuration={0}>
+            <AppContentRouter />
+            <Toaster />
+          </TooltipProvider>
+        </PluginProvider>
       </ContextRouter>
     </AppConfigProvider>
   );
