@@ -80,16 +80,27 @@ function protectModelFileWrite(targetPath) {
 }
 
 // Helper: Get Models Directory
+// Priority order (DB mode — config.json is authoritative IF the path resolves):
+//   1. data/config.json → settings.modelDirectory  (set via UI Settings page)
+//      ONLY used if the resolved path actually exists on disk
+//   2. MODELS_PATH env var                          (Docker / headless fallback)
+//   3. ConfigManager compiled default               (last resort)
 function getModelsDirectory() {
-    if (process.env.MODELS_PATH) return process.env.MODELS_PATH;
     try {
-        const dataDir = path.join(process.cwd(), 'data');
-        const globalPath = path.join(dataDir, 'config.json');
+        const globalPath = path.join(process.cwd(), 'data', 'config.json');
         if (fs.existsSync(globalPath)) {
             const parsed = JSON.parse(fs.readFileSync(globalPath, 'utf8') || '{}');
-            if (parsed?.settings?.modelDirectory) return parsed.settings.modelDirectory;
+            const dir = parsed?.settings?.modelDirectory;
+            if (dir) {
+                // Only use config.json value if the path actually exists on disk.
+                // This prevents a stale test path from silently breaking the whole server.
+                const absDir = path.isAbsolute(dir) ? dir : path.join(process.cwd(), dir);
+                if (fs.existsSync(absDir)) return dir;
+            }
         }
     } catch (e) { }
+    // Fall back to env var (Docker / CI, or when config.json has an invalid path)
+    if (process.env.MODELS_PATH) return process.env.MODELS_PATH;
     const config = ConfigManager.loadConfig();
     return (config.settings && config.settings.modelDirectory) || './models';
 }

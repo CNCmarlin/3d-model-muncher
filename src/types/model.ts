@@ -28,6 +28,7 @@ export interface Model {
   hidden?: boolean;
   isRelatedPart?: boolean;
   isProjectRoot?: boolean;
+  isMainModel?: boolean;
   // List of user-provided related files (relative paths). Example: "prints/part-supports.zip"
   related_files?: string[];
   // Structured user-provided data. The first element is used for user edits such as
@@ -77,6 +78,9 @@ export interface Model {
   // Timestamps added by server: when munchie.json was first created and last modified
   created?: string;
   lastModified?: string;
+
+  // DB Relations
+  files?: { id: string; size: number; isPrimary: boolean; filePath: string; }[];
 }
 
 // Group of duplicate models by hash

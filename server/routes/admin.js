@@ -14,7 +14,7 @@ try {
 }
 
 // --- Helpers ---
-const { hasEmbeddedThumbnail } = require('../../server-utils/thumbnailExtraction');
+const { hasEmbeddedThumbnail, extractEmbeddedThumbnail } = require('../../server-utils/thumbnailExtraction');
 
 function getModelsDirectory() {
     if (process.env.MODELS_PATH) return process.env.MODELS_PATH;
@@ -224,6 +224,19 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 // --- 4. PATH HEALING (STRICT) ---
                 const isExplicitStl = entry.name.toLowerCase().includes('-stl-munchie.json');
 
+                // EXTENSION COLLISION DETECTION: Does a sibling munchie exist for the same baseName
+                // but different extension? e.g. cam_bed-munchie.json AND cam_bed-stl-munchie.json
+                const hasStlSibling = !isExplicitStl && folderMunchies.some(m => {
+                    const siblingName = path.basename(m.path).toLowerCase();
+                    return siblingName.includes('-stl-munchie.json') &&
+                        siblingName.replace(/(-stl)?-munchie\.json$/i, '').toLowerCase() === munchieBaseName.toLowerCase();
+                });
+                const hasNonStlSibling = isExplicitStl && folderMunchies.some(m => {
+                    const siblingName = path.basename(m.path).toLowerCase();
+                    return !siblingName.includes('-stl-munchie.json') &&
+                        siblingName.replace(/-munchie\.json$/i, '').toLowerCase() === munchieBaseName.toLowerCase();
+                });
+
                 // MISMATCH DETECTION: Compare munchie filename to stored filePath.
                 // e.g. "cam_bed-stl-munchie.json" implies model should be "cam_bed.*"
                 // If filePath points to "c270_cam1.stl", that's a mismatch → corrupted.
@@ -249,6 +262,9 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
 
                         // Fix for cam_bed-stl claiming cam_bed.3mf:
                         if (isExplicitStl && !low.endsWith('.stl')) return false;
+
+                        // INVERSE: Non-STL munchie should prefer non-STL files when STL sibling exists
+                        if (hasStlSibling && low.endsWith('.stl')) return false;
 
                         // Match using munchie-derived name (ground truth), not corrupted filePath
                         // AND MUST START WITH NAME
@@ -291,6 +307,29 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                 const currentBaseName = data.filePath
                     ? path.basename(data.filePath, path.extname(data.filePath))
                     : modelBaseName;
+
+                // --- 4a. NAME RECOVERY ---
+                // Fix models stuck with default "New Model" name from createInitialModelMetadata.
+                // Only recover if name is EXACTLY "New Model" — user-customized names are untouched.
+                if (data.name === 'New Model' && data.filePath) {
+                    const recoveredName = currentBaseName;
+                    proposal.modifications.push(`Name recovered: "New Model" → "${recoveredName}" (from filePath)`);
+                    data.name = recoveredName;
+                    hasChanged = true;
+                }
+
+                // --- 4b. NAME DISAMBIGUATION ---
+                // When same baseName exists for multiple extensions (cam_bed.stl + cam_bed.3mf),
+                // disambiguate names to prevent DB migration duplicates.
+                if ((hasStlSibling || hasNonStlSibling) && data.filePath) {
+                    const ext = path.extname(data.filePath).replace('.', '').toUpperCase();
+                    const expectedName = `${currentBaseName} (${ext})`;
+                    if (data.name === currentBaseName) {
+                        proposal.modifications.push(`Name disambiguated: "${data.name}" → "${expectedName}"`);
+                        data.name = expectedName;
+                        hasChanged = true;
+                    }
+                }
 
                 // --- 5. ASSET CLAIMING (SMART) ---
                 siblings.forEach(file => {
@@ -335,8 +374,14 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                         shouldClaim = true;
                     }
 
-                    // Fix for cam_bed-stl claiming cam_bed.3mf-thumb.png:
-                    if (isExplicitStl && lowerFile.includes('.3mf')) {
+                    // Fix for cam_bed-stl claiming cam_bed.3mf-thumb.png or embedded thumbnails:
+                    const modelExt = data.filePath ? path.extname(data.filePath).toLowerCase() : '';
+                    if ((isExplicitStl || modelExt === '.stl') && (lowerFile.includes('.3mf') || lowerFile.includes('-embedded-thumb'))) {
+                        shouldClaim = false;
+                    }
+
+                    // INVERSE: Non-STL munchie shouldn't claim .stl assets when STL sibling exists
+                    if (hasStlSibling && (lowerFile.includes('.stl'))) {
                         shouldClaim = false;
                     }
 
@@ -358,6 +403,57 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                         }
                     }
                 });
+
+                // --- 5.0. 3MF EMBEDDED RESCUE (NEW) ---
+                // If the model is a 3MF, ensure we have the embedded thumbnail extracted.
+                // This handles cases where the scanner didn't populate parsedImages with base64.
+                const modelRelPath = data.filePath || '';
+                if (modelRelPath.toLowerCase().endsWith('.3mf')) {
+                    const absModelPath = path.join(modelsDir, modelRelPath);
+                    if (fs.existsSync(absModelPath)) {
+                        // Use currentBaseName to ensure consistent naming with the rest of the logic
+                        const reliableName = `${currentBaseName}-embedded-thumb.png`;
+                        const embeddedPath = path.join(dir, reliableName);
+
+                        // Check if we track it (either as a file reference or legacy base64)
+                        const hasEmbeddedRef = data.parsedImages.some(img => img.includes('-embedded-thumb') || img.startsWith('data:image'));
+                        const physicalExists = fs.existsSync(embeddedPath); // Check actual disk, not just siblings array
+
+                        if (physicalExists && !hasEmbeddedRef) {
+                            // File already extracted (from a previous heal run) but not tracked — just re-link it
+                            const newRel = path.relative(modelsDir, embeddedPath).replace(/\\/g, '/');
+                            const newUrl = `/models/${newRel}`;
+                            data.parsedImages.push(newUrl);
+                            proposal.additions.push(`${reliableName} (Re-linked existing embedded thumb)`);
+                            hasChanged = true;
+                            if (!siblings.includes(reliableName)) siblings.push(reliableName);
+                        } else if (!hasEmbeddedRef && !physicalExists) {
+                            // File doesn't exist at all — attempt extraction
+                            // FIRST: Check if the 3MF actually HAS an embedded thumbnail!
+                            if (hasEmbeddedThumbnail(absModelPath)) {
+                                if (!isDryRun) {
+                                    try {
+                                        const extracted = await extractEmbeddedThumbnail(absModelPath, embeddedPath);
+                                        if (extracted) {
+                                            console.log(`      -> Action: Rescued Embedded Thumbnail from ${path.basename(absModelPath)}`);
+                                            const newRel = path.relative(modelsDir, embeddedPath).replace(/\\/g, '/');
+                                            const newUrl = `/models/${newRel}`;
+                                            data.parsedImages.push(newUrl);
+                                            proposal.additions.push(`${reliableName} (Rescued from 3MF Metadata)`);
+                                            hasChanged = true;
+                                            siblings.push(reliableName);
+                                        }
+                                    } catch (e) {
+                                        console.warn("       Failed to rescue embedded thumb:", e.message);
+                                    }
+                                } else {
+                                    proposal.additions.push(`${reliableName} (Would Rescue from 3MF Metadata)`);
+                                }
+                            }
+                        }
+                        // else: hasEmbeddedRef is true → already tracked, nothing to do
+                    }
+                }
 
                 // --- 5a. BASE64 EXTRACTION ---
                 // Convert legacy Base64 thumbnails to files to reduce JSON size and fix "Stale" errors.
@@ -426,6 +522,14 @@ async function runHealLogic(isDryRun = false, specificPath = null, thumbnailStra
                         proposal.deletions.push(`${imgUrl} (Wrong Path - Expected '${expectedFolderUrl}')`);
                         return false;
                     }
+
+                    // Check for STL improperly claiming 3MF resources
+                    const modelExt = data.filePath ? path.extname(data.filePath).toLowerCase() : '';
+                    if ((isExplicitStl || modelExt === '.stl') && (fileName.toLowerCase().includes('.3mf') || fileName.toLowerCase().includes('-embedded-thumb'))) {
+                        proposal.deletions.push(`${imgUrl} (Pollution - STL claiming 3MF resource)`);
+                        return false;
+                    }
+
                     if (!isLegit) {
                         proposal.deletions.push(`${imgUrl} (Name Mismatch - Expected start '${currentBaseName}')`);
                         return false;
@@ -676,13 +780,65 @@ router.get('/library-check-backups', async (req, res) => {
     res.json({ hasBackups });
 });
 
+// GET /api/admin/migration-status
+router.get('/migration-status', async (req, res) => {
+    try {
+        // 1. Get DB Stats
+        // 1. Get DB Stats
+        const prisma = require('../../server-utils/db'); // Lazy load
+        const modelCount = await prisma.model.count();
+        const collectionCount = await prisma.collection.count();
+
+        // 2. Get File System Stats (Heuristic)
+        // We assume "Legacy" means what's on disk.
+        // Counting munchies is a good proxy for "known models"
+        const modelsDir = getAbsoluteModelsPath();
+        let munchieCount = 0;
+
+        function countMunchies(dir) {
+            if (!fs.existsSync(dir)) return;
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory()) countMunchies(path.join(dir, entry.name));
+                else if (entry.name.endsWith('-munchie.json')) munchieCount++;
+            }
+        }
+        countMunchies(modelsDir);
+
+        res.json({
+            success: true,
+            db: {
+                models: modelCount,
+                files: 0, // Not tracking files strictly in this view yet
+                collections: collectionCount
+            },
+            legacy: {
+                models: munchieCount,
+                files: 0
+            },
+            errors: []
+        });
+    } catch (err) {
+        console.error("Migration Status Error:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // POST /api/admin/purge-thumbnails-preview (dry run — list files that would be deleted)
 router.post('/purge-thumbnails-preview', async (req, res) => {
     try {
+        const { only3mf = false } = req.body; // Extract flag
         const modelsDir = getAbsoluteModelsPath();
-        const THUMB_PATTERN = /\.(stl|3mf)-thumb\.png$/i;
+
+        // Define pattern based on flag
+        const THUMB_PATTERN = only3mf
+            ? /\.3mf-thumb\.png$/i
+            : /\.(stl|3mf)-thumb\.png$/i;
+
         const files = [];
         let totalSize = 0;
+
+        // ... (rest of logic handles filtering by pattern automatically)
 
         // Helper: check if a thumbnail's model has other images (embedded from .3mf)
         function checkForOtherImages(thumbFullPath) {
@@ -778,12 +934,18 @@ router.post('/purge-thumbnails-preview', async (req, res) => {
 // POST /api/admin/purge-thumbnails (execute deletion)
 router.post('/purge-thumbnails', async (req, res) => {
     try {
-        const { skipWithoutOtherImages = false } = req.body || {};
+        const { skipWithoutOtherImages = false, only3mf = false } = req.body || {};
         const modelsDir = getAbsoluteModelsPath();
-        const THUMB_PATTERN = /\.(stl|3mf)-thumb\.png$/i;
+
+        // Define pattern based on flag
+        const THUMB_PATTERN = only3mf
+            ? /\.3mf-thumb\.png$/i
+            : /\.(stl|3mf)-thumb\.png$/i;
+
         let deleted = 0;
         let skipped = 0;
         const errors = [];
+
 
         // Helper: check if a thumbnail's model has other images
         function checkForOtherImages(thumbFullPath) {
@@ -833,7 +995,8 @@ router.post('/purge-thumbnails', async (req, res) => {
                 } else if (THUMB_PATTERN.test(entry.name)) {
                     try {
                         const hasOtherImages = checkForOtherImages(full);
-                        if (!hasOtherImages && !skipWithoutOtherImages) {
+                        // FIX: Delete if it HAS other images (safe) OR if we are forced to delete lone images
+                        if (hasOtherImages || !skipWithoutOtherImages) {
                             fs.unlinkSync(full);
                             deleted++;
                         } else {
@@ -916,6 +1079,13 @@ router.post('/purge-thumbnails', async (req, res) => {
 
 // POST /api/admin/generate-thumbnails
 let activeThumbnailJob = null;
+let activeThumbnailStatus = { total: 0, current: 0, status: 'idle', startTime: null };
+
+// GET /api/admin/thumbnail-status
+router.get('/thumbnail-status', (req, res) => {
+    res.json(activeThumbnailStatus);
+});
+
 router.post('/generate-thumbnails', async (req, res) => {
     if (activeThumbnailJob) {
         activeThumbnailJob.abort();
@@ -937,10 +1107,15 @@ router.post('/generate-thumbnails', async (req, res) => {
         const config = ConfigManager.loadConfig();
         const globalDefaultColor = config?.settings?.defaultModelColor || config?.defaultModelColor || '#6366f1';
 
+
+
         let processed = 0;
         let errors = [];
         let skipped = 0;
         let targets = [];
+
+        // Reset Status
+        activeThumbnailStatus = { total: 0, current: 0, status: 'scanning', startTime: Date.now() };
 
         function findTargets(dir) {
             if (signal.aborted) return;
@@ -969,6 +1144,10 @@ router.post('/generate-thumbnails', async (req, res) => {
             }
         }
         findTargets(modelsDir);
+
+        // Update Status with Total
+        activeThumbnailStatus.total = targets.length;
+        activeThumbnailStatus.status = 'generating';
 
         console.log(`📸 Starting photo shoot for ${targets.length} models...`);
         const MAX_CONSECUTIVE_ERRORS = 5;
@@ -1007,6 +1186,7 @@ router.post('/generate-thumbnails', async (req, res) => {
                     fs.writeFileSync(target.jsonPath, JSON.stringify(json, null, 2));
                 }
                 processed++;
+                activeThumbnailStatus.current = processed; // Update Progress
                 consecutiveErrors = 0;
             } catch (err) {
                 if (err.message && err.message.includes('cancelled')) break;
@@ -1017,6 +1197,7 @@ router.post('/generate-thumbnails', async (req, res) => {
         }
 
         activeThumbnailJob = null;
+        activeThumbnailStatus.status = 'idle';
         res.json({
             success: true,
             processed,
@@ -1027,12 +1208,24 @@ router.post('/generate-thumbnails', async (req, res) => {
 
     } catch (error) {
         activeThumbnailJob = null;
+        activeThumbnailStatus.status = 'error';
         console.error('General generation error:', error);
         if (error.message && error.message.includes('cancelled')) {
             return res.json({ success: false, aborted: true, message: 'Cancelled by user' });
         }
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// POST /api/admin/cancel-thumbnails
+router.post('/cancel-thumbnails', (req, res) => {
+    if (activeThumbnailJob) {
+        activeThumbnailJob.abort();
+        activeThumbnailJob = null;
+        activeThumbnailStatus.status = 'cancelled';
+        return res.json({ success: true, message: 'Job Cancelled' });
+    }
+    res.json({ success: false, message: 'No active job' });
 });
 
 module.exports = router;

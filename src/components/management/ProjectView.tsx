@@ -1,9 +1,3 @@
-import { Box, CheckCircle2, CircleDashed, LayoutGrid, Plus, Printer, Slice, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { toast } from 'sonner';
-import { Collection } from '@/types/collection';
-import { Model } from '@/types/model';
-import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import { ImageWithFallback } from '@/components/common/ImageWithFallback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +9,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from '@/components/ui/input';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import { Collection } from '@/types/collection';
+import { Model } from '@/types/model';
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
+import { Box, CheckCircle2, CircleDashed, LayoutGrid, Plus, Printer, Slice, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { toast } from 'sonner';
 
 interface ProjectViewProps {
     collection: Collection;
@@ -36,7 +36,7 @@ export function ProjectView({ collection, models, onUpdateCollection, onModelCli
     // 2. Determine Assigned vs Unassigned
     const assignedModelIds = useMemo(() => {
         const set = new Set<string>();
-        collection.buildPlates?.forEach(bp => bp.modelIds.forEach(id => set.add(id)));
+        collection.buildPlates?.forEach((bp: any) => bp.modelIds.forEach((id: string) => set.add(id)));
         return set;
     }, [collection.buildPlates]);
 
@@ -114,9 +114,9 @@ export function ProjectView({ collection, models, onUpdateCollection, onModelCli
         const currentPlates = [...(collection.buildPlates || [])];
 
         // 1. Remove from source plate(s)
-        currentPlates.forEach(p => {
+        currentPlates.forEach((p: any) => {
             if (p.modelIds.includes(modelId)) {
-                p.modelIds = p.modelIds.filter(id => id !== modelId);
+                p.modelIds = p.modelIds.filter((id: string) => id !== modelId);
             }
         });
 
@@ -142,7 +142,7 @@ export function ProjectView({ collection, models, onUpdateCollection, onModelCli
 
         for (const p of currentPlates) {
             if (p.modelIds.includes(modelId)) {
-                p.modelIds = p.modelIds.filter(id => id !== modelId);
+                p.modelIds = p.modelIds.filter((id: string) => id !== modelId);
                 changed = true;
                 // Save this plate
                 await fetch(`/api/collections/${collection.id}/build-plates/${p.id}`, {
@@ -255,7 +255,7 @@ export function ProjectView({ collection, models, onUpdateCollection, onModelCli
                                     ) : (
                                         <ScrollArea className="w-full whitespace-nowrap pb-2">
                                             <div className="flex gap-3">
-                                                {plate.modelIds.map(id => {
+                                                {plate.modelIds.map((id: string) => {
                                                     const m = projectModels.find(mod => mod.id === id);
                                                     if (!m) return null;
                                                     return (

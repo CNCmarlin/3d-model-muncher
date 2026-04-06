@@ -1,140 +1,180 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { LICENSES, isKnownLicense } from '@/constants/licenses';
-import { Category } from "@/types/category";
-import { Model } from "@/types/model";
+import { SearchableSelect_DB } from "@/components/common/SearchableSelect_DB";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { LICENSES, isKnownLicense } from '@/constants/licenses';
+import { Category } from "@/types/category";
+import { Model } from "@/types/model_db";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { DescriptionSection_DB } from '@/components/models/details/DescriptionSection_DB';
+import { GcodeSection_DB } from '@/components/models/details/GcodeSection_DB';
+import { MetadataSection_DB } from '@/components/models/details/MetadataSection_DB';
+import { NotesSection_DB } from '@/components/models/details/NotesSection_DB';
+import { PrintSettingsSection_DB } from "@/components/models/details/PrintSettingsSection_DB";
+import { RelatedFilesSection_DB } from '@/components/models/details/RelatedFilesSection_DB';
+import { SiblingsSection_DB } from "@/components/models/details/SiblingsSection_DB";
+import { SourceSection_DB } from "@/components/models/details/SourceSection_DB";
+import { TagsSection_DB } from "@/components/models/details/TagsSection_DB";
+import { ModelPreviewSection_DB } from '@/components/models/ModelPreviewSection_DB';
+import { ModelUploadDialog_DB } from "@/components/models/ModelUploadDialog_DB";
+import type { Collection } from "@/types/collection_db";
+import { downloadAllFiles_db, triggerDownload_db } from "@/utils/downloadUtils_db";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
 import {
   ArrowLeft,
-  Download, Edit3, Eye, EyeOff,
-  Layers, List, MinusCircle,
+  Download,
+  Edit3,
+  Eye, EyeOff,
+  Layers,
+  List, MinusCircle,
   RefreshCw, Save,
   Trash2,
   Upload
 } from "lucide-react";
 import { toast } from 'sonner';
-import type { Collection } from "@/types/collection";
-import { downloadAllFiles, triggerDownload } from "@/utils/downloadUtils";
-import { DescriptionSection_DB } from '@/components/models/details/DescriptionSection_DB';
-import { GcodeSection } from '@/components/models/details/GcodeSection';
-import { MetadataSection } from '@/components/models/details/MetadataSection';
-import { ModelPreviewSection } from '@/components/models/ModelPreviewSection';
-import { ModelUploadDialog } from "@/components/models/ModelUploadDialog";
-import { NotesSection_DB } from '@/components/models/details/NotesSection_DB';
-import { PrintSettingsSection } from "@/components/models/details/PrintSettingsSection";
-import { RelatedFilesSection } from '@/components/models/details/RelatedFilesSection';
-import { SiblingsSection } from "@/components/models/details/SiblingsSection";
-import { SourceSection } from "@/components/models/details/SourceSection";
-import { TagsSection } from "@/components/models/details/TagsSection";
 
 // Hooks
-import { useDocumentUpload } from "@/hooks/hub/useDocumentUpload";
-import { useGcodeHandler } from "@/hooks/hub/useGcodeHandler";
-import { useModelEdit } from "@/hooks/hub/useModelEdit";
-import { useModelGallery } from "@/hooks/hub/useModelGallery";
-import { useRelatedFiles } from "@/hooks/hub/useRelatedFiles";
-import { useSiblings } from "@/hooks/hub/useSiblings";
-import { useDeleteModel } from "@/hooks/mutations/useDeleteModel";
-import { useUpdateCollection } from "@/hooks/mutations/useUpdateCollection";
-import { useUpdateModel } from "@/hooks/mutations/useUpdateModel";
-import { useModel } from "@/hooks/queries/useModel";
+import { useDocumentUpload_db } from "@/hooks/hub/useDocumentUpload_db";
+import { useGcodeHandler_db } from "@/hooks/hub/useGcodeHandler_db";
+import { useModelEdit_db } from "@/hooks/hub/useModelEdit_db";
+import { useModelGallery_db } from "@/hooks/hub/useModelGallery_db";
+import { useRelatedFiles_db } from "@/hooks/hub/useRelatedFiles_db";
+import { useSiblings_db } from "@/hooks/hub/useSiblings_db";
+import { useDeleteModel_db } from "@/hooks/mutations/useDeleteModel_db";
+import { useUpdateCollection_db } from "@/hooks/mutations/useUpdateCollection_db";
+import { useUpdateModel_db } from "@/hooks/mutations/useUpdateModel_db";
+import { useModel_db } from "@/hooks/queries/useModel_db";
+import { useMediaQuery_db } from "@/hooks/useMediaQuery_db";
 
 interface ModelHubViewProps {
   model: Model | null;
-  models: Model[];
   onClose: () => void;
+  onModelUpdate: (model: Model) => void;
   onDelete?: (model: Model) => void;
   defaultModelView?: '3d' | 'images';
   categories: Category[];
   defaultModelColor?: string | null;
+  models: Model[];
   collections: Collection[];
+  isSidebarOpen: boolean;
   onOpenCollection: (col: Collection) => void;
+  onFilterChange: (filters: any) => void;
+  onSettingsClick: () => void;
+  onImportClick?: (collectionId: string) => void;
+  onSelectModel: (model: Model) => void;
 }
 
 export function ModelHubView_DB({
   model: initialModel,
   models,
   onClose,
+  onModelUpdate, // Deprecated, kept for compatibility but should rely on query invalidation
   onDelete,
   defaultModelView,
   defaultModelColor,
   categories,
   onOpenCollection,
   collections,
+  onSelectModel
 }: ModelHubViewProps) {
-  console.log('[ModelHubView_DB] 🔥 COMPONENT RENDER - VERSION 2.0 🔥');
-
-  // -- NAVIGATION STATE (Step 1) --
-  // Track active model ID for internal navigation
-  const [activeModelId, setActiveModelId] = useState<string>(initialModel?.id || '');
-
-  // Update activeModelId when prop changes (external navigation)
-  useEffect(() => {
-    console.log('[ModelHubView_DB] initialModel.id changed to:', initialModel?.id);
-    console.log('[ModelHubView_DB] Current activeModelId:', activeModelId);
-    if (initialModel?.id && initialModel.id !== activeModelId) {
-      console.log('[ModelHubView_DB] Syncing activeModelId');
-      setActiveModelId(initialModel.id);
-    }
-  }, [initialModel?.id]);
-
-  // -- QUERY HOOKS (Step 2) --
-  // Fetch model data via React Query using activeModelId
-  console.log('[ModelHubView_DB] Calling useModel with activeModelId:', activeModelId);
-  // CRITICAL: Only use initialData if it matches the activeModelId
-  const shouldUseInitialData = initialModel?.id === activeModelId;
-  const { data: fetchedModel } = useModel(activeModelId, {
-    initialData: shouldUseInitialData ? initialModel : undefined,
-    enabled: !!activeModelId
+  // -- QUERY HOOKS --
+  // Use the ID from the prop, but fetch fresh data
+  const { data: fetchedModel } = useModel_db(initialModel?.id || '', {
+    initialData: (initialModel || undefined) as any,
+    enabled: !!initialModel?.id
   });
-  console.log('[ModelHubView_DB] useModel returned, fetchedModel.id:', fetchedModel?.id);
 
   // Use fetchedModel if available, fall back to initialModel (prop)
   const model = fetchedModel || initialModel;
-  console.log('[ModelHubView_DB] *** FINAL MODEL FOR RENDER:', model?.id, '***');
-
-  // -- NAVIGATION HANDLER (Step 3) --
-  // Function to handle model navigation (for SiblingsSection, RelatedFilesSection)
-  const handleNavigateToModel = (newModelId: string) => {
-    console.log('[ModelHubView_DB] handleNavigateToModel called with:', newModelId);
-    console.log('[ModelHubView_DB] Current activeModelId:', activeModelId);
-    setActiveModelId(newModelId);
-    console.log('[ModelHubView_DB] activeModelId updated to:', newModelId);
-    // React Query will automatically fetch the new model data
-  };
 
   // -- MUTATION HOOKS --
-  const updateModel = useUpdateModel();
-  const deleteModel = useDeleteModel();
-  const updateCollection = useUpdateCollection();
+  const updateModel = useUpdateModel_db();
+  const deleteModel = useDeleteModel_db();
+  const updateCollection = useUpdateCollection_db();
 
-  // DATABASE-FIRST: No legacy callbacks, React Query handles cache invalidation
-  const editLogic = useModelEdit({
-    model,
-    onModelUpdate: () => {
-      // React Query auto-refetches, no manual updates needed
+  // We need to wrap the mutation in a handler that matches the old signature for now
+  // or update the hooks to expect the new signature.
+  // useModelEdit expects onModelUpdate. We'll shim it.
+  const handleModelUpdateParams = (updated: Model) => {
+    // CRITICAL FIX: Only send changed fields, not the entire model
+    // Compute diff between original model and updated model
+    const changes: Partial<Model> = {};
+
+    if (!model) return;
+
+    console.log('[ModelHubView] === DIFF DEBUG ===');
+    console.log('[ModelHubView] Original model category:', model.category);
+    console.log('[ModelHubView] Updated model category:', updated.category);
+    console.log('[ModelHubView] Original printSettings:', (model as any).printSettings);
+    console.log('[ModelHubView] Updated printSettings:', (updated as any).printSettings);
+
+    // Dynamically sync fields instead of using a hardcoded allowlist
+    const excludedKeys = new Set([
+      'id', 'createdAt', 'updatedAt', 'collection', 'images', 'thumbnail',
+      'parsedImages', 'files', // exclude internal or non-editable relation arrays
+      '_count', 'userDefined'
+    ]);
+
+    Object.keys(updated).forEach((key) => {
+      if (excludedKeys.has(key)) return;
+
+      const modelKey = key as keyof Model;
+      const oldValue = (model as any)[modelKey];
+      const newValue = (updated as any)[modelKey];
+
+      if (newValue === undefined) return; // Prevent serialization crashes
+
+      // Deep compare for objects/arrays
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        console.log(`[ModelHubView] Field changed: ${key}`, { old: oldValue, new: newValue });
+        (changes as any)[modelKey] = newValue;
+      }
+    });
+
+    console.log('[ModelHubView] Final changes object:', changes);
+    console.log('[ModelHubView] === END DIFF DEBUG ===');
+
+    // Only send update if there are actual changes
+    if (Object.keys(changes).length > 0) {
+      updateModel.mutate({
+        id: updated.id,
+        data: changes  // ← Send only changed fields!
+      });
     }
-  });
 
-  const galleryLogic = useModelGallery({
-    model,
-    editedModel: editLogic.editedModel,
+    // Optimistically update parent layout if needed via prop
+    onModelUpdate(updated);
+  };
+
+  // useModelEdit handles its own mutations. We just need to know when it's done to verify validity or close.
+  // We do NOT want to trigger *another* mutation here.
+  const handleEditComplete = (updatedModel: Model) => {
+    // Just update local view state if necessary, or rely on React Query invalidation.
+    // Do NOT call updateModel.mutate here.
+    if (onModelUpdate) onModelUpdate(updatedModel); // notify parent if needed
+  };
+
+  const editLogic = useModelEdit_db({ model: model as any, onModelUpdate: handleEditComplete as any });
+  const [isSourceValid, setIsSourceValid] = useState(true);
+
+  const galleryLogic = useModelGallery_db({
+    model: model as any,
+    editedModel: editLogic.editedModel as any,
     isEditing: editLogic.isEditing,
-    inlineCombined: editLogic.inlineCombined,
+    inlineCombined: editLogic.inlineCombined as any,
     defaultModelView
   });
-  const gcodeLogic = useGcodeHandler({ currentModel: model, onModelUpdate: () => { } });
-  const uploadLogic = useDocumentUpload(model, () => { });
-  const siblingsLogic = useSiblings(model, collections, models);
-  const relatedLogic = useRelatedFiles(model, editLogic.isEditing);
+  const gcodeLogic = useGcodeHandler_db({ currentModel: model as any, onModelUpdate: handleModelUpdateParams as any });
+  const uploadLogic = useDocumentUpload_db(model as any, handleModelUpdateParams as any);
+  const siblingsLogic = useSiblings_db(model as any, collections as any, models as any);
+  const relatedLogic = useRelatedFiles_db(model as any, editLogic.isEditing);
+  // Prevents two WebGL contexts mounting simultaneously at xl breakpoint
+  const isXl = useMediaQuery_db('(min-width: 1280px)');
 
   // -- LOCAL UI STATE --
   const [isAddToCollectionOpen, setIsAddToCollectionOpen] = useState(false);
@@ -167,6 +207,10 @@ export function ModelHubView_DB({
 
   const activeCollection = useMemo(() => {
     if (!model) return null;
+    // Database mode: Find collection where model.collections includes collection.id
+    // Fallback to searching collections.modelIds if needed
+    const colId = model.collections?.[0] || (model as any).collectionId;
+    if (colId) return collections.find(c => c.id === colId);
     return collections.find(c => c.modelIds?.includes(model.id));
   }, [collections, model]);
 
@@ -186,7 +230,7 @@ export function ModelHubView_DB({
   const getSuggestedTags = () => {
     if (!activeModelNullable || !activeModelNullable.category) return [];
     const suggestedTags = getCategoryTags(activeModelNullable.category);
-    const existing = new Set((activeModelNullable.tags || []).map(t => t.toLowerCase()));
+    const existing = new Set((activeModelNullable.tags || []).map((t: any) => (typeof t === 'string' ? t : t?.tag?.name || '').toLowerCase()));
     return suggestedTags.filter((tag: string) => !existing.has(tag.toLowerCase()));
   };
 
@@ -194,11 +238,11 @@ export function ModelHubView_DB({
     if (!editLogic.editedModel) return;
     const currentTags = editLogic.editedModel.tags || [];
     const lowerTag = tag.toLowerCase();
-    if (currentTags.some(t => t.toLowerCase() === lowerTag)) return;
+    if (currentTags.some((t: any) => (typeof t === 'string' ? t : t?.tag?.name || '').toLowerCase() === lowerTag)) return;
 
     editLogic.setEditedModel({
       ...editLogic.editedModel,
-      tags: [...currentTags, tag]
+      tags: [...currentTags, tag as any]
     });
   };
 
@@ -230,7 +274,7 @@ export function ModelHubView_DB({
         onSuccess: () => {
           onClose(); // Close the modal
           // onDelete callback might be used by parent to clear selection
-          if (onDelete) onDelete(model);
+          if (onDelete) onDelete(model as any);
         }
       });
       setIsDeleteConfirmOpen(false);
@@ -242,26 +286,24 @@ export function ModelHubView_DB({
     if (activeModelNullable) {
       const toRelative = (p: string) => p ? p.replace(/^(\/)?models\//, '') : '';
       const mainPath = toRelative(activeModelNullable.modelUrl || activeModelNullable.filePath || '');
-      const relatedPaths = (activeModelNullable.related_files || []).map(p => toRelative(p));
+      const relatedPaths = (activeModelNullable.metadata?.related_files || []).map((p: string) => toRelative(p));
+      const imagePaths = (galleryLogic.allImages || []).map(p => toRelative(p));
 
       if (!mainPath) {
         toast.error("Could not determine main file path.");
         return;
       }
-      downloadAllFiles(mainPath, relatedPaths, activeModelNullable.name);
+      downloadAllFiles_db(mainPath, relatedPaths, imagePaths, activeModelNullable.name);
     }
   };
 
   // Local Update Helper for MetadataSection
   const handleLocalUpdate = (updates: Partial<Model>) => {
-    editLogic.setEditedModel(prev => {
+    editLogic.setEditedModel((prev: any) => {
       if (!prev) return prev;
-      const next = { ...prev, ...updates };
-      if (updates.printSettings) {
-        next.printSettings = { ...(prev.printSettings || {}), ...updates.printSettings };
-      }
-      if (updates.userDefined) {
-        next.userDefined = { ...(prev.userDefined || {}), ...updates.userDefined };
+      const next = { ...prev, ...updates } as any;
+      if (updates.metadata?.userDefined) {
+        next.metadata = { ...(prev.metadata || {}), userDefined: { ...((prev.metadata as any)?.userDefined || {}), ...(updates.metadata.userDefined) } };
       }
       return next as Model;
     });
@@ -273,57 +315,85 @@ export function ModelHubView_DB({
 
   // Derive display stuff
   const safePrintSettings = {
-    layerHeight: activeModel.printSettings?.layerHeight || activeModel.userDefined?.printSettings?.layerHeight || 'Unknown',
-    infill: activeModel.printSettings?.infill || activeModel.userDefined?.printSettings?.infill || 'Unknown',
-    nozzle: activeModel.printSettings?.nozzle || activeModel.userDefined?.printSettings?.nozzle || 'Unknown',
-    printer: activeModel.printSettings?.printer || 'Unknown',
-    material: activeModel.printSettings?.material || activeModel.userDefined?.printSettings?.material || 'Unknown'
+    layerHeight: activeModel.layerHeight || 'Unknown',
+    infill: activeModel.infill || 'Unknown',
+    nozzle: activeModel.nozzle || 'Unknown',
+    printer: activeModel.printer || 'Unknown',
+    material: activeModel.material || 'Unknown'
   };
 
-  const isStlModel = (() => {
+  const canHavePrintSettings = (() => {
     try {
       const p = (activeModel.filePath || activeModel.modelUrl || '').toLowerCase();
-      return p.endsWith('.stl') || p.endsWith('-stl-munchie.json');
+      return p.endsWith('.stl') || p.endsWith('.3mf') || p.endsWith('.gcode') || p.endsWith('-munchie.json') || p.endsWith('-stl-munchie.json');
     } catch (_) { return false; }
   })();
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-background">
       {/* HEADER */}
-      <div className="px-4 lg:px-6 py-3 border-b bg-card/30 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 h-8 text-[11px] font-bold uppercase tracking-wider">
+      <div className="px-4 lg:px-6 py-3 border-b bg-card/10 flex items-center justify-between shrink-0 z-20 gap-4">
+        {/* Left Section: Back + Breadcrumb */}
+        <div className="flex items-center gap-4 shrink-0">
+          <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 h-8 text-[11px] font-bold uppercase tracking-wider shrink-0">
             <ArrowLeft className="h-4 w-4" />
-            Back
+            <span className="hidden sm:inline">Back</span>
           </Button>
-          <div className="h-4 w-px bg-border mx-1" />
+          <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
           <div
-            className="flex items-center gap-2 cursor-pointer group"
+            className="flex items-center gap-2 cursor-pointer group truncate"
             onClick={() => activeCollection && onOpenCollection?.(activeCollection)}
           >
-            <Layers className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="text-sm font-semibold text-muted-foreground group-hover:text-foreground transition-colors">
+            <Layers className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+            <span className="text-sm font-semibold text-muted-foreground group-hover:text-foreground transition-colors truncate max-w-[200px]">
               {activeCollection?.name || "Library"}
             </span>
             {activeModel.category && (
-              <span className="text-[10px] text-muted-foreground/50 font-bold uppercase tracking-wider group-hover:text-muted-foreground transition-colors">
-                {activeModel.category}
+              <span className="text-[10px] text-muted-foreground/30 font-bold uppercase tracking-wider group-hover:text-muted-foreground transition-colors hidden md:inline shrink-0">
+                / {activeModel.category}
               </span>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Right Section: Actions */}
+        <div className="flex items-center gap-2 flex-1 justify-end shrink-0">
+          {/* Add / Remove Collection — in breadcrumb bar for easy access */}
+          {!editLogic.isEditing && (
+            <>
+              <Button
+                onClick={() => setIsAddToCollectionOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-2 opacity-60 hover:opacity-100 transition-opacity"
+                disabled={!collections || collections.length === 0}
+              >
+                <List className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Add to Collection</span>
+              </Button>
+              <Button
+                onClick={() => setIsRemoveFromCollectionOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="h-8 gap-2 opacity-60 hover:opacity-100 transition-opacity"
+                disabled={!collections.some(c => c.modelIds?.includes(model.id))}
+              >
+                <MinusCircle className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">Remove</span>
+              </Button>
+              <div className="h-4 w-px bg-border mx-1 hidden lg:block" />
+            </>
+          )}
           {!editLogic.isEditing && (
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 gap-2 opacity-50 hover:opacity-100"
+              className="h-8 gap-2 opacity-50 hover:opacity-100 transition-opacity"
               disabled={isMoving}
               onClick={() => setIsAssetDialogOpen(true)}
             >
               {isMoving ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary" /> : <Upload className="h-3.5 w-3.5" />}
-              <span>{isMoving ? "Reorganizing..." : "Manage / Upload"}</span>
+              <span className="hidden lg:inline">{isMoving ? "Reorganizing..." : "Manage / Upload"}</span>
             </Button>
           )}
         </div>
@@ -333,64 +403,66 @@ export function ModelHubView_DB({
         <div className="p-4 lg:p-10 pb-32">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 max-w-[1600px] mx-auto">
 
-            {/* LEFT COLUMN: PREVIEW */}
-            <div className="lg:col-span-7 space-y-8">
+            {/* ZONE A: Viewer — only rendered below xl; at xl the viewer lives in the left block below */}
+            <div className="lg:col-span-7 xl:hidden space-y-8">
               <div className="rounded-2xl overflow-hidden border bg-card shadow-sm">
-                <ModelPreviewSection
-                  // Gallery State
-                  viewMode={galleryLogic.viewMode}
-                  setViewMode={galleryLogic.setViewMode}
-                  currentModel={activeModel}
-                  activeDocUrl={galleryLogic.activeDocUrl}
-                  handleViewDocument={galleryLogic.handleViewDocument}
-                  active3DFile={galleryLogic.active3DFile}
-                  setActive3DFile={galleryLogic.setActive3DFile}
-                  allImages={galleryLogic.allImages}
-                  selectedImageIndex={galleryLogic.selectedImageIndex}
-                  setSelectedImageIndex={galleryLogic.setSelectedImageIndex}
-                  isWindowFullscreen={galleryLogic.isWindowFullscreen}
-                  setIsWindowFullscreen={galleryLogic.setIsWindowFullscreen}
-                  imageContainerRef={galleryLogic.imageContainerRef}
-                  prevButtonRef={galleryLogic.prevButtonRef}
-                  thumbnailStripRef={galleryLogic.thumbnailStripRef}
-                  handlePreviousImage={galleryLogic.handlePreviousImage}
-                  handleNextImage={galleryLogic.handleNextImage}
-                  handleToggleFullscreen={galleryLogic.handleToggleFullscreen}
+                {!isXl && (
+                  <ModelPreviewSection_DB
+                    // Gallery State
+                    viewMode={galleryLogic.viewMode}
+                    setViewMode={galleryLogic.setViewMode}
+                    currentModel={activeModel as any}
+                    activeDocUrl={galleryLogic.activeDocUrl}
+                    handleViewDocument={galleryLogic.handleViewDocument}
+                    active3DFile={galleryLogic.active3DFile}
+                    setActive3DFile={galleryLogic.setActive3DFile}
+                    allImages={galleryLogic.allImages}
+                    selectedImageIndex={galleryLogic.selectedImageIndex}
+                    setSelectedImageIndex={galleryLogic.setSelectedImageIndex}
+                    isWindowFullscreen={galleryLogic.isWindowFullscreen}
+                    setIsWindowFullscreen={galleryLogic.setIsWindowFullscreen}
+                    imageContainerRef={galleryLogic.imageContainerRef}
+                    prevButtonRef={galleryLogic.prevButtonRef}
+                    thumbnailStripRef={galleryLogic.thumbnailStripRef}
+                    handlePreviousImage={galleryLogic.handlePreviousImage}
+                    handleNextImage={galleryLogic.handleNextImage}
+                    handleToggleFullscreen={galleryLogic.handleToggleFullscreen}
 
-                  // Edit Logic Interaction
-                  isEditing={editLogic.isEditing}
-                  handleCapturedImage={editLogic.handleCapturedImage}
-                  handleAddImageClick={(e) => {
-                    e.stopPropagation();
-                    if (!editLogic.isEditing) return;
-                    addImageInputRef.current?.click();
-                  }}
-                  addImageInputRef={addImageInputRef}
-                  handleAddImageFile={editLogic.handleAddImageFile}
-                  addImageProgress={editLogic.addImageProgress}
-                  addImageError={editLogic.addImageError}
+                    // Edit Logic Interaction
+                    isEditing={editLogic.isEditing}
+                    handleCapturedImage={editLogic.handleCapturedImage}
+                    handleAddImageClick={(e) => {
+                      e.stopPropagation();
+                      if (!editLogic.isEditing) return;
+                      addImageInputRef.current?.click();
+                    }}
+                    addImageInputRef={addImageInputRef}
+                    handleAddImageFile={editLogic.handleAddImageFile}
+                    addImageProgress={editLogic.addImageProgress}
+                    addImageError={editLogic.addImageError}
 
-                  // Drag & Drop
-                  toggleImageSelection={(idx) => editLogic.toggleImageSelection(idx, galleryLogic.isWindowFullscreen)}
-                  isImageSelected={(idx) => editLogic.selectedImageIndexes.includes(idx)}
-                  handleDragStart={(e, idx) => editLogic.handleDragStart(e, idx, galleryLogic.isWindowFullscreen)}
-                  handleDragOver={(e, idx) => editLogic.handleDragOver(e, idx, galleryLogic.isWindowFullscreen)}
-                  handleDrop={(e, idx) => {
-                    const newIdx = editLogic.handleDrop(e, idx, galleryLogic.isWindowFullscreen);
-                    if (typeof newIdx === 'number') galleryLogic.setSelectedImageIndex(newIdx);
-                  }}
-                  handleDragLeave={() => editLogic.setDragOverIndex(null)}
-                  handleDragEnd={() => editLogic.setDragOverIndex(null)}
-                  dragOverIndex={editLogic.dragOverIndex}
+                    // Drag & Drop
+                    toggleImageSelection={(idx) => editLogic.toggleImageSelection(idx, galleryLogic.isWindowFullscreen)}
+                    isImageSelected={(idx) => editLogic.selectedImageIndexes.includes(idx)}
+                    handleDragStart={(e, idx) => editLogic.handleDragStart(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDragOver={(e, idx) => editLogic.handleDragOver(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDrop={(e, idx) => {
+                      const newIdx = editLogic.handleDrop(e, idx, galleryLogic.isWindowFullscreen);
+                      if (typeof newIdx === 'number') galleryLogic.setSelectedImageIndex(newIdx);
+                    }}
+                    handleDragLeave={() => editLogic.setDragOverIndex(null)}
+                    handleDragEnd={() => editLogic.setDragOverIndex(null)}
+                    dragOverIndex={editLogic.dragOverIndex}
 
-                  handleSetAsMain={(idx) => {
-                    editLogic.handleSetAsMain(idx);
-                    galleryLogic.setSelectedImageIndex(0);
-                  }}
+                    handleSetAsMain={(idx) => {
+                      editLogic.handleSetAsMain(idx);
+                      galleryLogic.setSelectedImageIndex(0);
+                    }}
 
-                  defaultModelColor={defaultModelColor || undefined}
-                  onTogglePrinted={(val) => updateModel.mutate({ id: model.id, data: { isPrinted: val } })}
-                />
+                    defaultModelColor={defaultModelColor || undefined}
+                    onTogglePrinted={(val) => handleModelUpdateParams({ ...model, isPrinted: val } as any)}
+                  />
+                )}
               </div>
 
               {/* TABS */}
@@ -405,74 +477,200 @@ export function ModelHubView_DB({
                 <TabsContent value="details" className="pt-6">
                   <DescriptionSection_DB
                     isEditing={editLogic.isEditing}
-                    currentModel={activeModel}
+                    currentModel={activeModel as any}
                     originalUserDefinedDescriptionRef={editLogic.originalUserDefinedDescriptionRef}
                     originalTopLevelDescriptionRef={editLogic.originalTopLevelDescriptionRef}
                     restoreOriginalDescription={editLogic.restoreOriginalDescription}
                     setRestoreOriginalDescription={editLogic.setRestoreOriginalDescription}
-                    setEditedModel={editLogic.setEditedModel}
-                    editedModel={editLogic.editedModel}
+                    setEditedModel={editLogic.setEditedModel as any}
+                    editedModel={editLogic.editedModel as any}
+                    onModelUpdate={(updated) => handleModelUpdateParams({ ...model, ...updated } as any)}
                   />
                 </TabsContent>
 
                 <TabsContent value="related" className="pt-6">
-                  <RelatedFilesSection
+                  <RelatedFilesSection_DB
                     isEditing={editLogic.isEditing}
-                    currentModel={activeModel}
-                    editedModel={editLogic.editedModel}
-                    setEditedModel={editLogic.setEditedModel}
+                    currentModel={activeModel as any}
                     active3DFile={galleryLogic.active3DFile}
                     setActive3DFile={galleryLogic.setActive3DFile}
-                    setFocusRelatedIndex={setFocusRelatedIndex}
                     relatedVerifyStatus={relatedVerifyStatus}
                     setRelatedVerifyStatus={setRelatedVerifyStatus}
-                    invalidRelated={editLogic.invalidRelated}
+                    invalidRelated={editLogic.invalidRelated as any}
                     serverRejectedRelated={[]} // Not using currently
-                    onModelUpdate={() => { }} // No-op, React Query handles cache
-                    triggerDownload={triggerDownload}
-                    deriveMunchieCandidate={relatedLogic.deriveMunchieCandidate}
+                    onModelUpdate={handleModelUpdateParams as any}
+                    onNavigate={onSelectModel as any}
+                    triggerDownload={triggerDownload_db}
                     availableRelatedMunchie={relatedLogic.availableRelatedMunchie}
                     detailsViewportRef={detailsViewportRef}
                     toast={toast}
                     handleViewDocument={galleryLogic.handleViewDocument}
                     handleTargetedUpload={uploadLogic.handleTargetedUpload}
+                    onAnalyze={gcodeLogic.handleReanalyzeGcode}
                   />
                 </TabsContent>
 
                 <TabsContent value="siblings" className="pt-6">
-                  <SiblingsSection
+                  <SiblingsSection_DB
                     siblings={siblingsLogic.siblings}
-                    onNavigate={handleNavigateToModel}
+                    onNavigate={(id) => {
+                      const target = models.find(m => m.id === id);
+                      if (target) onSelectModel(target);
+                    }}
                     detailsViewportRef={detailsViewportRef}
                   />
                 </TabsContent>
 
                 <TabsContent value="notes" className="pt-6">
                   <NotesSection_DB
-                    currentModel={model}
+                    currentModel={model as any}
+                    onSave={(newNotes) => handleModelUpdateParams({ ...model, notes: newNotes } as any)}
                   />
                 </TabsContent>
               </Tabs>
-            </div>
+            </div>{/* end Zone A */}
 
-            {/* RIGHT COLUMN */}
-            <aside className="lg:col-span-5 space-y-6">
-              {!editLogic.isEditing && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Button onClick={() => setIsAddToCollectionOpen(true)} variant="outline" size="sm" className="justify-start gap-2 bg-card hover:bg-accent" disabled={!collections || collections.length === 0}>
-                    <List className="h-4 w-4" /> Add to Collection
-                  </Button>
-                  <Button onClick={() => setIsRemoveFromCollectionOpen(true)} variant="outline" size="sm" className="justify-start gap-2 bg-card hover:bg-accent" disabled={!collections.some(c => c.modelIds?.includes(model.id))}>
-                    <MinusCircle className="h-4 w-4" /> Remove from Collection
-                  </Button>
-                </div>
-              )}
+            {/* XL LEFT BLOCK: xl:col-span-9, inner 2-col grid
+                col 1 : Viewer (square, only mounted at xl — prevents double WebGL ctx)
+                col 2 : Description | Notes tabs (scrolls independently)
+                col-span-2 : Zone AB — Related Files | Collection
+            */}
+            <div className="hidden xl:grid xl:col-span-9 xl:grid-cols-2 xl:gap-x-8 xl:gap-y-8">
+
+              {/* col 1: Viewer */}
+              <div className="col-span-1 rounded-2xl overflow-hidden border bg-card shadow-sm self-start">
+                {isXl && (
+                  <ModelPreviewSection_DB
+                    viewMode={galleryLogic.viewMode}
+                    setViewMode={galleryLogic.setViewMode}
+                    currentModel={activeModel as any}
+                    activeDocUrl={galleryLogic.activeDocUrl}
+                    handleViewDocument={galleryLogic.handleViewDocument}
+                    active3DFile={galleryLogic.active3DFile}
+                    setActive3DFile={galleryLogic.setActive3DFile}
+                    allImages={galleryLogic.allImages}
+                    selectedImageIndex={galleryLogic.selectedImageIndex}
+                    setSelectedImageIndex={galleryLogic.setSelectedImageIndex}
+                    isWindowFullscreen={galleryLogic.isWindowFullscreen}
+                    setIsWindowFullscreen={galleryLogic.setIsWindowFullscreen}
+                    imageContainerRef={galleryLogic.imageContainerRef}
+                    prevButtonRef={galleryLogic.prevButtonRef}
+                    thumbnailStripRef={galleryLogic.thumbnailStripRef}
+                    handlePreviousImage={galleryLogic.handlePreviousImage}
+                    handleNextImage={galleryLogic.handleNextImage}
+                    handleToggleFullscreen={galleryLogic.handleToggleFullscreen}
+                    isEditing={editLogic.isEditing}
+                    handleCapturedImage={editLogic.handleCapturedImage}
+                    handleAddImageClick={(e) => {
+                      e.stopPropagation();
+                      if (!editLogic.isEditing) return;
+                      addImageInputRef.current?.click();
+                    }}
+                    addImageInputRef={addImageInputRef}
+                    handleAddImageFile={editLogic.handleAddImageFile}
+                    addImageProgress={editLogic.addImageProgress}
+                    addImageError={editLogic.addImageError}
+                    toggleImageSelection={(idx) => editLogic.toggleImageSelection(idx, galleryLogic.isWindowFullscreen)}
+                    isImageSelected={(idx) => editLogic.selectedImageIndexes.includes(idx)}
+                    handleDragStart={(e, idx) => editLogic.handleDragStart(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDragOver={(e, idx) => editLogic.handleDragOver(e, idx, galleryLogic.isWindowFullscreen)}
+                    handleDrop={(e, idx) => {
+                      const newIdx = editLogic.handleDrop(e, idx, galleryLogic.isWindowFullscreen);
+                      if (typeof newIdx === 'number') galleryLogic.setSelectedImageIndex(newIdx);
+                    }}
+                    handleDragLeave={() => editLogic.setDragOverIndex(null)}
+                    handleDragEnd={() => editLogic.setDragOverIndex(null)}
+                    dragOverIndex={editLogic.dragOverIndex}
+                    handleSetAsMain={(idx) => {
+                      editLogic.handleSetAsMain(idx);
+                      galleryLogic.setSelectedImageIndex(0);
+                    }}
+                    defaultModelColor={defaultModelColor || undefined}
+                    onTogglePrinted={(val) => handleModelUpdateParams({ ...model, isPrinted: val } as any)}
+                    compact
+                  />
+                )}
+              </div>
+
+              {/* col 2: Description + Notes as tabs — scrolls in-place if taller than viewer */}
+              <div className="col-span-1 bg-card border rounded-2xl shadow-sm self-start overflow-y-auto" style={{ maxHeight: 'min(600px, 90vh)' }}>
+                <Tabs defaultValue="description" className="w-full">
+                  <TabsList className="w-full justify-start bg-transparent border-b rounded-none h-11 p-0 gap-8 px-6">
+                    <TabsTrigger value="description" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Description</TabsTrigger>
+                    <TabsTrigger value="notes" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Notes</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="description" className="p-6 pt-4">
+                    <DescriptionSection_DB
+                      isEditing={editLogic.isEditing}
+                      currentModel={activeModel as any}
+                      originalUserDefinedDescriptionRef={editLogic.originalUserDefinedDescriptionRef}
+                      originalTopLevelDescriptionRef={editLogic.originalTopLevelDescriptionRef}
+                      restoreOriginalDescription={editLogic.restoreOriginalDescription}
+                      setRestoreOriginalDescription={editLogic.setRestoreOriginalDescription}
+                      setEditedModel={editLogic.setEditedModel as any}
+                      editedModel={editLogic.editedModel as any}
+                      onModelUpdate={(updated) => handleModelUpdateParams({ ...model, ...updated } as any)}
+                    />
+                  </TabsContent>
+                  <TabsContent value="notes" className="p-6 pt-4">
+                    <NotesSection_DB
+                      currentModel={model as any}
+                      onSave={(newNotes) => handleModelUpdateParams({ ...model, notes: newNotes } as any)}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+
+              {/* Zone AB: Related + Collection — spans both cols */}
+              <div className="col-span-2">
+                <Tabs defaultValue="related" className="w-full">
+                  <TabsList className="w-full justify-start bg-transparent border-b rounded-none h-11 p-0 gap-8">
+                    <TabsTrigger value="related" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Related Files</TabsTrigger>
+                    <TabsTrigger value="siblings" className="data-[state=active]:border-primary border-b-2 border-transparent rounded-none bg-transparent px-1 h-full font-bold text-xs uppercase tracking-wider">Collection</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="related" className="pt-6">
+                    <RelatedFilesSection_DB
+                      isEditing={editLogic.isEditing}
+                      currentModel={activeModel as any}
+                      active3DFile={galleryLogic.active3DFile}
+                      setActive3DFile={galleryLogic.setActive3DFile}
+                      relatedVerifyStatus={relatedVerifyStatus}
+                      setRelatedVerifyStatus={setRelatedVerifyStatus}
+                      invalidRelated={editLogic.invalidRelated as any}
+                      serverRejectedRelated={[]}
+                      onModelUpdate={handleModelUpdateParams as any}
+                      onNavigate={onSelectModel as any}
+                      triggerDownload={triggerDownload_db}
+                      availableRelatedMunchie={relatedLogic.availableRelatedMunchie}
+                      detailsViewportRef={detailsViewportRef}
+                      toast={toast}
+                      handleViewDocument={galleryLogic.handleViewDocument}
+                      handleTargetedUpload={uploadLogic.handleTargetedUpload}
+                      onAnalyze={gcodeLogic.handleReanalyzeGcode}
+                    />
+                  </TabsContent>
+                  <TabsContent value="siblings" className="pt-6">
+                    <SiblingsSection_DB
+                      siblings={siblingsLogic.siblings}
+                      onNavigate={(id) => {
+                        const target = models.find(m => m.id === id);
+                        if (target) onSelectModel(target);
+                      }}
+                      detailsViewportRef={detailsViewportRef}
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            </div>{/* end xl left block */}
+
+            {/* RIGHT COLUMN: sidebar, xl:col-span-3 */}
+            <aside className="lg:col-span-5 xl:col-span-3 space-y-6">
 
               <section className="bg-card border rounded-2xl p-6 shadow-sm space-y-6">
-                <PrintSettingsSection currentModel={activeModel} safePrintSettings={safePrintSettings} />
+                <PrintSettingsSection_DB currentModel={activeModel as any} safePrintSettings={safePrintSettings} />
                 <div className="mt-6 pt-6 border-t">
-                  <GcodeSection
-                    currentModel={activeModel}
+                  <GcodeSection_DB
+                    currentModel={activeModel as any}
                     isEditing={editLogic.isEditing}
                     gcodeInputRef={gcodeLogic.gcodeInputRef}
                     isUploadingGcode={gcodeLogic.isUploadingGcode}
@@ -487,29 +685,29 @@ export function ModelHubView_DB({
               </section>
 
               <section className="bg-card border rounded-2xl p-6 shadow-sm space-y-6">
-                <MetadataSection
+                <MetadataSection_DB
                   isEditing={editLogic.isEditing}
-                  isStlModel={isStlModel}
-                  editedModel={editLogic.editedModel}
-                  setEditedModel={editLogic.setEditedModel}
+                  canHavePrintSettings={canHavePrintSettings}
+                  editedModel={editLogic.editedModel as any}
+                  setEditedModel={editLogic.setEditedModel as any}
                   categories={categories}
                   isKnownLicense={isKnownLicense}
                   LICENSES={LICENSES}
-                  onLocalUpdate={handleLocalUpdate}
+                  onLocalUpdate={handleLocalUpdate as any}
                 />
                 {!editLogic.isEditing && (
                   <div className="space-y-6">
-                    <TagsSection
+                    <TagsSection_DB
                       isEditing={editLogic.isEditing}
-                      currentModel={model}
+                      currentModel={model as any}
                       editedModel={null} // Not used in view
                       setEditedModel={() => { }} // Not used
                       getSuggestedTags={() => []} // Not used in view
                       handleSuggestedTagClick={() => { }}
                     />
-                    <SourceSection
+                    <SourceSection_DB
                       isEditing={false}
-                      currentModel={model}
+                      currentModel={model as any}
                       editedModel={null}
                       setEditedModel={() => { }}
                     />
@@ -518,19 +716,20 @@ export function ModelHubView_DB({
                 {editLogic.isEditing && (
                   <div className="space-y-6">
                     {/* Tags Section Edit Mode */}
-                    <TagsSection
+                    <TagsSection_DB
                       isEditing={true}
-                      currentModel={activeModel} // editedModel
-                      editedModel={editLogic.editedModel}
-                      setEditedModel={editLogic.setEditedModel}
+                      currentModel={activeModel as any} // editedModel
+                      editedModel={editLogic.editedModel as any}
+                      setEditedModel={editLogic.setEditedModel as any}
                       getSuggestedTags={getSuggestedTags}
                       handleSuggestedTagClick={handleSuggestedTagClick}
                     />
-                    <SourceSection
+                    <SourceSection_DB
                       isEditing={true}
-                      currentModel={activeModel}
-                      editedModel={editLogic.editedModel}
-                      setEditedModel={editLogic.setEditedModel}
+                      currentModel={activeModel as any}
+                      editedModel={editLogic.editedModel as any}
+                      setEditedModel={editLogic.setEditedModel as any}
+                      onValidationChange={setIsSourceValid}
                     />
                   </div>
                 )}
@@ -579,7 +778,7 @@ export function ModelHubView_DB({
               >
                 Cancel
               </Button>
-              <Button variant="default" size="sm" disabled={editLogic.invalidRelated.length > 0 || editLogic.isSaving}
+              <Button variant="default" size="sm" disabled={editLogic.invalidRelated.length > 0 || editLogic.isSaving || !isSourceValid}
                 className="h-8 px-3 text-[10px] font-black uppercase bg-primary shadow-lg shadow-primary/20 transition-all"
                 onClick={editLogic.saveChanges}
               >
@@ -610,13 +809,13 @@ export function ModelHubView_DB({
       )}
 
       {model && (
-        <ModelUploadDialog
+        <ModelUploadDialog_DB
           isOpen={isAssetDialogOpen}
           onClose={() => setIsAssetDialogOpen(false)}
-          initialFolder={model.filePath}
-          targetModel={model}
+          initialFolder={(model as any).filePath}
+          targetModel={model as any}
           onIsMovingChange={setIsMoving}
-          onUploaded={() => { }} // No-op, React Query handles cache
+          onUploaded={(updatedModel) => handleModelUpdateParams((updatedModel || model) as any)}
         />
       )}
 
@@ -658,12 +857,12 @@ function AddToCollectionDialog({ modelId, collections, onClose, updateCollection
       <div className="bg-card border rounded-xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-lg mb-4">Add to Collection</h3>
         <div className="space-y-4">
-          <Select value={target || ''} onValueChange={setTarget}>
-            <SelectTrigger><SelectValue placeholder="Select a collection" /></SelectTrigger>
-            <SelectContent>
-              {collections.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <SearchableSelect_DB
+            value={target || ''}
+            onValueChange={setTarget}
+            placeholder="Select a collection"
+            options={collections.map(c => ({ value: c.id, label: c.name || 'Unnamed' }))}
+          />
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button disabled={!target || updateCollection.isPending} onClick={() => {
@@ -692,14 +891,12 @@ function RemoveFromCollectionDialog({ modelId, collections, onClose, updateColle
       <div className="bg-card border rounded-xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-bold text-lg mb-4 text-destructive">Remove from Collection</h3>
         <div className="space-y-4">
-          <Select value={target || ''} onValueChange={setTarget}>
-            <SelectTrigger><SelectValue placeholder="Select a collection" /></SelectTrigger>
-            <SelectContent>
-              {collections.filter(c => c.modelIds?.includes(modelId)).map(c => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableSelect_DB
+            value={target || ''}
+            onValueChange={setTarget}
+            placeholder="Select a collection"
+            options={collections.filter(c => c.modelIds?.includes(modelId)).map(c => ({ value: c.id, label: c.name || 'Unnamed' }))}
+          />
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
             <Button variant="destructive" disabled={!target || updateCollection.isPending} onClick={() => {

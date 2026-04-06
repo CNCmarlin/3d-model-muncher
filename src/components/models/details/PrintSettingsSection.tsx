@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Model } from "@/types/model";
-import { useSpoolman } from "@/context/SpoolmanContext";
+import { useSpoolman } from "@/plugins/spoolman/SpoolmanContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 

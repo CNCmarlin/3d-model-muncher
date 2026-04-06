@@ -1,8 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const prisma = require('./db');
 
 /**
  * DATABASE VERSION: Collection Scanner
@@ -89,17 +87,23 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
         const indent = "  ".repeat(depth);
         const folderName = path.basename(currentDir);
 
-        // 1. Marker Check
-        const isProjectFolder = fs.existsSync(path.join(currentDir, 'project.json'));
-
         let entries;
         try {
             entries = fs.readdirSync(currentDir, { withFileTypes: true });
         } catch (e) { return false; }
 
         let directModelIds = [];
-        let projectRootId = null;
         const subFolders = [];
+
+        // Check for _folder.munchie.json marker — if present, this is a model folder (survives DB wipes)
+        const markerFile = path.join(currentDir, '_folder.munchie.json');
+        let folderMarker = null;
+        try {
+            if (fs.existsSync(markerFile)) {
+                folderMarker = JSON.parse(fs.readFileSync(markerFile, 'utf8'));
+            }
+        } catch (e) { /* ignore corrupt marker */ }
+        const isMarkedModelFolder = folderMarker?.type === 'model-folder';
 
         // 2. Identify contents
         for (const entry of entries) {
@@ -109,16 +113,12 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
             } else if (entry.name.endsWith('munchie.json') && entry.name !== 'project.json') {
                 const modelData = readJson(fullPath);
                 if (modelData && modelData.id) {
-                    if (isProjectFolder && modelData.isProjectRoot === true) {
-                        projectRootId = modelData.id;
-                    } else if (!isProjectFolder) {
-                        directModelIds.push(modelData.id);
-                    }
+                    directModelIds.push(modelData.id);
                 }
             }
         }
 
-        console.log(`${indent}📁 Scanning: ${folderName} [Project: ${isProjectFolder}]`);
+        console.log(`${indent}📁 Scanning: ${folderName}`);
 
         const myColId = generateCollectionId(currentDir);
         let idToPass = (strategy === 'strict' && currentDir !== scanRoot) ? myColId : parentColId;
@@ -134,9 +134,11 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
         }
 
         // 4. DECISION LOGIC
-        const isMajorCategory = ['imported', 'uploads', 'models'].includes(folderName.toLowerCase());
-        const hasContentHere = directModelIds.length > 0 || projectRootId;
-        const shouldCreate = (
+        const relativePath = path.relative(modelsDir, currentDir).replace(/\\/g, '/');
+        const isCloudModels = relativePath.toLowerCase() === 'cloud-models' || relativePath.toLowerCase().startsWith('cloud-models/');
+        const isMajorCategory = ['imported', 'uploads', 'models', 'cloud-models'].includes(folderName.toLowerCase());
+        const hasContentHere = directModelIds.length > 0;
+        const shouldCreate = !isCloudModels && (
             (strategy === 'strict' && currentDir !== scanRoot) ||
             (strategy === 'top-level' && depth === 1) ||
             (strategy === 'smart' && (childCreatedCollection || hasContentHere) && !isMajorCategory)
@@ -144,7 +146,6 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
 
         if (shouldCreate) {
             const allIdsHere = [...directModelIds];
-            if (projectRootId) allIdsHere.push(projectRootId);
             const finalModelIds = [...allIdsHere, ...childrenModelIds];
 
             allIdsHere.forEach(id => allClaimedIds.add(id));
@@ -154,7 +155,9 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
                 name: folderName,
                 parentId: parentColId || null,
                 modelIds: finalModelIds,
-                path: path.relative(modelsDir, currentDir)
+                folderPath: path.relative(modelsDir, currentDir),
+                isModelFolder: isMarkedModelFolder,
+                primaryModelHint: folderMarker?.primaryModel || null
             });
 
             console.log(`${indent}  ✅ Collection "${folderName}" (${finalModelIds.length} models)`);
@@ -162,7 +165,7 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
         }
 
         // If no collection here, pass IDs up
-        const bubbledIds = projectRootId ? [projectRootId, ...directModelIds] : directModelIds;
+        const bubbledIds = directModelIds;
         bubbledIds.forEach(id => allClaimedIds.add(id));
 
         console.log(`${indent}  ⬆️  Bubbled ${bubbledIds.length} IDs up`);
@@ -181,23 +184,92 @@ async function generateCollections(scanRoot, modelsDir, options = { strategy: 's
 
     try {
         await prisma.$transaction(async (tx) => {
-            // 1. Delete all existing collections
-            await tx.collection.deleteMany({});
+            // 1. Fetch existing manual collections from DB (Protect Phase)
+            const existingManuals = await tx.collection.findMany({
+                where: { type: 'Manual' },
+                select: { id: true }
+            });
+            const manualIds = new Set(existingManuals.map(m => m.id));
 
-            // 2. Create new collections
-            for (const col of collections) {
-                await tx.collection.create({
-                    data: {
-                        id: col.id,
-                        name: col.name,
-                        parentId: col.parentId,
-                        path: col.path,
-                        modelIds: col.modelIds, // Store as JSON array
-                        coverImage: null,
-                        description: null
-                    }
-                });
+            // Clean up Auto-Imported collections before we generate the new tree
+            await tx.collection.deleteMany({
+                where: { type: 'Auto-Imported' }
+            });
+
+            // 2. Pre-fetch valid Model IDs to avoid Foreign Key errors
+            const allFileModelIds = new Set();
+            collections.forEach(c => c.modelIds.forEach(id => allFileModelIds.add(id)));
+
+            const existingModels = await tx.model.findMany({
+                where: { id: { in: Array.from(allFileModelIds) } },
+                select: { id: true }
+            });
+            const validModelIds = new Set(existingModels.map(m => m.id));
+
+            // NEW: Pre-fetch valid parent IDs (both existing Manual ones and the ones we are about to create)
+            const incomingCollectionIds = new Set(collections.map(c => c.id));
+
+            // 3. Upsert collections
+            // Sort topologically so parents are created before children to satisfy Foreign Key constraints
+            const sortedCollections = [];
+            const colMap = new Map(collections.map(c => [c.id, c]));
+            const visited = new Set();
+
+            function visit(colId) {
+                if (visited.has(colId)) return;
+                const c = colMap.get(colId);
+                if (!c) return;
+                if (c.parentId && colMap.has(c.parentId)) visit(c.parentId);
+                visited.add(colId);
+                sortedCollections.push(c);
             }
+
+            for (const col of collections) visit(col.id);
+
+            for (const col of sortedCollections) {
+                // Filter models that actually exist in DB
+                const linkedModelIds = col.modelIds.filter(id => validModelIds.has(id));
+
+                if (manualIds.has(col.id)) {
+                    // PROTECT: Update models ONLY. Never overwrite name, type, parent, or isModelFolder for Manual types
+                    await tx.collection.update({
+                        where: { id: col.id },
+                        data: {
+                            models: { set: linkedModelIds.map(id => ({ id })) }
+                        }
+                    });
+                } else {
+                    // Validate parentId: It must either be a Manual collection we kept, OR another Auto collection in this batch
+                    const isValidParent = col.parentId && (manualIds.has(col.parentId) || incomingCollectionIds.has(col.parentId));
+
+                    // NEW/AUTO: Upsert instead of Create to avoid P2002 collisions
+                    await tx.collection.upsert({
+                        where: { id: col.id },
+                        update: {
+                            name: col.name,
+                            parentId: isValidParent ? col.parentId : null,
+                            pathHash: col.folderPath ? Buffer.from(col.folderPath).toString('base64') : null,
+                            models: { set: linkedModelIds.map(id => ({ id })) },
+                            type: 'Auto-Imported',
+                            // Preserve isModelFolder if marker is present; don't overwrite if false (manual may have set it)
+                            ...(col.isModelFolder ? { isModelFolder: true } : {})
+                        },
+                        create: {
+                            id: col.id,
+                            name: col.name,
+                            parentId: isValidParent ? col.parentId : null,
+                            pathHash: col.folderPath ? Buffer.from(col.folderPath).toString('base64') : null,
+                            models: { connect: linkedModelIds.map(id => ({ id })) },
+                            metadata: JSON.stringify({ description: null, images: [], buildPlates: [] }),
+                            isModelFolder: col.isModelFolder || false,
+                            type: 'Auto-Imported'
+                        }
+                    });
+                }
+            }
+        }, {
+            maxWait: 10000,
+            timeout: 60000
         });
 
         console.log(`✅ ${collections.length} collections written to database`);

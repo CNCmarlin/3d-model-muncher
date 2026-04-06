@@ -1,0 +1,66 @@
+{
+    "id": "models-3D-Printer-ADXL-ADXL-mount-7928d97e",
+    "name": "ADXL mount",
+    "filePath": "3D Printer/ADXL/ADXL mount.stl",
+    "modelUrl": "/models/3D Printer/ADXL/ADXL mount.stl",
+    "fileSize": "0.1 MB",
+    "description": "",
+    "category": "",
+    "tags": [
+        "ADXL"
+    ],
+    "isPrinted": false,
+    "printTime": "1h 42m 23s",
+    "filamentUsed": "14.17g",
+    "license": "",
+    "source": "Upload",
+    "designer": "Local User",
+    "collections": [],
+    "excludedCollections": [],
+    "printSettings": {
+        "layerHeight": "0.2",
+        "infill": "30%",
+        "nozzle": "0.4",
+        "printer": "Creality Ender-5 Pro (2019)",
+        "material": "PLA"
+    },
+    "created": "2026-01-22T03:20:27.669Z",
+    "lastModified": "2026-02-15T20:21:05.788Z",
+    "parsedImages": [
+        "/models/3D Printer/ADXL/ADXL mount.stl-thumb.png"
+    ],
+    "related_files": [
+        "3D Printer/ADXL/ADXL mount.gcode"
+    ],
+    "hidden": true,
+    "isRelatedPart": false,
+    "isProjectRoot": false,
+    "price": 5,
+    "userDefined": {
+        "images": [],
+        "imageOrder": [],
+        "thumbnail": "parsed:0"
+    },
+    "notes": "",
+    "hash": "7928d97e5dd0d47a8aba1a62008a44d4",
+    "gcodeData": {
+        "filaments": [
+            {
+                "type": "PLA",
+                "color": "#3D1F1F",
+                "length": "4750.40mm",
+                "weight": "14.17g"
+            }
+        ],
+        "printSettings": {
+            "layerHeight": "0.2",
+            "infill": "30%",
+            "nozzle": "0.4",
+            "printer": "Creality Ender-5 Pro (2019)",
+            "material": "PLA"
+        },
+        "gcodeFilePath": "3D Printer/ADXL/ADXL mount.gcode",
+        "printTime": "1h 42m 23s",
+        "totalFilamentWeight": "14.17g"
+    }
+}

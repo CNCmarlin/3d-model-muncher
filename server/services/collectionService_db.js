@@ -1,12 +1,30 @@
-const { PrismaClient } = require('@prisma/client');
-
-const prisma = new PrismaClient();
+const fs = require('fs');
+const path = require('path');
+const prisma = require('../../server-utils/db');
+const { getAbsoluteModelsPath } = require('../../server-utils/dataAccess');
 
 /**
  * DATABASE VERSION: Collection Service
  * Handles hierarchical collection operations using Prisma
  * Collections represent folder structure for organizing models
  */
+
+// Helper to unpack metadata for frontend parity
+function unpackCollectionMetadata(c) {
+  let meta = {};
+  if (c.metadata) {
+    try {
+      meta = typeof c.metadata === 'string' ? JSON.parse(c.metadata) : c.metadata;
+    } catch (e) { }
+  }
+  return {
+    ...c,
+    modelIds: c.models ? c.models.map(m => m.id) : [],
+    images: c.images || meta.images || [],
+    documents: c.documents || meta.documents || [],
+    metadata: meta
+  };
+}
 
 /**
  * Get all collections with optional hierarchy flattening
@@ -43,11 +61,7 @@ async function getAllCollections(options = {}) {
       orderBy: { name: 'asc' }
     });
 
-    // Map models relation to modelIds array
-    return collections.map(c => ({
-      ...c,
-      modelIds: c.models ? c.models.map(m => m.id) : []
-    }));
+    return collections.map(unpackCollectionMetadata);
   }
 
   // Return collections filtered by parent
@@ -63,11 +77,7 @@ async function getAllCollections(options = {}) {
     orderBy: { name: 'asc' }
   });
 
-  // Map models relation to modelIds array
-  return collections.map(c => ({
-    ...c,
-    modelIds: c.models ? c.models.map(m => m.id) : []
-  }));
+  return collections.map(unpackCollectionMetadata);
 }
 
 /**
@@ -76,7 +86,7 @@ async function getAllCollections(options = {}) {
  * @returns {Promise<Collection|null>}
  */
 async function getCollectionById(id) {
-  return await prisma.collection.findUnique({
+  const c = await prisma.collection.findUnique({
     where: { id },
     include: {
       models: true,
@@ -89,6 +99,7 @@ async function getCollectionById(id) {
       _count: { select: { models: true } }
     }
   });
+  return c ? unpackCollectionMetadata(c) : null;
 }
 
 /**
@@ -97,59 +108,147 @@ async function getCollectionById(id) {
  * @returns {Promise<Collection[]>} - Collections with nested children
  */
 async function getCollectionTree(parentId = null) {
-  const collections = await prisma.collection.findMany({
-    where: { parentId },
+  // Single query: fetch ALL collections, then build tree in memory
+  const allCollections = await prisma.collection.findMany({
     include: {
+      models: { select: { id: true } },
       _count: { select: { models: true } }
     },
     orderBy: { name: 'asc' }
   });
 
-  // Recursively fetch children
-  for (const collection of collections) {
-    collection.children = await getCollectionTree(collection.id);
+  // Map models relation to modelIds array and unpack metadata
+  const mappedCollections = allCollections.map(unpackCollectionMetadata);
+
+  // Build lookup map: parentId -> children[]
+  const childrenMap = new Map();
+  for (const col of mappedCollections) {
+    const key = col.parentId || null;
+    if (!childrenMap.has(key)) childrenMap.set(key, []);
+    childrenMap.get(key).push(col);
   }
 
-  return collections;
+  // Recursive tree builder using the map (no additional DB queries)
+  function buildTree(pId) {
+    const children = childrenMap.get(pId) || [];
+    return children.map(col => ({
+      ...col,
+      children: buildTree(col.id)
+    }));
+  }
+
+  return buildTree(parentId);
 }
 
 /**
  * Create a new collection
- * @param {Object} data - Collection data
+ * Database First Approach: Create DB record, optionally sync to disk
+ * @param {Object} data
  * @returns {Promise<Collection>}
  */
 async function createCollection(data) {
-  const { name, parentId, description, coverImage, modelIds = [] } = data;
+  const { name, parentId, coverImagePath, coverImage, pathHash: providedHash, path: providedPath, createOnDisk, type, category, metadata, images, description } = data;
+
+  let finalPathHash = providedHash || null;
+  const finalCoverImagePath = coverImagePath || coverImage || null;
+
+  // Case 1: Import Existing Folder (Path provided)
+  if (providedPath && !finalPathHash) {
+    // Generate hash from provided path
+    // Normalize: remove leading slashes, use forward slashes
+    const normalized = providedPath.replace(/^(\/|\\)+/, '').replace(/\\/g, '/');
+    finalPathHash = Buffer.from(normalized).toString('base64');
+  }
+
+  // Case 2: Create New Physical Folder
+  if (createOnDisk) {
+    try {
+      const modelsDir = getAbsoluteModelsPath();
+      let parentDir = modelsDir;
+
+      if (parentId) {
+        const parent = await prisma.collection.findUnique({ where: { id: parentId } });
+        if (parent && parent.pathHash) {
+          // Decode path from hash (Database First: we trust the hash/DB state)
+          const relPath = Buffer.from(parent.pathHash, 'base64').toString('utf8');
+          parentDir = path.join(modelsDir, relPath);
+        }
+      }
+
+      const safeName = name.replace(/[^a-zA-Z0-9_\- ]/g, '').trim();
+      const newDirPath = path.join(parentDir, safeName);
+
+      if (!fs.existsSync(newDirPath)) {
+        fs.mkdirSync(newDirPath, { recursive: true });
+        console.log(`[DB Collection] Created physical folder: ${newDirPath}`);
+      }
+
+      // Generate pathHash for the new folder
+      const rel = path.relative(modelsDir, newDirPath);
+      const normalized = rel.replace(/\\/g, '/');
+      finalPathHash = Buffer.from(normalized).toString('base64');
+
+    } catch (e) {
+      console.error('[DB Collection] Physical creation failed:', e);
+      // If physical creation fails, we might fallback to cloud (null hash) or error?
+      // For now, let's keep it null if it failed, making it a "Cloud" collection effectively,
+      // or we could throw. But "Database First" suggests we can have a record even if disk fails.
+    }
+  }
+
+  // Case 3: Cloud Collection (Default)
+  // If no path provided and not creating on disk, finalPathHash remains null.
 
   return await prisma.collection.create({
     data: {
       name,
       parentId: parentId || null,
-      description,
-      coverImage,
-      modelIds, // Store as JSON array
-      path: '', // Will be computed
-      pathHash: null
+      coverImagePath: finalCoverImagePath,
+      pathHash: finalPathHash, // NULL = Cloud, Value = Physical
+      type: type || 'folder',
+      category: category || null,
+      metadata: metadata ? JSON.stringify(metadata) : JSON.stringify({ description: '', images: [], buildPlates: [] })
     }
   });
 }
 
 /**
  * Update a collection
- * @param {string} id - Collection ID
- * @param {Object} updates - Partial collection data
+ * @param {string} id
+ * @param {Object} updates
  * @returns {Promise<Collection>}
  */
 async function updateCollection(id, updates) {
-  const { name, description, coverImage, modelIds } = updates;
+  const { name, coverImagePath, coverImage, pathHash, type, category, metadata, description, images, documents } = updates;
+
+  const finalCoverImagePath = coverImagePath !== undefined ? coverImagePath : coverImage;
+
+  // If metadata is provided, we should merge it with existing
+  let metadataString = undefined;
+  if (metadata || description !== undefined || images !== undefined || documents !== undefined) {
+    const current = await prisma.collection.findUnique({ where: { id }, select: { metadata: true } });
+    let existing = {};
+    try { existing = JSON.parse(current?.metadata || '{}'); } catch (e) { }
+
+    // Inject top level description/images back into metadata to bridge legacy
+    const newMeta = { ...existing };
+    if (metadata) Object.assign(newMeta, metadata);
+    if (description !== undefined) newMeta.description = description;
+    if (images !== undefined) newMeta.images = images;
+    if (documents !== undefined) newMeta.documents = documents;
+
+    metadataString = JSON.stringify(newMeta);
+  }
 
   return await prisma.collection.update({
     where: { id },
     data: {
       ...(name && { name }),
-      ...(description !== undefined && { description }),
-      ...(coverImage !== undefined && { coverImage }),
-      ...(modelIds && { modelIds })
+      ...(finalCoverImagePath !== undefined && { coverImagePath: finalCoverImagePath }),
+      ...(pathHash !== undefined && { pathHash }),
+      ...(type && { type }),
+      ...(category !== undefined && { category }),
+      ...(metadataString && { metadata: metadataString })
     }
   });
 }
@@ -176,26 +275,41 @@ async function moveCollection(collectionId, newParentId) {
 }
 
 /**
- * Delete a collection (soft delete by removing from tree)
- * @param {string} id - Collection ID
- * @param {boolean} cascade - If true, delete children too
- * @returns {Promise<void>}
+ * Delete a collection
+ * @param {string} id
+ * @param {boolean} cascade
+ * @param {boolean} deleteFiles - if true, remove from disk (Parity)
+ * @returns {Promise<Collection>}
  */
-async function deleteCollection(id, cascade = false) {
-  if (cascade) {
-    // Delete collection and all descendants
-    await deleteCollectionRecursive(id);
-  } else {
-    // Move children to parent before deleting
-    const collection = await prisma.collection.findUnique({ where: { id } });
-    if (collection) {
-      await prisma.collection.updateMany({
-        where: { parentId: id },
-        data: { parentId: collection.parentId }
-      });
-      await prisma.collection.delete({ where: { id } });
+async function deleteCollection(id, cascade = false, deleteFiles = false) {
+  const collection = await prisma.collection.findUnique({ where: { id } });
+  if (!collection) throw new Error('Collection not found');
+
+  if (deleteFiles && collection.pathHash) {
+    try {
+      const modelsDir = getAbsoluteModelsPath();
+      const relPath = Buffer.from(collection.pathHash, 'base64').toString('utf8');
+      const fullPath = path.join(modelsDir, relPath);
+
+      // Security check
+      if (!relPath.includes('..') && !path.isAbsolute(relPath) && fs.existsSync(fullPath)) {
+        console.log(`[DB Collection] Deleting physical folder: ${fullPath}`);
+        fs.rmSync(fullPath, { recursive: true, force: true });
+      }
+    } catch (e) {
+      console.error('[DB Collection] Physical delete failed:', e);
     }
   }
+
+  // Database delete (cascade handles children relations in DB schema if configured, 
+  // but if we want explicit cascade logic for files, we'd need recursion here. 
+  // For now, relying on Prisma 'onDelete: Cascade' for DB relations)
+  // Database delete
+  // If cascade is requested, we rely on Prisma schema's 'onDelete: Cascade' for relations.
+  // If not cascading, this will throw if children exist.
+  return await prisma.collection.delete({
+    where: { id }
+  });
 }
 
 /**

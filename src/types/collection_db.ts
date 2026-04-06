@@ -3,9 +3,9 @@
  * Matches Prisma schema - hierarchical folder structure
  */
 
-import type { Model } from './model_db';
+import type { Model_db } from './model_db';
 
-export interface Collection {
+export interface StrictCollection_db {
     id: string;
     name: string;
     parentId: string | null; // FK to parent collection (null = root)
@@ -18,25 +18,53 @@ export interface Collection {
     updatedAt: Date;
 
     // Relations (populated when included)
-    models?: Model[];
-    children?: Collection[]; // Nested subcollections
-    parent?: Collection;
+    models?: Model_db[];
+    children?: collection_db[]; // Nested subcollections
+    parent?: collection_db;
     _count?: {
         models: number;
     };
 }
 
+export type Collection = Omit<StrictCollection_db, 'name' | 'description' | 'coverImagePath' | 'type' | 'createdAt' | 'updatedAt'> & {
+    // Legacy Overrides & Permissive Types for Frontend
+    name: string;
+    description?: string;
+    modelIds?: string[];
+    childCollectionIds?: string[];
+    path?: string;
+    pathHash?: string | null;
+    parentId?: string | null;
+    createdAt?: Date;
+    updatedAt?: Date;
+    coverModelId?: string;
+    coverImage?: string | null;
+    images?: string[];
+    documents?: string[];
+    category?: string;
+    tags?: string[];
+    isModelFolder?: boolean;
+    type?: string; // 'Manual' or 'Auto-Imported'
+    buildPlates?: any[];
+    metadata?: any;
+    coverImagePath?: string | null;
+};
+
+export type collection_db = Collection;
+
 /**
  * Collection tree node (recursive)
  */
-export interface CollectionTreeNode extends Collection {
-    children: CollectionTreeNode[];
-}
+export type CollectionTreeNode_db = Collection & {
+    children: CollectionTreeNode_db[];
+};
+
+export type CollectionTreeNode = CollectionTreeNode_db;
 
 /**
  * Query parameters for GET /api/collections
  */
-export interface CollectionQueryParams {
+export interface CollectionQueryParams_db {
     parentId?: string | null;
     includeModels?: boolean;
     includeChildren?: boolean;
@@ -47,7 +75,7 @@ export interface CollectionQueryParams {
 /**
  * Form data for creating/updating collections
  */
-export interface CollectionFormData {
+export interface CollectionFormData_db {
     name: string;
     parentId?: string | null;
     description?: string;
@@ -58,7 +86,7 @@ export interface CollectionFormData {
 /**
  * Move collection operation
  */
-export interface MoveCollectionData {
+export interface MoveCollectionData_db {
     collectionId: string;
     newParentId: string | null;
 }

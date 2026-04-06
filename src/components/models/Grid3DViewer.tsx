@@ -1,10 +1,36 @@
 import { Center, OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { Canvas, useLoader, useThree } from "@react-three/fiber";
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls as OrbitControlsImpl } from 'three/examples/jsm/controls/OrbitControls';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader';
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
+
+// [NEW] Error Boundary for 3D Content
+class ThreeErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any) {
+    console.error("ThreeErrorBoundary caught 3D load error:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      // Fallback: Red Wireframe Box to indicate error
+      return (
+        <mesh>
+          <boxGeometry args={[20, 20, 20]} />
+          <meshBasicMaterial wireframe color="red" />
+        </mesh>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // --- Helper: Model Geometry Fixes ---
 function ModelGeometryFix({ url, color }: { url: string; color: string }) {
@@ -169,13 +195,15 @@ export function Grid3DViewer({ url, color = "#6366f1" }: { url: string; color?: 
 
         <Suspense fallback={null}>
           <Center>
-            {url.toLowerCase().endsWith(".3mf") ? (
-              <group onPointerOver={undefined} onPointerOut={undefined}>
+            <ThreeErrorBoundary>
+              {url.toLowerCase().endsWith(".3mf") ? (
+                <group onPointerOver={undefined} onPointerOut={undefined}>
+                  <ModelGeometryFix url={url} color={color} />
+                </group>
+              ) : (
                 <ModelGeometryFix url={url} color={color} />
-              </group>
-            ) : (
-              <ModelGeometryFix url={url} color={color} />
-            )}
+              )}
+            </ThreeErrorBoundary>
           </Center>
 
           <CameraFitter url={url} />

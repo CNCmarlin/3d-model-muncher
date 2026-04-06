@@ -1,7 +1,7 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useConfig } from '@/context/ConfigContext';
 import type { Model } from '@/types/model';
 import { adaptDbModelsToLegacy } from '@/utils/dbAdapter';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 interface PaginatedResponse {
     data: Model[];
@@ -30,13 +30,25 @@ export function useModelsPaginated({
     const { appConfig } = useConfig();
     const useDatabaseBackend = appConfig?.settings?.useDatabaseBackend ?? false;
 
-    // Construct query parameters
-    const queryParams = new URLSearchParams({
-        page: page.toString(),
-        limit: limit.toString(),
-        paginated: 'true',
-        ...(search && { search }),
-        ...filters
+    // Construct query parameters manually to handle arrays correctly
+    const queryParams = new URLSearchParams();
+    queryParams.append('page', page.toString());
+    queryParams.append('limit', limit.toString());
+    queryParams.append('paginated', 'true');
+    if (search) queryParams.append('search', search);
+
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        if (Array.isArray(value)) {
+            if (value.length > 0) {
+                // For arrays, append each value (e.g. tags=a&tags=b) 
+                // OR join with comma if backend expects comma-separated (e.g. tags=a,b)
+                // ModelQuerySchema transform splits by comma, so let's use comma.
+                queryParams.append(key, value.join(','));
+            }
+        } else if (value !== 'all') { // Skip 'all' values as they mean "no filter"
+            queryParams.append(key, String(value));
+        }
     });
 
     return useQuery({

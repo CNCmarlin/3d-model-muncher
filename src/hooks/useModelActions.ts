@@ -1,5 +1,5 @@
-import { toast } from "sonner";
 import { Model } from "@/types/model";
+import { toast } from "sonner";
 import { useModelMutations } from "./useModelMutations";
 
 interface UseModelActionsProps {
@@ -37,8 +37,18 @@ export function useModelActions({
     const { updateModel, bulkUpdateModels } = useModelMutations();
 
     const handleModelUpdate = async (updatedModel: Model) => {
-        // Optimistically update local state immediately
+        // 1. Optimistically update local state immediately
         setSelectedModel(updatedModel);
+
+        // 2. Check if we actually need to mutate
+        // If this update came from useModelEdit_db, it already called updateModel.mutateAsync
+        // and we are just syncing the local state in App.tsx.
+        // We can detect this if the model has a temporary flag or if we just want to be safe.
+        // For now, let's assume if 'source' is 'hub-edit', we skip the redundant mutation.
+        if ((updatedModel as any)._skipMutation) {
+            console.log("[useModelActions] Skipping redundant mutation");
+            return;
+        }
 
         // Use React Query mutation (handles optimistic cache update automatically)
         updateModel.mutate(

@@ -1,0 +1,181 @@
+import { Model_db } from "@/types/model_db";
+import JSZip from "jszip";
+import { toast } from "sonner";
+
+export function normalizeModelPath(url: string | undefined | null): string | null {
+  if (!url) return null;
+  let resolved = url.replace(/\\/g, '/');
+  if (resolved.startsWith('http')) return resolved;
+
+  if (resolved.startsWith('/models/')) {
+    // ok
+  } else if (resolved.startsWith('models/')) {
+    resolved = '/' + resolved;
+  } else {
+    const trimmed = resolved.replace(/^\/+/, '');
+    resolved = '/models/' + trimmed;
+  }
+  return resolved;
+}
+
+export function extractFileName_db(resolvedPath: string | null): string {
+  if (!resolvedPath) return '';
+  const parts = resolvedPath.split(/[/\\]/);
+  const name = parts.pop() || '';
+  return name.split('?')[0];
+}
+
+export function triggerDownload_db(url: string | undefined | null, e?: MouseEvent, downloadName?: string) {
+  if (e && typeof (e as MouseEvent).stopPropagation === 'function') {
+    (e as MouseEvent).stopPropagation();
+  }
+  const resolved = normalizeModelPath(url);
+  if (!resolved) return;
+  // Use API to ensure correct headers/filename
+  const encoded = encodeURIComponent(resolved);
+  const apiUrl = `/api/models/download?path=${encoded}`;
+
+  const link = document.createElement('a');
+  link.href = apiUrl;
+  // We explicitly set download attribute although the server header should take precedence
+  if (downloadName) link.download = downloadName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// Fetch helper that handles the API we just added to server.js
+async function fetchFileBlob(path: string): Promise<Blob | null> {
+  const normalized = normalizeModelPath(path);
+  if (!normalized) return null;
+
+  try {
+    const encoded = encodeURIComponent(normalized);
+    const resp = await fetch(`/api/models/download?path=${encoded}`);
+    if (resp.ok) return await resp.blob();
+    console.warn(`Download API failed for ${normalized}: ${resp.status}`);
+  } catch (e) {
+    console.error("Fetch failed for", normalized, e);
+  }
+  return null;
+}
+
+// Fixed downloadAllFiles (Single Model, Multiple Files + Images)
+export const downloadAllFiles_db = async (mainFilePath: string, relatedFiles: string[], images: string[], baseName: string) => {
+  const toastId = toast.loading("Preparing ZIP archive...");
+  try {
+    const zip = new JSZip();
+
+    // 1. Main File
+    const mainBlob = await fetchFileBlob(mainFilePath);
+    if (mainBlob) {
+      zip.file(extractFileName_db(mainFilePath) || 'model.file', mainBlob);
+    }
+
+    // 2. Related Files
+    if (relatedFiles && relatedFiles.length > 0) {
+      await Promise.all(relatedFiles.map(async (rf) => {
+        const blob = await fetchFileBlob(rf);
+        if (blob) {
+          zip.file(extractFileName_db(rf), blob);
+        }
+      }));
+    }
+
+    // 3. Images
+    if (images && images.length > 0) {
+      const imgFolder = zip.folder("images");
+      if (imgFolder) {
+        await Promise.all(images.map(async (img) => {
+          const blob = await fetchFileBlob(img);
+          if (blob) {
+            imgFolder.file(extractFileName_db(img), blob);
+          }
+        }));
+      }
+    }
+
+    const content = await zip.generateAsync({ type: "blob" });
+    if (content.size === 0) throw new Error("Zip is empty (files not found)");
+
+    const url = window.URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${baseName}_Files.zip`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    toast.dismiss(toastId);
+    toast.success("Files downloaded!");
+  } catch (error) {
+    console.error("Zip download failed", error);
+    toast.dismiss(toastId);
+    toast.error("Failed to create ZIP (check console)");
+  }
+};
+
+export const downloadMultipleModels = async (models: Model_db[]) => {
+  if (!models || models.length === 0) return;
+  const toastId = toast.loading(`Zipping ${models.length} models...`);
+
+  try {
+    const zip = new JSZip();
+    let count = 0;
+
+    await Promise.all(models.map(async (model) => {
+      // Sanitize model name for filename prefix
+      const safeModelName = model.name.replace(/[^a-z0-9\-_ ]/gi, '').trim() || model.id;
+
+      // 1. Add Main File (Root)
+      const mainPath = normalizeModelPath((model as any).primaryModelPath || model.modelUrl);
+      if (mainPath) {
+        const blob = await fetchFileBlob(mainPath);
+        if (blob) {
+          const originalName = extractFileName_db(mainPath);
+          // Format: "Charizard - main.stl"
+          const zipName = `${safeModelName} - ${originalName}`;
+          zip.file(zipName, blob);
+          count++;
+        }
+      }
+
+      // 2. Add Related Files (Root)
+      if (model.related_files && model.related_files.length > 0) {
+        await Promise.all(model.related_files.map(async (rf) => {
+          const rfPath = normalizeModelPath(rf);
+          if (rfPath) {
+            const blob = await fetchFileBlob(rfPath);
+            if (blob) {
+              const originalName = extractFileName_db(rfPath);
+              // Format: "Charizard - readme.txt"
+              const zipName = `${safeModelName} - ${originalName}`;
+              zip.file(zipName, blob);
+              count++;
+            }
+          }
+        }));
+      }
+    }));
+
+    if (count === 0) throw new Error("No files could be downloaded");
+
+    const content = await zip.generateAsync({ type: "blob" });
+    const url = window.URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Bulk_Models_${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+
+    toast.dismiss(toastId);
+    toast.success("Bulk download complete!");
+  } catch (e) {
+    console.error(e);
+    toast.dismiss(toastId);
+    toast.error("Bulk download failed");
+  }
+};

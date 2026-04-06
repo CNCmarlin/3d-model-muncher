@@ -40,6 +40,13 @@ export interface IntegrationSettings {
   printer?: PrinterConfig;
 }
 
+export interface AppPlugins {
+  genai?: boolean;
+  spoolman?: boolean;
+  projects?: boolean;
+  [key: string]: boolean | undefined;
+}
+
 export interface AppConfig {
   version: string;
   categories: Category[];
@@ -53,8 +60,10 @@ export interface AppConfig {
     showPrintedBadge?: boolean;
     verboseScanLogs?: boolean;
     scanStrategy: 'smart' | 'strict' | 'top-level';
+    collectionMode?: 'strict' | 'smart' | 'top-level' | 'manual' | 'raw';
     modelCardPrimary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     modelCardSecondary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
+    modelCardTertiary: 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price';
     autoSave: boolean;
     modelDirectory: string;
     gcodeOverwriteBehavior?: 'prompt' | 'overwrite';
@@ -62,6 +71,8 @@ export interface AppConfig {
     useDatabaseBackend?: boolean; // Phase 3: Dual-Running Feature Flag
     alwaysMoveFiles?: boolean; // If true, always move files on collection change without asking.
     onboardingCompleted?: boolean;
+    libraryName?: string; // Custom name shown in the sidebar and top bar (default: "3D Model Muncher")
+    buildPlatePresets?: { name: string; width: number; height: number; }[]; // Custom User Presets
   };
   filters: {
     defaultCategory: string;
@@ -70,6 +81,7 @@ export interface AppConfig {
     defaultSortBy?: string;
   };
   integrations?: IntegrationSettings;
+  plugins?: AppPlugins;
   lastModified: string;
   lastRunTimestamps?: Record<string, string>; // key → ISO date string (e.g. "generateThumbnails" → "2026-02-14T...")
 }

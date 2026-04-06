@@ -26,11 +26,17 @@ export class ConfigManager {
       showPrintedBadge: true,
       modelCardPrimary: 'printTime',
       modelCardSecondary: 'filamentUsed',
+      modelCardTertiary: 'none',
       autoSave: true,
       modelDirectory: "./models",
       gcodeOverwriteBehavior: 'prompt',
       gcodeStorageBehavior: 'save-and-link',
       scanStrategy: 'smart',
+      buildPlatePresets: [
+        { name: 'Ender 3', width: 230, height: 230 },
+        { name: 'Prusa MK3', width: 250, height: 210 },
+        { name: 'Bambu Lab X1', width: 256, height: 256 }
+      ]
     },
     filters: {
       defaultCategory: "all",
@@ -104,6 +110,11 @@ export class ConfigManager {
           const allowed = ['none', 'printTime', 'filamentUsed', 'fileSize', 'category', 'designer', 'layerHeight', 'nozzle', 'price'];
           return allowed.includes(val) ? val : this.defaultConfig.settings.modelCardSecondary;
         })(),
+        modelCardTertiary: ((): 'none' | 'printTime' | 'filamentUsed' | 'fileSize' | 'category' | 'designer' | 'layerHeight' | 'nozzle' | 'price' => {
+          const val = config?.settings?.modelCardTertiary;
+          const allowed = ['none', 'printTime', 'filamentUsed', 'fileSize', 'category', 'designer', 'layerHeight', 'nozzle', 'price'];
+          return allowed.includes(val) ? val : this.defaultConfig.settings.modelCardTertiary;
+        })(),
         showPrintedBadge: typeof config?.settings?.showPrintedBadge === 'boolean'
           ? config.settings.showPrintedBadge
           : this.defaultConfig.settings.showPrintedBadge,
@@ -115,6 +126,9 @@ export class ConfigManager {
           : this.defaultConfig.settings.modelDirectory,
         gcodeOverwriteBehavior: config?.settings?.gcodeOverwriteBehavior || this.defaultConfig.settings.gcodeOverwriteBehavior,
         gcodeStorageBehavior: config?.settings?.gcodeStorageBehavior || this.defaultConfig.settings.gcodeStorageBehavior,
+        buildPlatePresets: Array.isArray(config?.settings?.buildPlatePresets)
+          ? config.settings.buildPlatePresets.filter(p => p.name && typeof p.width === 'number' && typeof p.height === 'number')
+          : this.defaultConfig.settings.buildPlatePresets,
       },
       filters: {
         defaultCategory: typeof config?.filters?.defaultCategory === 'string' && config.filters.defaultCategory.trim() !== ''
@@ -130,7 +144,7 @@ export class ConfigManager {
           ? config.filters.defaultSortBy
           : this.defaultConfig.filters.defaultSortBy
       },
-// [FIX] Explicitly map all integration fields so they persist
+      // [FIX] Explicitly map all integration fields so they persist
       integrations: {
         spoolman: {
           url: config?.integrations?.spoolman?.url || ""

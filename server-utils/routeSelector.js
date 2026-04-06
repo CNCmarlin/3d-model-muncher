@@ -89,6 +89,101 @@ function getCollectionScanner() {
 /**
  * Log the current backend mode on startup
  */
+/**
+ * Get the appropriate system routes based on current backend mode
+ * @returns {Router} Express router for system endpoints
+ */
+function getSystemRoutes() {
+    // ALWAYS force database system routes, since legacy mode now embeds the DB Migration tab
+    // which requires /api/system/wipe-and-scan and other DB endpoints.
+    console.log('📊 [RouteSelector] Loading DATABASE system routes (system_db.js)');
+    try {
+        return require('../server/routes/system_db');
+    } catch (error) {
+        console.warn('⚠️  [RouteSelector] system_db.js not found, falling back to legacy:', error.message);
+        return require('../server/routes/system');
+    }
+}
+
+/**
+ * Get the appropriate admin routes based on current backend mode
+ * @returns {Router} Express router for admin endpoints
+ */
+function getAdminRoutes() {
+    if (isDatabaseMode()) {
+        console.log('📊 [RouteSelector] Loading DATABASE admin routes (admin_db.js)');
+        try {
+            return require('../server/routes/admin_db');
+        } catch (error) {
+            console.warn('⚠️  [RouteSelector] admin_db.js not found, falling back to legacy:', error.message);
+            return require('../server/routes/admin');
+        }
+    } else {
+        console.log('📁 [RouteSelector] Loading LEGACY admin routes (admin.js)');
+        return require('../server/routes/admin');
+    }
+}
+
+/**
+ * Get the appropriate import routes based on current backend mode
+ * @returns {Router} Express router for import endpoints
+ */
+function getImportRoutes() {
+    if (isDatabaseMode()) {
+        console.log('📊 [RouteSelector] Loading DATABASE import routes (imports_db.js)');
+        try {
+            return require('../server/routes/imports_db');
+        } catch (error) {
+            console.warn('⚠️  [RouteSelector] imports_db.js not found, falling back to legacy:', error.message);
+            return require('../server/routes/imports');
+        }
+    } else {
+        console.log('📁 [RouteSelector] Loading LEGACY import routes (imports.js)');
+        return require('../server/routes/imports');
+    }
+}
+
+/**
+ * Get the appropriate config routes based on current backend mode
+ * @returns {Router} Express router for config endpoints
+ */
+function getConfigRoutes() {
+    if (isDatabaseMode()) {
+        console.log('📊 [RouteSelector] Loading DATABASE config routes (config_db.js)');
+        return require('../server/routes/config_db');
+    }
+    console.log('📁 [RouteSelector] Loading Shared Config routes (config.js)');
+    return require('../server/routes/config');
+}
+
+/**
+ * Get the appropriate integrations routes based on current backend mode
+ * @returns {Router} Express router for integrations endpoints
+ */
+function getIntegrationRoutes() {
+    if (isDatabaseMode()) {
+        console.log('📊 [RouteSelector] Loading DATABASE integration routes (integrations_db.js)');
+        return require('../server/routes/integrations_db');
+    }
+    console.log('📁 [RouteSelector] Loading Shared Integration routes (integrations.js)');
+    return require('../server/routes/integrations');
+}
+
+/**
+ * Get the appropriate projects routes based on current backend mode
+ * (Projects are inherently DB-only in V2)
+ * @returns {Router} Express router for projects endpoints
+ */
+function getProjectRoutes() {
+    if (isDatabaseMode()) {
+        console.log('📊 [RouteSelector] Loading DATABASE project routes (plugins/projects/projects_db.js)');
+        return require('../server/plugins/projects/projects_db');
+    }
+    // Fallback for legacy (not fully supported, but prevents crash)
+    console.log('📁 [RouteSelector] WARNING: Projects require Database Mode.');
+    return require('express').Router();
+}
+
 function logStartupMode() {
     const mode = getBackendMode();
     const emoji = mode === 'DATABASE' ? '📊' : '📁';
@@ -103,6 +198,12 @@ module.exports = {
     getModelRoutes,
     getCollectionRoutes,
     getTagRoutes,
+    getSystemRoutes,
+    getAdminRoutes,
+    getImportRoutes,
+    getConfigRoutes,
+    getIntegrationRoutes,
     getCollectionScanner,
+    getProjectRoutes,
     logStartupMode
 };

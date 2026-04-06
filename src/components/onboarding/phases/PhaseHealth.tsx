@@ -12,8 +12,8 @@ interface PhaseHealthProps {
     onNext: () => void;
 }
 
-export function PhaseHealth({ onNext }: PhaseHealthProps) {
-    const { appConfig } = useConfig();
+export function PhaseHealth({ }: PhaseHealthProps) {
+    const { } = useConfig();
 
     // Integrity State
     const [isHashChecking, setIsHashChecking] = useState(false);

@@ -77,6 +77,7 @@ describe('download behavior', () => {
           model={model}
           models={[]}
           onClose={() => { }}
+          onSelectModel={() => { }}
           onModelUpdate={() => { }}
           categories={[]}
           collections={[]}

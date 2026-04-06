@@ -1,11 +1,14 @@
 
 import { useConfig } from "@/context/ConfigContext";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function useThumbnails() {
-    const { appConfig, updateConfig } = useConfig();
+    // [Fix] Remove manual updateConfig and appConfig dependency for updates
+    // use updateRunTimestamp which handles stale closures internally via ref
+    const { updateRunTimestamp } = useConfig();
     const [isGenerating, setIsGenerating] = useState(false);
+    const [progress, setProgress] = useState<{ total: number; current: number; status: string } | null>(null);
     const [results, setResults] = useState<{
         success: boolean;
         processed: number;
@@ -14,13 +17,44 @@ export function useThumbnails() {
         aborted?: boolean;
     } | null>(null);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const pollInterval = useRef<NodeJS.Timeout | null>(null);
+
+    // Polling Logic
+    const startPolling = () => {
+        if (pollInterval.current) clearInterval(pollInterval.current);
+        pollInterval.current = setInterval(async () => {
+            try {
+                const res = await fetch('/api/admin/thumbnail-status');
+                if (res.ok) {
+                    const status = await res.json();
+                    setProgress(status);
+                }
+            } catch (e) {
+                console.error("Poll error", e);
+            }
+        }, 1000);
+    };
+
+    const stopPolling = () => {
+        if (pollInterval.current) {
+            clearInterval(pollInterval.current);
+            pollInterval.current = null;
+        }
+    };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => stopPolling();
+    }, []);
 
     const handleStartGeneration = async (options: { force: boolean; skipEmbedded: boolean }) => {
         setIsGenerating(true);
         setResults(null);
+        setProgress(null);
+        startPolling();
 
         try {
-            const resp = await fetch('/api/generate-thumbnails', {
+            const resp = await fetch('/api/admin/generate-thumbnails', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -34,17 +68,8 @@ export function useThumbnails() {
 
             if (data.success) {
                 toast.success(`Thumbnail generation finished: ${data.processed} processed.`);
-                // Update timestamp
-                if (appConfig) {
-                    const updated = {
-                        ...appConfig,
-                        lastRunTimestamps: {
-                            ...appConfig.lastRunTimestamps,
-                            generateThumbnails: new Date().toISOString()
-                        }
-                    };
-                    updateConfig(updated);
-                }
+                // [Fix] Safe update using context method
+                updateRunTimestamp('generateThumbnails');
             } else {
                 if (data.aborted) {
                     toast.info('Generation cancelled.');
@@ -63,14 +88,14 @@ export function useThumbnails() {
             });
         } finally {
             setIsGenerating(false);
+            stopPolling();
         }
     };
 
     const handleStopGeneration = async () => {
         try {
-            await fetch('/api/tools/cancel-thumbnails', { method: 'POST' });
+            await fetch('/api/admin/cancel-thumbnails', { method: 'POST' });
             toast.info('Cancellation requested...');
-            // We don't set isGenerating False here, we wait for the generation call to return (it should abort)
         } catch (error) {
             console.error('Error cancelling:', error);
         }
@@ -79,6 +104,7 @@ export function useThumbnails() {
     return {
         isGenerating,
         results,
+        progress,
         isDialogOpen,
         setIsDialogOpen,
         handleStartGeneration,

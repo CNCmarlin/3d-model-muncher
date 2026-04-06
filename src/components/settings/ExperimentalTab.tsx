@@ -36,7 +36,10 @@ interface ExperimentalTabProps {
   categories?: Category[];
 }
 
+import { useNavigation } from "@/context/NavigationContext";
+
 export default function ExperimentalTab({ categories: propCategories }: ExperimentalTabProps) {
+  const { setCurrentView } = useNavigation();
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [models, setModels] = useState<ModelEntry[]>([]);
@@ -620,6 +623,38 @@ export default function ExperimentalTab({ categories: propCategories }: Experime
       </div>
 
       <Separator />
+
+      {/* Developer Tools (Dev Mode Only) */}
+      {import.meta.env.DEV && (
+        <Card className="border-yellow-400/50 bg-yellow-50/10 dark:bg-yellow-900/10">
+          <CardHeader>
+            <CardTitle className="text-yellow-600 dark:text-yellow-400 text-lg flex items-center gap-2">
+              <Bot className="h-5 w-5" />
+              Developer Tools
+            </CardTitle>
+            <CardDescription>
+              Debug helpers visible only in development mode (`npm run dev`).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border border-border/50">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Test Onboarding Flow</p>
+                <p className="text-xs text-muted-foreground">
+                  Launches the new user onboarding wizard. Config will be preserved if you skip.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentView('onboarding')}
+              >
+                Launch Wizard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* [NEW] Collection Mosaic Generator */}
       <Card>

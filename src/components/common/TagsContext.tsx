@@ -1,5 +1,5 @@
-import { createContext, useContext, type ReactNode } from 'react';
 import { useTagsQuery } from '@/hooks/useTagsQuery';
+import { createContext, useContext, type ReactNode } from 'react';
 
 /**
  * DATABASE-FIRST Tags Context
@@ -15,7 +15,7 @@ interface TagsContextType {
   error: Error | null;
 }
 
-const TagsContext = createContext<TagsContextType>({
+export const TagsContext = createContext<TagsContextType>({
   tags: [],
   isLoading: false,
   error: null,

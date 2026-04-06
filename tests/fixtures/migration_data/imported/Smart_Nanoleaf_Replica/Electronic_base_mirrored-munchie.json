@@ -1,0 +1,44 @@
+{
+    "id": "tv-3354082-3",
+    "name": "Smart Nanoleaf Replica",
+    "collections": [],
+    "excludedCollections": [],
+    "filePath": "imported/Smart_Nanoleaf_Replica/Electronic_base_mirrored.stl",
+    "modelUrl": "/models/imported/Smart_Nanoleaf_Replica/Electronic_base_mirrored.stl",
+    "fileSize": "0",
+    "description": "# 3D-Printed DIY Nanoleafs\r\n...",
+    "category": "Uncategorized",
+    "tags": [
+        "arduino",
+        "nanoleaf"
+    ],
+    "isPrinted": false,
+    "printTime": "",
+    "filamentUsed": "",
+    "license": "Creative Commons - Attribution - Non-Commercial - Share Alike",
+    "source": "https://www.thingiverse.com/thing:3354082",
+    "designer": "Surrbradl08",
+    "printSettings": {
+        "layerHeight": "",
+        "infill": "",
+        "nozzle": "",
+        "material": "",
+        "printer": ""
+    },
+    "created": "2026-02-13T02:55:39.334Z",
+    "lastModified": "2026-02-15T23:33:35.450Z",
+    "parsedImages": [
+        "/models/imported/Smart_Nanoleaf_Replica/Electronic_base_mirrored.stl-thumb.png"
+    ],
+    "related_files": [
+        "imported/Smart_Nanoleaf_Replica/Electronic_base_mirrored.stl"
+    ],
+    "hidden": false,
+    "isRelatedPart": true,
+    "isProjectRoot": false,
+    "price": 0,
+    "userDefined": {
+        "thumbnail": "parsed:0"
+    },
+    "thumbnail": "parsed:0"
+}

@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, Archive, ArrowLeft, Boxes, Code, FlaskConical, Github, Heart, Layers, Plug, Settings, ShieldCheck, Star, Tag } from 'lucide-react';
 import React, { Suspense } from 'react';
 // Sub-components
-import { MigrationStatus } from '@/components/admin/MigrationStatus';
+import { MigrationStatus_DB } from '@/components/admin/MigrationStatus_DB';
 import { BackupSettings } from '@/components/settings/BackupSettings';
 import { CategorySettings } from '@/components/settings/CategorySettings';
 import { CollectionsSettings } from '@/components/settings/CollectionsSettings';
@@ -61,7 +61,7 @@ export function SettingsPage({
   settingsAction,
   onActionHandled
 }: SettingsPageProps) {
-  const { setCurrentView } = useNavigation();
+  useNavigation();
   const [selectedTab, setSelectedTab] = React.useState(initialTab || 'general');
 
   React.useEffect(() => {
@@ -404,7 +404,7 @@ export function SettingsPage({
           </TabsContent>
 
           <TabsContent value="migration" className="space-y-6 mt-0">
-            <MigrationStatus />
+            <MigrationStatus_DB />
           </TabsContent>
         </div>
       </Tabs>

@@ -18,9 +18,7 @@ const CollectionSchema = z.object({
     parentId: IdSchema.nullable().optional(),
     path: OptionalStringSchema,
     description: OptionalStringSchema,
-    description: OptionalStringSchema,
     coverImage: OptionalStringSchema, // Legacy/Frontend
-    coverImagePath: OptionalStringSchema, // DB field
     pathHash: PathHashSchema,
     modelIds: z.array(IdSchema).default([]),
     createdAt: TimestampSchema,

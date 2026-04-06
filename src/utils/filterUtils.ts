@@ -13,6 +13,13 @@ export interface FilterState {
 }
 
 export const applyFiltersToModels = (modelsToFilter: Model[], filters: FilterState) => {
+  /** Safely coerce model.tags to a string array, handling strings, objects, or null. */
+  const getTagsArray = (tags: any): string[] => {
+    if (Array.isArray(tags)) return tags.filter(t => typeof t === 'string');
+    if (typeof tags === 'string') return tags.split(',').map(t => t.trim()).filter(Boolean);
+    return [];
+  };
+
   let filtered = modelsToFilter;
 
   // 1. Filter by Hidden Status
@@ -36,9 +43,9 @@ export const applyFiltersToModels = (modelsToFilter: Model[], filters: FilterSta
       // Check Name
       model.name.toLowerCase().includes(term) ||
       // Check Tags
-      (model.tags || []).some(tag => tag.toLowerCase().includes(term)) ||
+      getTagsArray(model.tags).some(tag => tag.toLowerCase().includes(term)) ||
       // Check File Path (Critical for Folder Navigation)
-      (model.modelUrl || '').toLowerCase().includes(term) || 
+      (model.modelUrl || '').toLowerCase().includes(term) ||
       (model.filePath || '').toLowerCase().includes(term)
     );
   }
@@ -61,7 +68,7 @@ export const applyFiltersToModels = (modelsToFilter: Model[], filters: FilterSta
   // 7. Tags Filter
   if (filters.tags && filters.tags.length > 0) {
     filtered = filtered.filter(model =>
-      filters.tags.every(selectedTag => (model.tags || []).some(modelTag => modelTag.toLowerCase() === selectedTag.toLowerCase()))
+      filters.tags.every(selectedTag => getTagsArray(model.tags).some(modelTag => modelTag.toLowerCase() === selectedTag.toLowerCase()))
     );
   }
 
@@ -69,9 +76,9 @@ export const applyFiltersToModels = (modelsToFilter: Model[], filters: FilterSta
   if (filters.fileType && filters.fileType !== 'all') {
     const ext = filters.fileType.toLowerCase();
     if (ext === 'collections') {
-       // 'collections' type is handled by the UI separately (displaying collections grid), 
-       // but if we need to filter models, we pass through or handle specific logic.
-       // For now, standard behavior is usually to just show models matching extension.
+      // 'collections' type is handled by the UI separately (displaying collections grid), 
+      // but if we need to filter models, we pass through or handle specific logic.
+      // For now, standard behavior is usually to just show models matching extension.
     } else {
       filtered = filtered.filter(model => {
         const path = (model.filePath || model.modelUrl || '').toLowerCase();
@@ -82,7 +89,7 @@ export const applyFiltersToModels = (modelsToFilter: Model[], filters: FilterSta
 
   return filtered;
 
-  
+
 };
 
 export const isViewableImage = (path: string) => {

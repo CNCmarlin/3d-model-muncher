@@ -68,8 +68,7 @@ export function BulkEditView({
     const form = useBulkEditForm({
         models: targetModels,
         selectedTargetIds, // Pass the tracked selection IDs
-        isOpen: true,
-        pendingBulkCollectionId
+        isOpen: true
     });
 
     // 4. Operations Hook (Handles Save & Generate)

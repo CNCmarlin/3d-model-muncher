@@ -29,9 +29,15 @@ model Collection {
   updatedAt DateTime @updatedAt @map("updated_at")
   
   coverImagePath String? @map("cover_image_path")
+  
+  // Legacy Parity Fields (Phase 3B)
+  metadata       String?  @map("metadata_json") // Stores buildPlates, description, images array
+  isModelFolder  Boolean  @default(false) @map("is_model_folder") // Replaces type (folder/project)
+  type           String?  // e.g. "Manual" or "Auto-Imported"
 
   // Relations
-  models    Model[]
+  models    Model[] // Primary strict ownership (Physical Folder)
+  modelLinks ModelCollection[] // Virtual/Symbolic links
 
   @@map("collections")
 }
@@ -41,13 +47,15 @@ model Collection {
 // ---------------------------------------------------------
 model Model {
   id              String   @id @default(cuid())
-  collectionId    String   @map("collection_id")
-  collection      Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  collectionId    String?  @map("collection_id")
+  collection      Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
   
   name            String
   description     String?
   license         String?
   designer        String?  // Model creator/author
+  source          String?
+  notes           String?
   
   // Stats / Metadata
   printTime       Int?     @map("print_time_seconds")
@@ -57,21 +65,64 @@ model Model {
   isPrinted       Boolean  @default(false) @map("is_printed")
   isFavorite      Boolean  @default(false) @map("is_favorite")
   isDeleted       Boolean  @default(false) @map("is_deleted")
+  isHidden        Boolean  @default(false) @map("is_hidden")
+  isComponent     Boolean  @default(false) @map("is_component") // For Reference/Related files
+  isMainModel     Boolean  @default(false) @map("is_main_model") // Primary model in a Project Folder
+  
+  // Promoted from metadata_json (Batch 1)
+  category        String?  @map("category")
+  modelUrl        String?  @map("model_url")
+  price           Float?   @map("price")
+
+  // Promoted from metadata_json (Batch 2 - print settings)
+  layerHeight     String?  @map("layer_height")
+  infill          String?  @map("infill")
+  nozzle          String?  @map("nozzle")
+  printer         String?  @map("printer")
+  material        String?  @map("material")
+  fileSize        String? @map("file_size")
+
+  // Promoted from metadata_json (Batch 3 - G-code Analysis)
+  gcodeFilePath    String?  @map("gcode_file_path")
+  gcodePrintTime   String?  @map("gcode_print_time")
+  gcodeTotalWeight String?  @map("gcode_total_weight")
+  gcodeFilaments   String?  @map("gcode_filaments_json") // JSON array of filament data
   
   // Navigation / Disk Linkage
-  pathHash        String?  @unique @map("path_hash")
-  coverImagePath  String?  @map("cover_image_path")
-  metadata        String?  @map("metadata_json") // Stores legacy userDefined JSON
+  pathHash          String?  @unique @map("path_hash")
+  thumbnailPath     String?  @map("thumbnail_path")
+  metadata          String?  @map("metadata_json") // Stores legacy userDefined JSON
   
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   // Relations
   files           ModelFile[]
+  relatedFiles    ModelRelatedFile[]
+  images          ModelImage[]
   tags            ModelTag[]
+  collections     ModelCollection[] // Many-to-Many links (Virtual/Symbolic)
+  projectItems    ProjectItem[]
 
   @@index([collectionId]) // Index for filtering by collection
   @@map("models")
+}
+
+// ---------------------------------------------------------
+// 4. Model Collections (Many-to-Many Join Table)
+// ---------------------------------------------------------
+model ModelCollection {
+  modelId       String     @map("model_id")
+  model         Model      @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  
+  collectionId  String     @map("collection_id")
+  collection    Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  
+  order         Int        @default(0)
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  @@id([modelId, collectionId])
+  @@map("model_collections")
 }
 
 // ---------------------------------------------------------
@@ -84,7 +135,10 @@ model ModelFile {
   
   filename    String   // "head.stl"
   filePath    String   @map("file_path") // Relative path for streaming
+  fileType    String?  @map("file_type") // Lowercase extension: stl | 3mf | obj | gcode | image | other
   size        BigInt?  @map("size_bytes") // Access as BigInt in JS/TS
+  fileHash    String?  @map("file_hash") // SHA-256 content hash
+  pathHash    String?  @unique @map("path_hash") // Base64 of relPath — used for upsert uniqueness
   
   // Function
   isPrimary   Boolean  @default(false) @map("is_primary")
@@ -93,6 +147,35 @@ model ModelFile {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("model_files")
+}
+
+
+// ---------------------------------------------------------
+// 5. Related Files (Arbitrary paths)
+// ---------------------------------------------------------
+model ModelRelatedFile {
+  id      String  @id @default(cuid())
+  modelId String  @map("model_id")
+  model   Model   @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  path    String
+  source  String? // null = pre-existing | 'conversion' = added by convert-to-model-folder
+
+  @@map("model_related_files")
+}
+
+// ---------------------------------------------------------
+// 6. Model Images (Gallery, Thumbnails, User uploads)
+// ---------------------------------------------------------
+model ModelImage {
+  id         String  @id @default(cuid())
+  modelId    String  @map("model_id")
+  model      Model   @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  path       String  // Relative path from models root
+  source     String  // 'gallery' | 'thumbnail' | 'user'
+  sourceFile String? @map("source_file") // For thumbnail source — the model file it belongs to
+  order      Int     @default(0)
+
+  @@map("model_images")
 }
 
 // ---------------------------------------------------------
@@ -116,3 +199,86 @@ model ModelTag {
   @@id([modelId, tagId])
   @@map("model_tags")
 }
+
+// ---------------------------------------------------------
+// 7. Projects (Workspace)
+// ---------------------------------------------------------
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("Planning") // Planning, Printing, Completed
+  
+  items       ProjectItem[]
+  buildPlates BuildPlate[]
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("projects")
+}
+
+model ProjectItem {
+  id              String   @id @default(cuid())
+  projectId       String   @map("project_id")
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  modelId         String   @map("model_id")
+  model           Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  
+  quantityDesired Int      @default(1) @map("quantity_desired")
+  quantityAssigned Int     @default(0) @map("quantity_assigned")
+  
+  buildPlateItems BuildPlateItem[]
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([projectId, modelId])
+  @@map("project_items")
+}
+
+model BuildPlate {
+  id              String   @id @default(cuid())
+  projectId       String   @map("project_id")
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  name            String
+  status          String   @default("Draft") // Draft, Sliced, Processing, Printing, Done
+  printerAssigned String?  @map("printer_assigned")
+  materialRequired String? @map("material_required")
+  order           Int      @default(0)
+  
+  // Physical Dimensions (For 3D Interactive View)
+  width           Float?   @default(230) // X axis in mm (Default approx Ender 3)
+  height          Float?   @default(230) // Y axis in mm
+  customName      String?  @map("custom_name") // Custom preset name if applicable
+  
+  items           BuildPlateItem[]
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("build_plates")
+}
+
+model BuildPlateItem {
+  id              String   @id @default(cuid())
+  buildPlateId    String   @map("build_plate_id")
+  buildPlate      BuildPlate @relation(fields: [buildPlateId], references: [id], onDelete: Cascade)
+  
+  projectItemId   String   @map("project_item_id")
+  projectItem     ProjectItem @relation(fields: [projectItemId], references: [id], onDelete: Cascade)
+  
+  quantity        Int      @default(1)
+  
+  positionX       Float?   @map("position_x")
+  positionY       Float?   @map("position_y")
+  rotation        Float?   @map("rotation")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("build_plate_items")
+}
+

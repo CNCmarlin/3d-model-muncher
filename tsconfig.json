@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "node",
@@ -18,10 +22,25 @@
     "esModuleInterop": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     },
     // --------------------
-    "types": ["vite/client", "node", "three"],  },
-  "include": ["src", "server-utils/collectionQueue.js"],
-  "exclude": ["node_modules", "dist-backend", "build"]
+    "types": [
+      "vite/client",
+      "node",
+      "three"
+    ],
+  },
+  "include": [
+    "src",
+    "server-utils/collectionQueue.js",
+    "src/**/*.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist-backend",
+    "build"
+  ]
 }

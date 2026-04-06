@@ -1,3 +1,21 @@
+import { CollectionCard } from '@/components/collections/CollectionCard';
+import { CollectionEditorDialog } from '@/components/collections/CollectionEditorDialog';
+import { CollectionListRow } from '@/components/collections/CollectionListRow';
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { LayoutControls } from "@/components/layout/LayoutControls";
+import { useLayoutSettings } from "@/components/layout/LayoutSettingsContext";
+import { SelectionModeControls } from '@/components/layout/SelectionModeControls';
+import { ProjectView } from '@/components/management/ProjectView';
+import { ModelCard } from '@/components/models/ModelCard';
+import { Badge } from "@/components/ui/badge";
+import { Button } from '@/components/ui/button';
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from '@/components/ui/scroll-area';
+import type { Collection } from '@/types/collection';
+import type { AppConfig } from '@/types/config';
+import { Model } from '@/types/model';
+import { downloadMultipleModels } from "@/utils/downloadUtils";
+import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
 import {
   ArrowLeft,
   Box,
@@ -19,25 +37,6 @@ import {
 import type { MouseEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import type { Collection } from '@/types/collection';
-import type { AppConfig } from '@/types/config';
-import { Model } from '@/types/model';
-import { downloadMultipleModels } from "@/utils/downloadUtils";
-import { resolveModelThumbnail } from '@/utils/thumbnailUtils';
-import { CollectionCard } from '@/components/collections/CollectionCard';
-import CollectionEditDrawer from '@/components/collections/CollectionEditDrawer';
-import { CollectionEditorDialog } from '@/components/collections/CollectionEditorDialog';
-import { CollectionListRow } from '@/components/collections/CollectionListRow';
-import { ImageWithFallback } from "@/components/common/ImageWithFallback";
-import { LayoutControls } from "@/components/layout/LayoutControls";
-import { useLayoutSettings } from "@/components/layout/LayoutSettingsContext";
-import { ModelCard } from '@/components/models/ModelCard';
-import { ProjectView } from '@/components/management/ProjectView';
-import { SelectionModeControls } from '@/components/layout/SelectionModeControls';
-import { Badge } from "@/components/ui/badge";
-import { Button } from '@/components/ui/button';
-import { Checkbox } from "@/components/ui/checkbox";
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 interface CollectionGridProps {
@@ -134,11 +133,9 @@ export default function CollectionGrid({
 
   // --- MODAL STATES ---
   const [isCreateCollectionOpen, setIsCreateCollectionOpen] = useState(false);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(false); // Used for Active Collection Edit
 
-  // [NEW] State for opening the Edit Drawer for the CURRENT collection
-  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
-
+  // Helper state for creation
   const [createCollectionMode, setCreateCollectionMode] = useState<'manual' | 'folder'>('manual');
   const [tempCollectionData, setTempCollectionData] = useState<Collection | null>(null);
 
@@ -151,7 +148,7 @@ export default function CollectionGrid({
   const [viewingFile, setViewingFile] = useState<{ name: string, content: string, type: string } | null>(null);
 
   // [UPDATED] Full Screen Gallery State
-  const [fullScreenIndex, setFullScreenIndex] = useState<number>(0); // Track index, not just URL
+  const [fullScreenIndex, setFullScreenIndex] = useState<number>(0);
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
 
   // Helper to open full screen at a specific index
@@ -238,7 +235,7 @@ export default function CollectionGrid({
   // [NEW] Handler to open the Edit Drawer for the Active Collection
   const handleEditActiveCollection = () => {
     if (!activeCollection) return;
-    setIsEditDrawerOpen(true);
+    setIsEditorOpen(true);
   };
 
 
@@ -246,15 +243,17 @@ export default function CollectionGrid({
     setCreateCollectionMode(mode);
     // If selecting models for a manual group, pass them in
     if (selectedModelIds.length > 0 && mode === 'manual') {
+      // Create a skeleton collection
+      // We can cast to Collection because we're just pre-filling
       setTempCollectionData({
         id: '', name: '', modelIds: selectedModelIds,
-        tags: [], images: [], category: '', description: '',
-        created: new Date().toISOString(), lastModified: new Date().toISOString()
-      } as Collection);
+        tags: [], images: [], description: '',
+        parentId: activeCollection?.id || 'root'
+      } as unknown as Collection);
     } else {
       setTempCollectionData(null);
     }
-    setIsEditorOpen(true);
+    setIsCreateCollectionOpen(true);
   };
 
   const handleModelInteraction = (e: MouseEvent, model: Model, fallbackIndex: number) => {
@@ -426,9 +425,21 @@ export default function CollectionGrid({
               {/* Child Collections (Folders) */}
               {childCollections.length > 0 && (
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <Folder className="h-4 w-4" />
-                    Folders
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                      <Folder className="h-4 w-4" />
+                      Collections
+                    </div>
+                    {(items.length > 0) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                        onClick={() => document.getElementById('models-section')?.scrollIntoView({ behavior: 'smooth' })}
+                      >
+                        Jump to Models <ChevronRight className="h-3 w-3 rotate-90" />
+                      </Button>
+                    )}
                   </div>
                   {viewMode === 'grid' ? (
                     <div className={`grid ${dynamicGridClasses} gap-4`}>
@@ -483,7 +494,7 @@ export default function CollectionGrid({
                 items.length > 0 && (
                   <div className="space-y-3">
                     {childCollections.length > 0 && (
-                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                      <div id="models-section" className="flex items-center gap-2 text-sm font-medium text-muted-foreground pt-2">
                         <FileCheck className="h-4 w-4" />
                         Models
                       </div>
@@ -783,46 +794,14 @@ export default function CollectionGrid({
       {/* --- DIALOGS --- */}
 
       {/* 1. Create New Collection Drawer */}
-      <CollectionEditDrawer
+      <CollectionEditorDialog
         open={isCreateCollectionOpen}
         onOpenChange={setIsCreateCollectionOpen}
-        collection={null}
-        collections={collections}
-        categories={config?.categories || []}
-        removalCollection={activeCollection ?? null}
-        initialModelIds={selectedModelIds}
-        onSaved={() => {
-          setIsCreateCollectionOpen(false);
-          onCollectionChanged?.();
-          onDeselectAll?.();
-          if (isSelectionMode) onToggleSelectionMode?.();
-        }}
-      />
-
-      {/* 2. [NEW] Edit ACTIVE Collection Drawer */}
-      <CollectionEditDrawer
-        open={isEditDrawerOpen}
-        onOpenChange={setIsEditDrawerOpen}
-        collection={activeCollection ?? null} // We pass the active collection here
-        collections={collections}
-        categories={config?.categories || []}
-        removalCollection={null}
-        initialModelIds={[]}
-        onSaved={() => {
-          setIsEditDrawerOpen(false);
-          onCollectionChanged?.();
-        }}
-      />
-
-      <CollectionEditorDialog
-        open={isEditorOpen}
-        onOpenChange={setIsEditorOpen}
         collection={tempCollectionData}
         collections={collections}
-        categories={config?.categories || []}
         models={models}
+        categories={config?.categories || []}
         initialMode={createCollectionMode}
-        defaultParentId={activeCollection?.id}
         onSave={async (colData) => {
           try {
             const response = await fetch('/api/collections', {
@@ -838,22 +817,53 @@ export default function CollectionGrid({
             return result.collection;
           } catch (e) {
             console.error(e);
+            toast.error("Failed to create collection");
             throw e;
           }
         }}
-        onDelete={async (id) => {
-          try {
-            const res = await fetch(`/api/collections/${id}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.error);
-            onCollectionChanged?.();
-            onDeselectAll?.();
-          } catch (e) {
-            console.error(e);
-            toast.error("Failed to delete collection");
-          }
-        }}
+        onDelete={async () => { }}
       />
+
+      {/* 2. Editor Drawer for Active Collection */}
+      {activeCollection && (
+        <CollectionEditorDialog
+          open={isEditorOpen}
+          onOpenChange={setIsEditorOpen}
+          collection={activeCollection}
+          collections={collections}
+          models={models}
+          categories={config?.categories || []}
+          onSave={async (colData) => {
+            try {
+              const response = await fetch(`/api/collections/${activeCollection.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(colData),
+              });
+              const result = await response.json();
+              if (!result.success) throw new Error(result.error);
+              onCollectionChanged?.();
+              return result.collection;
+            } catch (e) {
+              console.error(e);
+              toast.error("Failed to update collection");
+              throw e;
+            }
+          }}
+          onDelete={async (id) => {
+            try {
+              const res = await fetch(`/api/collections/${id}`, { method: 'DELETE' });
+              const data = await res.json();
+              if (!data.success) throw new Error(data.error);
+              onCollectionChanged?.();
+              onDeselectAll?.();
+            } catch (e) {
+              console.error(e);
+              toast.error("Failed to delete collection");
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

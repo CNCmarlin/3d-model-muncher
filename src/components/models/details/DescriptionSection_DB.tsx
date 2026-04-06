@@ -2,13 +2,12 @@ import { Button } from "@/components/ui/button"; // Ensure Button is imported
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { useUpdateModel } from "@/hooks/mutations/useUpdateModel";
-import { Model } from "@/types/model";
+import { Model } from "@/types/model_db";
 import { Check, Edit2, Trash2, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
 interface DescriptionSectionProps {
-    isEditing: boolean;
+    isEditing: boolean; // Global editing state
     currentModel: Model;
     editedModel: Model | null;
     setEditedModel: React.Dispatch<React.SetStateAction<Model | null>>;
@@ -16,6 +15,7 @@ interface DescriptionSectionProps {
     originalTopLevelDescriptionRef: React.RefObject<string | null>;
     restoreOriginalDescription: boolean;
     setRestoreOriginalDescription: (val: boolean) => void;
+    onModelUpdate?: (model: Model) => void; // Added for In-Place saving
 }
 
 export const DescriptionSection_DB = ({
@@ -26,9 +26,9 @@ export const DescriptionSection_DB = ({
     originalUserDefinedDescriptionRef,
     originalTopLevelDescriptionRef,
     restoreOriginalDescription,
-    setRestoreOriginalDescription
+    setRestoreOriginalDescription,
+    onModelUpdate // New optional prop
 }: DescriptionSectionProps) => {
-    const updateModel = useUpdateModel();
 
     // --- IN-PLACE EDITING STATE ---
     const [isLocalEditing, setIsLocalEditing] = useState(false);
@@ -51,13 +51,12 @@ export const DescriptionSection_DB = ({
     }, [displayDescription, isEditing]);
 
     const handleInPlaceSave = () => {
-        updateModel.mutate({
-            id: currentModel.id,
-            data: {
-                description: localValue,
-                userDefined: { ...(currentModel.userDefined || {}), description: localValue }
-            }
-        });
+        const updated = {
+            ...currentModel,
+            description: localValue,
+            userDefined: { ...(currentModel.userDefined || {}), description: localValue }
+        };
+        onModelUpdate?.(updated);
         setIsLocalEditing(false);
     };
 
@@ -151,7 +150,7 @@ export const DescriptionSection_DB = ({
                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={() => setIsLocalEditing(true)}>
                                         <Edit2 className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => { if (window.confirm("Clear description?")) updateModel.mutate({ id: currentModel.id, data: { description: "" } }) }}>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => { if (window.confirm("Clear description?")) onModelUpdate?.({ ...currentModel, description: "" }) }}>
                                         <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                 </div>

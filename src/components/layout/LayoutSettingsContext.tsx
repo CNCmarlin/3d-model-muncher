@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
 type ViewMode = 'grid' | 'list';
 
@@ -10,7 +10,7 @@ interface LayoutSettingsContextType {
   getGridClasses: () => string;
 }
 
-const LayoutSettingsContext = createContext<LayoutSettingsContextType | undefined>(undefined);
+export const LayoutSettingsContext = createContext<LayoutSettingsContextType | undefined>(undefined);
 
 const UI_PREFS_KEY = '3d-model-muncher-ui-prefs';
 

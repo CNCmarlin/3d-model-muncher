@@ -44,6 +44,62 @@ router.get('/health', (req, res) => {
     });
 });
 
+// --- System Utilities ---
+
+// POST /api/system/wipe-and-scan
+// Query Param: ?dryRun=true
+router.post('/wipe-and-scan', async (req, res) => {
+    const isDryRun = req.query.dryRun === 'true';
+    console.log(`🔥 [System] Wipe & Scan Requested (DryRun: ${isDryRun})`);
+
+    try {
+        const prisma = require('../../server-utils/db'); // Lazy load
+
+        if (!isDryRun) {
+            // 1. Wipe DB (Transactions) - ONLY IN REAL RUN
+            await prisma.$transaction([
+                prisma.modelFile.deleteMany(),
+                prisma.modelTag.deleteMany(),
+                prisma.modelCollection.deleteMany(),
+                prisma.model.deleteMany(),
+                prisma.collection.deleteMany(),
+                prisma.tag.deleteMany(),
+            ]);
+            console.log("✅ [System] Database Wiped");
+        }
+
+        // 2. Trigger Migration
+        const MigrationEngine = require('../../server-utils/MigrationEngine');
+        const engine = new MigrationEngine();
+        const stats = await engine.run(isDryRun);
+
+        res.json({ success: true, stats, dryRun: isDryRun });
+    } catch (e) {
+        console.error("❌ [System] Wipe & Scan Failed:", e);
+        res.status(500).json({ success: false, error: e.stack });
+    }
+});
+
+// List folders in models directory (used by Auto-Import)
+router.get('/model-folders', (req, res) => {
+    try {
+        const root = getAbsoluteModelsPath();
+        if (!fs.existsSync(root)) return res.json([]);
+
+        // Read directories
+        const items = fs.readdirSync(root, { withFileTypes: true });
+        const folders = items
+            .filter(dirent => dirent.isDirectory())
+            .map(dirent => dirent.name)
+            .filter(name => !name.startsWith('.') && name !== 'uploads'); // Exclude hidden & uploads
+
+        res.json(folders);
+    } catch (e) {
+        console.error('[System] Error listing folders:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // --- Printer Routes ---
 
 router.post('/printer/config', (req, res) => {

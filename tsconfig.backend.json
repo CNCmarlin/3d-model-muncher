@@ -17,8 +17,12 @@
   "files": [
     "src/utils/gcodeParser.ts",
     "src/utils/threeMFToJson.ts",
+    "src/utils/threeMFToJson_db.ts",
     "src/utils/configManager.ts",
     "src/utils/thumbnailGenerator.ts",
-    "src/utils/thingiverseImporter.ts"
+    "src/utils/thingiverseImporter.ts",
+    "src/utils/thingiverseImporter_db.ts",
+    "src/utils/ProjectService.ts",
+    "src/utils/ProjectService_db.ts"
   ]
 }

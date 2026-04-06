@@ -1,6 +1,5 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Category } from "@/types/category";
 import { Collection } from "@/types/collection";
 import { Model } from "@/types/model";
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Image as ImageIcon, Images, Loader2, Save, Star, Trash2, Upload, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, Image as ImageIcon, Images, Loader2, Save, Star, Trash2, Upload, X } from "lucide-react";
 import React, { useEffect, useMemo, useState } from 'react';
 import { toast } from "sonner";
 
@@ -34,11 +33,7 @@ const defaultCollectionState: Collection = {
   description: '',
   modelIds: [],
   childCollectionIds: [],
-  category: '',
-  tags: [],
   images: [],
-  created: new Date().toISOString(),
-  lastModified: new Date().toISOString(),
 };
 
 // Helper to shorten long paths for UI
@@ -112,7 +107,7 @@ const FolderTreeItem = ({ node, level, onSelect }: { node: FolderNode, level: nu
 
 export function CollectionEditorDialog({
   collection,
-  categories,
+
   collections = [], // Default to empty array
   models,
   onSave,
@@ -126,8 +121,7 @@ export function CollectionEditorDialog({
   const [isLoading, setIsLoading] = useState(false);
 
   // [NEW] Local state for enhanced features
-  const [mode, setMode] = useState<'manual' | 'folder'>(initialMode);
-  const [createOnDisk, setCreateOnDisk] = useState(false);
+
   const [parentId, setParentId] = useState<string>("root");
 
   // [NEW] Separated Pending States
@@ -178,11 +172,8 @@ export function CollectionEditorDialog({
 
     if (collection) {
       setParentId(collection.parentId || "root");
-      setCreateOnDisk(false);
     } else {
-      setMode(initialMode);
       setParentId(defaultParentId || "root");
-      setCreateOnDisk(initialMode === 'folder');
     }
   }, [collection, initialMode, defaultParentId, open]);
 
@@ -196,10 +187,7 @@ export function CollectionEditorDialog({
     setLocalCollection(prev => ({ ...prev, [id]: value }));
   };
 
-  const handleCategoryChange = (value: string) => {
-    const categoryValue = value === '--none--' ? '' : value;
-    setLocalCollection(prev => ({ ...prev, category: categoryValue }));
-  };
+
 
   const handleFolderSelect = (node: FolderNode) => {
     const folderPrefix = node.fullPath + '/';
@@ -209,7 +197,7 @@ export function CollectionEditorDialog({
       return path.startsWith(folderPrefix) || path === node.fullPath;
     });
     const ids = modelsInFolder.map(m => m.id);
-    setLocalCollection(prev => ({ ...prev, name: node.name, modelIds: ids }));
+    setLocalCollection(prev => ({ ...prev, name: node.name, modelIds: ids, path: node.fullPath }));
     toast.info(`Selected ${ids.length} models from "${node.name}"`);
   };
 
@@ -310,11 +298,9 @@ export function CollectionEditorDialog({
 
     const dataToSave = {
       ...localCollection,
-      id: (createOnDisk && !isEditing) ? "" : (localCollection.id || crypto.randomUUID()),
+      id: (localCollection.id || crypto.randomUUID()),
       modelIds: localCollection.modelIds || [],
-      tags: localCollection.tags || [],
       parentId: parentId === "root" ? null : parentId,
-      createOnDisk: !isEditing && createOnDisk,
       // Clear images if creating new (they are pending), otherwise keep existing
       images: isEditing ? localCollection.images : []
     };
@@ -434,288 +420,234 @@ export function CollectionEditorDialog({
               {isEditing ? 'Update details, manage visuals, or organize files.' : 'Create a new collection or import from existing folders.'}
             </DialogDescription>
           </DialogHeader>
-
-          {/* [NEW] Mode Toggle for Create */}
-          {!isEditing && (
-            <div className="flex gap-2 mt-4 p-1 bg-muted rounded-lg">
-              <button
-                className={`flex-1 text-sm font-medium py-1.5 px-3 rounded-md transition-all ${mode === 'folder' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => { setMode('folder'); setCreateOnDisk(true); }}
-              >
-                Create New
-              </button>
-              <button
-                className={`flex-1 text-sm font-medium py-1.5 px-3 rounded-md transition-all ${mode === 'manual' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => { setMode('manual'); setCreateOnDisk(false); }}
-              >
-                Import Existing
-              </button>
-            </div>
-          )}
         </div>
 
-        {/* SCROLLABLE CONTENT */}
-        <ScrollArea className="flex-1 min-h-0 w-full px-6">
-          <div className="py-4 space-y-6">
 
-            {/* NAME & PARENT GRID */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  value={localCollection.name}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
-                  placeholder="Collection Name"
-                />
-              </div>
 
-              <div className="space-y-2">
-                <Label>Parent</Label>
-                <Select value={parentId} onValueChange={setParentId} disabled={isLoading}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select parent..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[250px]">
-                    <SelectItem value="root"><span className="italic">Root</span></SelectItem>
-                    {formattedCollections.map((col) => (
-                      <SelectItem key={col.id} value={col.id}>
-                        {truncateMiddle(col.displayName, 30)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+        <ScrollArea className="h-full">
+          <div className="p-6 pt-0">
+            <div className="py-4 space-y-6">
 
-            {/* CREATE ON DISK TOGGLE (New Folder Mode) */}
-            {!isEditing && mode === 'folder' && (
-              <div className="flex items-start space-x-2 border p-3 rounded-md bg-muted/20">
-                <Checkbox
-                  id="create-disk"
-                  checked={createOnDisk}
-                  onCheckedChange={(c) => setCreateOnDisk(!!c)}
-                />
-                <div className="grid gap-1.5 leading-none">
-                  <Label htmlFor="create-disk" className="text-sm font-medium flex items-center gap-2 cursor-pointer">
-                    <FolderPlus className="h-3.5 w-3.5 text-primary" />
-                    Create Physical Folder
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Creates folder at <code>/{parentId !== 'root' ? '.../' : ''}{truncateMiddle(localCollection.name || '...', 20)}</code>
-                  </p>
+              {/* NAME & PARENT GRID */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={localCollection.name}
+                    onChange={handleInputChange}
+                    required
+                    disabled={isLoading}
+                    placeholder="Collection Name"
+                  />
                 </div>
-              </div>
-            )}
 
-            {/* MANUAL IMPORT SELECTION */}
-            {(!isEditing && mode === 'manual') && (
-              <Accordion type="single" collapsible className="w-full border rounded-md px-2">
-                <AccordionItem value="folder-import" className="border-0">
-                  <AccordionTrigger className="hover:no-underline py-2">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                      <Folder className="h-4 w-4 text-blue-500" />
-                      Select from Existing Folder
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
-                      {Object.values(folderTree.children).map(node => (
-                        <FolderTreeItem
-                          key={node.fullPath}
-                          node={node}
-                          level={0}
-                          onSelect={handleFolderSelect}
-                        />
+                <div className="space-y-2">
+                  <Label>Parent</Label>
+                  <Select value={parentId} onValueChange={setParentId} disabled={isLoading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select parent..." />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[250px]">
+                      <SelectItem value="root"><span className="italic">Root</span></SelectItem>
+                      {formattedCollections.map((col) => (
+                        <SelectItem key={col.id} value={col.id}>
+                          {truncateMiddle(col.displayName, 30)}
+                        </SelectItem>
                       ))}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            )}
-
-            {/* DESCRIPTION */}
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea
-                id="description"
-                value={localCollection.description}
-                onChange={handleInputChange}
-                rows={4}
-                className="max-h-[150px] min-h-[80px] resize-y"
-                placeholder="Describe this collection..."
-                disabled={isLoading}
-              />
-            </div>
-
-            {/* VISUALS SECTION */}
-            <div className="space-y-4">
-
-              {/* COVER PHOTO */}
-              <div className="border rounded-md p-3 space-y-3 bg-muted/10">
-                <div className="flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-primary" />
-                  <Label className="font-semibold">Cover Photo</Label>
+                    </SelectContent>
+                  </Select>
                 </div>
+              </div>
 
-                <div className="flex gap-4 items-start">
-                  <div className="w-24 h-24 bg-muted rounded-md border flex items-center justify-center overflow-hidden shrink-0 relative">
-                    {(pendingCoverPreview || localCollection.coverImage) ? (
-                      <img
-                        src={pendingCoverPreview || localCollection.coverImage || ''}
-                        alt="Cover"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
-                    )}
+              {/* MANUAL IMPORT SELECTION (Reverted to simple list/accordion if that was legacy, or just keep as is if it was part of legacy) */}
+              {/* Assuming legacy had the manual import but NOT the dual mode toggle */}
+              {!isEditing && (
+                <Accordion type="single" collapsible className="w-full border rounded-md px-2">
+                  <AccordionItem value="folder-import" className="border-0">
+                    <AccordionTrigger className="hover:no-underline py-2">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Folder className="h-4 w-4 text-blue-500" />
+                        Select from Existing Folder
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="max-h-48 overflow-y-auto border rounded bg-muted/30 p-2">
+                        {Object.values(folderTree.children).map(node => (
+                          <FolderTreeItem
+                            key={node.fullPath}
+                            node={node}
+                            level={0}
+                            onSelect={handleFolderSelect}
+                          />
+                        ))}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              )}
 
-                    {(localCollection.coverImage || pendingCover) && (
-                      <button
-                        onClick={() => {
-                          setLocalCollection(p => ({ ...p, coverImage: undefined }));
-                          setPendingCover(null);
-                          setPendingCoverPreview(null);
-                          if (isEditing) onSave({ ...localCollection, coverImage: undefined });
-                        }}
-                        className="absolute top-0 right-0 p-1 bg-black/50 text-white hover:bg-destructive"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
+              {/* DESCRIPTION */}
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea
+                  id="description"
+                  value={localCollection.description}
+                  onChange={handleInputChange}
+                  rows={4}
+                  className="max-h-[150px] min-h-[80px] resize-y"
+                  placeholder="Describe this collection..."
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* VISUALS SECTION */}
+              <div className="space-y-4">
+
+                {/* COVER PHOTO */}
+                <div className="border rounded-md p-3 space-y-3 bg-muted/10">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-primary" />
+                    <Label className="font-semibold">Cover Photo</Label>
                   </div>
 
-                  <div className="space-y-2 flex-1">
-                    <p className="text-xs text-muted-foreground">
-                      The main image displayed on cards.
-                    </p>
-                    <div className="flex gap-2">
+                  <div className="flex gap-4 items-start">
+                    <div className="w-24 h-24 bg-muted rounded-md border flex items-center justify-center overflow-hidden shrink-0 relative">
+                      {(pendingCoverPreview || localCollection.coverImage) ? (
+                        <img
+                          src={pendingCoverPreview || localCollection.coverImage || ''}
+                          alt="Cover"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="w-8 h-8 text-muted-foreground/50" />
+                      )}
+
+                      {(localCollection.coverImage || pendingCover) && (
+                        <button
+                          onClick={() => {
+                            setLocalCollection(p => ({ ...p, coverImage: undefined }));
+                            setPendingCover(null);
+                            setPendingCoverPreview(null);
+                            if (isEditing) onSave({ ...localCollection, coverImage: undefined });
+                          }}
+                          className="absolute top-0 right-0 p-1 bg-black/50 text-white hover:bg-destructive"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="space-y-2 flex-1">
+                      <p className="text-xs text-muted-foreground">
+                        The main image displayed on cards.
+                      </p>
+                      <div className="flex gap-2">
+                        <Input
+                          id="cover-upload"
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleCoverUpload}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => document.getElementById('cover-upload')?.click()}
+                          disabled={isLoading}
+                        >
+                          <Upload className="w-3 h-3 mr-2" />
+                          {localCollection.coverImage || pendingCover ? "Change Cover" : "Upload Cover"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* GALLERY */}
+                <div className="border rounded-md p-3 space-y-3 bg-muted/10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Images className="w-4 h-4 text-primary" />
+                      <Label className="font-semibold">Gallery Images</Label>
+                    </div>
+                    <div>
                       <Input
-                        id="cover-upload"
+                        id="gallery-upload"
                         type="file"
+                        multiple
                         accept="image/*"
                         className="hidden"
-                        onChange={handleCoverUpload}
+                        onChange={handleMassUpload}
                       />
                       <Button
-                        variant="outline"
                         size="sm"
-                        onClick={() => document.getElementById('cover-upload')?.click()}
+                        variant="secondary"
+                        onClick={() => document.getElementById('gallery-upload')?.click()}
                         disabled={isLoading}
                       >
                         <Upload className="w-3 h-3 mr-2" />
-                        {localCollection.coverImage || pendingCover ? "Change Cover" : "Upload Cover"}
+                        Add Photos
                       </Button>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* GALLERY */}
-              <div className="border rounded-md p-3 space-y-3 bg-muted/10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Images className="w-4 h-4 text-primary" />
-                    <Label className="font-semibold">Gallery Images</Label>
-                  </div>
-                  <div>
-                    <Input
-                      id="gallery-upload"
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleMassUpload}
-                    />
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => document.getElementById('gallery-upload')?.click()}
-                      disabled={isLoading}
-                    >
-                      <Upload className="w-3 h-3 mr-2" />
-                      Add Photos
-                    </Button>
-                  </div>
-                </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {localCollection.images?.map((img, idx) => (
+                      <div key={`exist-${idx}`} className="relative aspect-square rounded overflow-hidden border group bg-background">
+                        <img src={img} className="w-full h-full object-cover" alt="Gallery" />
 
-                <div className="grid grid-cols-5 gap-2">
-                  {localCollection.images?.map((img, idx) => (
-                    <div key={`exist-${idx}`} className="relative aspect-square rounded overflow-hidden border group bg-background">
-                      <img src={img} className="w-full h-full object-cover" alt="Gallery" />
-
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = { ...localCollection, coverImage: img };
-                            setLocalCollection(updated);
-                            if (isEditing) onSave(updated);
-                            toast.success("Set as cover");
-                          }}
-                          className="p-1.5 bg-background rounded-full hover:bg-primary hover:text-primary-foreground text-foreground"
-                          title="Set as Cover"
-                        >
-                          <Star className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteImage(img)}
-                          className="p-1.5 bg-background rounded-full hover:bg-destructive hover:text-destructive-foreground text-foreground"
-                          title="Remove"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-
-                      {localCollection.coverImage === img && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[8px] text-center py-0.5">
-                          COVER
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = { ...localCollection, coverImage: img };
+                              setLocalCollection(updated);
+                              if (isEditing) onSave(updated);
+                              toast.success("Set as cover");
+                            }}
+                            className="p-1.5 bg-background rounded-full hover:bg-primary hover:text-primary-foreground text-foreground"
+                            title="Set as Cover"
+                          >
+                            <Star className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteImage(img)}
+                            className="p-1.5 bg-background rounded-full hover:bg-destructive hover:text-destructive-foreground text-foreground"
+                            title="Remove"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  ))}
 
-                  {pendingGalleryPreviews.map((src, idx) => (
-                    <div key={`pend-${idx}`} className="relative aspect-square rounded overflow-hidden border border-dashed border-primary/50 opacity-70 bg-background">
-                      <img src={src} className="w-full h-full object-cover grayscale" alt="Pending" />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <span className="text-[9px] font-bold bg-background/80 px-1 rounded">PENDING</span>
+                        {localCollection.coverImage === img && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[8px] text-center py-0.5">
+                            COVER
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    ))}
 
-                  {(!localCollection.images?.length && !pendingGallery.length) && (
-                    <div className="col-span-5 py-8 text-center text-xs text-muted-foreground border border-dashed rounded bg-background/50">
-                      No gallery images.
-                    </div>
-                  )}
+                    {pendingGalleryPreviews.map((src, idx) => (
+                      <div key={`pend-${idx}`} className="relative aspect-square rounded overflow-hidden border border-dashed border-primary/50 opacity-70 bg-background">
+                        <img src={src} className="w-full h-full object-cover grayscale" alt="Pending" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-[9px] font-bold bg-background/80 px-1 rounded">PENDING</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {(!localCollection.images?.length && !pendingGallery.length) && (
+                      <div className="col-span-5 py-8 text-center text-xs text-muted-foreground border border-dashed rounded bg-background/50">
+                        No gallery images.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* CATEGORY */}
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select
-                value={localCollection.category || '--none--'}
-                onValueChange={handleCategoryChange}
-                disabled={isLoading}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="--none--">(Uncategorized)</SelectItem>
-                  {(categories || []).map(c => (
-                    <SelectItem key={c.id} value={c.label}>{c.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
-
           </div>
         </ScrollArea>
 
@@ -739,6 +671,6 @@ export function CollectionEditorDialog({
           </DialogFooter>
         </div>
       </DialogContent>
-    </Dialog>
+    </Dialog >
   );
 }

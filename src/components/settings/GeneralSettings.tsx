@@ -1,9 +1,11 @@
 import { GenerateThumbnailsDialog } from '@/components/modals/GenerateThumbnailsDialog';
+import { DynamicCollectionModeDialog_DB } from '@/components/shared/DynamicCollectionModeDialog_DB';
 import { LastRunLabel } from '@/components/shared/LastRunLabel';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { LICENSES } from '@/constants/licenses';
@@ -12,8 +14,8 @@ import { AppConfig } from '@/types/config';
 import { Model } from '@/types/model';
 import { ConfigManager } from '@/utils/configManager';
 import { applyThemeColor } from '@/utils/themeUtils';
-import { Box, Download, Edit2, Loader2, Save, Trash2, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Box, Download, Edit2, Eye, Loader2, Save, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 type GeneralSettingsProps = {
@@ -46,7 +48,38 @@ export function GeneralSettings({
         errors: { id: string; error: string }[];
         aborted?: boolean;
     } | null>(null);
+    const [progress, setProgress] = useState<{ total: number; current: number; status: string } | null>(null);
     const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+
+    const [showModeDialog, setShowModeDialog] = useState(false);
+    const collectionMode = localConfig?.settings?.collectionMode || 'strict';
+
+    // Poll for progress when generating
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (isGeneratingThumbnails) {
+            interval = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/admin/thumbnail-status');
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        setProgress(data);
+                        if (data.status === 'idle' || data.status === 'error' || data.status === 'cancelled') {
+                            // Optional: Auto-stop if backend says idle? 
+                            // Better to let the main start call handle the final state to avoid race conditions.
+                        }
+                    }
+                } catch (e) {
+                    console.error("Polling error:", e);
+                }
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [isGeneratingThumbnails]);
+
+    // ... (rest of the component)
+
+
 
     // Purge thumbnails state
     const [isPurging, setIsPurging] = useState(false);
@@ -60,6 +93,7 @@ export function GeneralSettings({
     const [showPurgeDialog, setShowPurgeDialog] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
     const [skipNoImages, setSkipNoImages] = useState(true); // default: protect models with no fallback
+    const [only3mf, setOnly3mf] = useState(false); // New: Target only 3MF thumbnails
 
     // Model Directory State
     const [isEditingModelDir, setIsEditingModelDir] = useState(false);
@@ -84,7 +118,7 @@ export function GeneralSettings({
 
         setLocalConfig(updatedConfig);
 
-        if (updatedConfig.settings.autoSave) {
+        if (updatedConfig.settings.autoSave !== false) {
             handleSaveConfig(updatedConfig);
         }
     };
@@ -119,7 +153,7 @@ export function GeneralSettings({
         // toast.info('Starting thumbnail generation...'); 
 
         try {
-            const resp = await fetch('/api/generate-thumbnails', {
+            const resp = await fetch('/api/admin/generate-thumbnails', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -167,7 +201,7 @@ export function GeneralSettings({
 
     const handleCancelThumbnails = async () => {
         try {
-            await fetch('/api/tools/cancel-thumbnails', { method: 'POST' });
+            await fetch('/api/admin/cancel-thumbnails', { method: 'POST' });
             toast.info('Cancellation requested...');
             setIsGeneratingThumbnails(false);
         } catch (error) {
@@ -180,7 +214,11 @@ export function GeneralSettings({
         setIsScanning(true);
         setPurgePreview(null);
         try {
-            const resp = await fetch('/api/admin/purge-thumbnails-preview', { method: 'POST' });
+            const resp = await fetch('/api/admin/purge-thumbnails-preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ only3mf })
+            });
             const data = await resp.json();
             if (data.success) {
                 setPurgePreview(data);
@@ -203,7 +241,7 @@ export function GeneralSettings({
             const resp = await fetch('/api/admin/purge-thumbnails', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ skipWithoutOtherImages: skipNoImages })
+                body: JSON.stringify({ skipWithoutOtherImages: skipNoImages, only3mf })
             });
             const data = await resp.json();
             if (data.success) {
@@ -318,7 +356,7 @@ export function GeneralSettings({
                         {/* Model Card Fields */}
                         <div className="md:col-span-2 space-y-2">
                             <Label>Model Card Fields</Label>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
                                     <Label className="text-xs">Primary Field</Label>
                                     <Select
@@ -359,6 +397,26 @@ export function GeneralSettings({
                                         </SelectContent>
                                     </Select>
                                 </div>
+                                <div>
+                                    <Label className="text-xs">Tertiary Field</Label>
+                                    <Select
+                                        value={localConfig.settings?.modelCardTertiary ?? 'none'}
+                                        onValueChange={(value) => handleConfigFieldChange('settings.modelCardTertiary', value)}
+                                    >
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">None</SelectItem>
+                                            <SelectItem value="printTime">Print Time</SelectItem>
+                                            <SelectItem value="filamentUsed">Filament Used</SelectItem>
+                                            <SelectItem value="fileSize">File Size</SelectItem>
+                                            <SelectItem value="category">Category</SelectItem>
+                                            <SelectItem value="designer">Designer</SelectItem>
+                                            <SelectItem value="layerHeight">Layer Height</SelectItem>
+                                            <SelectItem value="nozzle">Nozzle Size</SelectItem>
+                                            <SelectItem value="price">Price</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
 
@@ -372,6 +430,20 @@ export function GeneralSettings({
                             <div className="flex flex-col">
                                 <Label htmlFor="verbose-scan">Verbose Scan Logs</Label>
                                 <span className="text-xs text-muted-foreground">Show detailed output during library scans (useful for debugging)</span>
+                            </div>
+                        </div>
+
+                        {/* Database Dynamic Collection Mode */}
+                        <div className="md:col-span-2 space-y-2 mt-2">
+                            <Label htmlFor="collection-mode">Dynamic Collection Mode (Database)</Label>
+                            <div className="flex items-center gap-4">
+                                <Button variant="outline" size="sm" onClick={() => setShowModeDialog(true)} className="h-9 font-medium capitalize flex items-center gap-2 w-full md:w-1/2">
+                                    <Box className="h-4 w-4" />
+                                    Mode: {collectionMode === 'manual' ? 'Custom' : collectionMode}
+                                </Button>
+                                <p className="text-xs text-muted-foreground w-full md:w-1/2">
+                                    Controls how folders are structured and displayed in the Collections tab instantly on the frontend.
+                                </p>
                             </div>
                         </div>
 
@@ -627,15 +699,33 @@ export function GeneralSettings({
                             </div>
 
                             {isGeneratingThumbnails ? (
-                                <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={handleCancelThumbnails}
-                                    className="animate-pulse"
-                                >
-                                    <X className="mr-2 h-4 w-4" />
-                                    Stop
-                                </Button>
+                                <div className="flex flex-col gap-2 min-w-[200px]">
+                                    <div className="flex items-center gap-2">
+                                        <Progress value={progress && progress.total > 0 ? (progress.current / progress.total) * 100 : 0} className="h-2 flex-1" />
+                                        <span className="text-xs font-mono whitespace-nowrap">
+                                            {progress ? `${progress.current}/${progress.total}` : '...'}
+                                        </span>
+                                    </div>
+                                    <div className="flex gap-2 justify-end">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setShowGenerateDialog(true)}
+                                            title="View Details"
+                                        >
+                                            <Eye className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={handleCancelThumbnails}
+                                            className="animate-pulse"
+                                        >
+                                            <X className="mr-2 h-4 w-4" />
+                                            Stop
+                                        </Button>
+                                    </div>
+                                </div>
                             ) : (
                                 <Button
                                     variant="outline"
@@ -649,130 +739,144 @@ export function GeneralSettings({
                         </div>
 
                         {/* Remove Generated Thumbnails */}
-                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border mt-2">
-                            <div className="space-y-1">
-                                <p className="text-sm font-medium">Remove Generated Thumbnails</p>
-                                <p className="text-xs text-muted-foreground">
-                                    Find and delete all auto-generated thumbnail files (*.stl-thumb.png, *.3mf-thumb.png).
-                                </p>
-                                <LastRunLabel timestamp={localConfig.lastRunTimestamps?.purgeThumbnails} />
+                        <div className="flex flex-col p-3 bg-muted/50 rounded-lg border mt-2 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-1">
+                                    <p className="text-sm font-medium">Remove Generated Thumbnails</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Find and delete all auto-generated thumbnail files.
+                                    </p>
+                                    <LastRunLabel timestamp={localConfig.lastRunTimestamps?.purgeThumbnails} />
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handlePurgePreview}
+                                    className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Find & Delete
+                                </Button>
                             </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handlePurgePreview}
-                                className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
-                            >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Find & Delete
-                            </Button>
-                        </div>
 
+                            {/* NEW: 3MF Only Filter Checkbox */}
+                            <label className="flex items-center gap-2 cursor-pointer max-w-fit">
+                                <input
+                                    type="checkbox"
+                                    checked={only3mf}
+                                    onChange={(e) => setOnly3mf(e.target.checked)}
+                                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                />
+                                <span className="text-sm text-foreground/80">Delete 3MF Thumbnails ONLY (*.3mf-thumb.png)</span>
+                            </label>
+                        </div>
                         {/* Purge Confirmation Dialog */}
-                        {showPurgeDialog && (() => {
-                            // Show scanning spinner while waiting for preview
-                            if (isScanning || !purgePreview) {
+                        {
+                            showPurgeDialog && (() => {
+                                // Show scanning spinner while waiting for preview
+                                if (isScanning || !purgePreview) {
+                                    return (
+                                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                                            <div className="bg-background border rounded-lg shadow-lg max-w-lg w-full mx-4 p-6 space-y-4">
+                                                <h3 className="text-lg font-semibold">Scanning Library...</h3>
+                                                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                                                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                                    <p className="text-sm text-muted-foreground">Searching for generated thumbnails across your model library...</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                const filteredFiles = skipNoImages
+                                    ? purgePreview.files.filter(f => f.hasOtherImages)
+                                    : purgePreview.files;
+                                const filteredSize = filteredFiles.reduce((sum, f) => sum + f.size, 0);
+                                const deleteCount = filteredFiles.length;
+
                                 return (
                                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                                         <div className="bg-background border rounded-lg shadow-lg max-w-lg w-full mx-4 p-6 space-y-4">
-                                            <h3 className="text-lg font-semibold">Scanning Library...</h3>
-                                            <div className="flex flex-col items-center justify-center py-8 gap-3">
-                                                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                                                <p className="text-sm text-muted-foreground">Searching for generated thumbnails across your model library...</p>
-                                            </div>
+                                            <h3 className="text-lg font-semibold">Confirm Thumbnail Removal</h3>
+                                            {purgePreview.totalCount === 0 ? (
+                                                <>
+                                                    <p className="text-sm text-muted-foreground">No generated thumbnails found.</p>
+                                                    <div className="flex justify-end">
+                                                        <Button variant="outline" onClick={() => setShowPurgeDialog(false)}>Close</Button>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                                                        <p className="text-sm font-medium text-destructive">
+                                                            Found {purgePreview.totalCount} generated thumbnail{purgePreview.totalCount !== 1 ? 's' : ''} ({formatBytes(purgePreview.totalSize)}).
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                            {purgePreview.withOtherImages} have embedded/extracted images • {purgePreview.withoutOtherImages} are the only image for their model.
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Skip checkbox */}
+                                                    <label className="flex items-center gap-2 p-2 rounded border bg-muted/30 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={skipNoImages}
+                                                            onChange={(e) => setSkipNoImages(e.target.checked)}
+                                                            className="w-4 h-4 rounded"
+                                                        />
+                                                        <div>
+                                                            <p className="text-sm font-medium">Skip models with no other images</p>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Protects {purgePreview.withoutOtherImages} model{purgePreview.withoutOtherImages !== 1 ? 's' : ''} that would lose their only image.
+                                                            </p>
+                                                        </div>
+                                                    </label>
+
+                                                    <div className="max-h-48 overflow-y-auto border rounded p-2 text-xs font-mono space-y-0.5">
+                                                        {purgePreview.files.map((f, i) => {
+                                                            const willSkip = skipNoImages && !f.hasOtherImages;
+                                                            return (
+                                                                <div key={i} className={`flex justify-between items-center ${willSkip ? 'opacity-40 line-through' : 'text-muted-foreground'}`}>
+                                                                    <span className="truncate mr-2">{f.path}</span>
+                                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                                        {!f.hasOtherImages && (
+                                                                            <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                                                                                only image
+                                                                            </span>
+                                                                        )}
+                                                                        <span>{formatBytes(f.size)}</span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+
+                                                    <div className="flex justify-between items-center">
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Will delete: {deleteCount} file{deleteCount !== 1 ? 's' : ''} ({formatBytes(filteredSize)})
+                                                        </p>
+                                                        <div className="flex gap-2">
+                                                            <Button variant="outline" onClick={() => setShowPurgeDialog(false)} disabled={isPurging}>
+                                                                Cancel
+                                                            </Button>
+                                                            <Button variant="destructive" onClick={handlePurgeConfirm} disabled={isPurging || deleteCount === 0}>
+                                                                {isPurging ? 'Deleting...' : `Delete ${deleteCount} Files`}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 );
-                            }
-
-                            const filteredFiles = skipNoImages
-                                ? purgePreview.files.filter(f => f.hasOtherImages)
-                                : purgePreview.files;
-                            const filteredSize = filteredFiles.reduce((sum, f) => sum + f.size, 0);
-                            const deleteCount = filteredFiles.length;
-
-                            return (
-                                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                                    <div className="bg-background border rounded-lg shadow-lg max-w-lg w-full mx-4 p-6 space-y-4">
-                                        <h3 className="text-lg font-semibold">Confirm Thumbnail Removal</h3>
-                                        {purgePreview.totalCount === 0 ? (
-                                            <>
-                                                <p className="text-sm text-muted-foreground">No generated thumbnails found.</p>
-                                                <div className="flex justify-end">
-                                                    <Button variant="outline" onClick={() => setShowPurgeDialog(false)}>Close</Button>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                                                    <p className="text-sm font-medium text-destructive">
-                                                        Found {purgePreview.totalCount} generated thumbnail{purgePreview.totalCount !== 1 ? 's' : ''} ({formatBytes(purgePreview.totalSize)}).
-                                                    </p>
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        {purgePreview.withOtherImages} have embedded/extracted images • {purgePreview.withoutOtherImages} are the only image for their model.
-                                                    </p>
-                                                </div>
-
-                                                {/* Skip checkbox */}
-                                                <label className="flex items-center gap-2 p-2 rounded border bg-muted/30 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={skipNoImages}
-                                                        onChange={(e) => setSkipNoImages(e.target.checked)}
-                                                        className="w-4 h-4 rounded"
-                                                    />
-                                                    <div>
-                                                        <p className="text-sm font-medium">Skip models with no other images</p>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            Protects {purgePreview.withoutOtherImages} model{purgePreview.withoutOtherImages !== 1 ? 's' : ''} that would lose their only image.
-                                                        </p>
-                                                    </div>
-                                                </label>
-
-                                                <div className="max-h-48 overflow-y-auto border rounded p-2 text-xs font-mono space-y-0.5">
-                                                    {purgePreview.files.map((f, i) => {
-                                                        const willSkip = skipNoImages && !f.hasOtherImages;
-                                                        return (
-                                                            <div key={i} className={`flex justify-between items-center ${willSkip ? 'opacity-40 line-through' : 'text-muted-foreground'}`}>
-                                                                <span className="truncate mr-2">{f.path}</span>
-                                                                <div className="flex items-center gap-1 flex-shrink-0">
-                                                                    {!f.hasOtherImages && (
-                                                                        <span className="text-[10px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                                                                            only image
-                                                                        </span>
-                                                                    )}
-                                                                    <span>{formatBytes(f.size)}</span>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-
-                                                <div className="flex justify-between items-center">
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Will delete: {deleteCount} file{deleteCount !== 1 ? 's' : ''} ({formatBytes(filteredSize)})
-                                                    </p>
-                                                    <div className="flex gap-2">
-                                                        <Button variant="outline" onClick={() => setShowPurgeDialog(false)} disabled={isPurging}>
-                                                            Cancel
-                                                        </Button>
-                                                        <Button variant="destructive" onClick={handlePurgeConfirm} disabled={isPurging || deleteCount === 0}>
-                                                            {isPurging ? 'Deleting...' : `Delete ${deleteCount} Files`}
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })()}
-                    </div>
-                </CardContent>
-            </Card>
+                            })()
+                        }
+                    </div >
+                </CardContent >
+            </Card >
 
             {/* G-Code Settings */}
-            <Card>
+            < Card >
                 <CardHeader>
                     <CardTitle>G-Code Processing</CardTitle>
                     <CardDescription>
@@ -823,7 +927,7 @@ export function GeneralSettings({
                         </div>
                     </div>
                 </CardContent>
-            </Card>
+            </Card >
 
             {/* Model Directory */}
             {/* ... other cards ... */}
@@ -835,6 +939,7 @@ export function GeneralSettings({
                 onStop={handleCancelThumbnails}
                 isGenerating={isGeneratingThumbnails}
                 results={generationResults}
+                progress={progress}
             />
 
             <Card>
@@ -952,6 +1057,11 @@ export function GeneralSettings({
                     </div>
                 </CardContent>
             </Card>
+
+            <DynamicCollectionModeDialog_DB
+                open={showModeDialog}
+                onOpenChange={setShowModeDialog}
+            />
         </div>
     );
 }

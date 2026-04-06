@@ -1,7 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const { FileSchema, FileSyncSchema } = require('../schemas');
-
-const prisma = new PrismaClient();
+const prisma = require('../../server-utils/db');
+const { FileSchema, FileSyncSchema } = require('../schemas/index_db');
 
 /**
  * DATABASE VERSION: File Service
@@ -28,66 +26,40 @@ async function getFilesForModel(modelId) {
 
 /**
  * Upsert a file record (used by File Watcher)
- * @param {Object} fileData - validated against FileSchema
+ * Uses find-first-then-update-or-create since ModelFile has no
+ * @@unique([modelId, filename]) composite constraint.
+ * @param {Object} fileData
  * @returns {Promise<ModelFile>}
  */
 async function upsertFile(fileData) {
-    // Basic validation (excluding id/createdAt)
     const { modelId, filename, filePath, size, isPrimary, isSupported } = fileData;
+    const fileType = filename ? filename.split('.').pop()?.toLowerCase() ?? null : null;
 
-    return await prisma.modelFile.upsert({
-        where: {
-            // Composite unique constraint might not exist in Prisma schema?
-            // Relying on logic: we find by modelId + filename manually or use ID if known
-            // Actually, we usually don't have ID from watcher.
-            // Let's use findFirst to simulate upsert on non-unique fields if needed,
-            // BUT proper schema should have @@unique([modelId, filename]).
-            // If not, we do check-then-act.
-            // checking schema... it DOES NOT have @@unique([modelId, filename]).
-            // Implementation: Find by modelId + filename first.
-            id: 'placeholder-will-be-ignored' // dummy
-        },
-        update: {
-            size: size ? BigInt(size) : null,
-            filePath, // Update path if moved (but filename same?)
-            isSupported
-            // Don't overwrite isPrimary unless explicitly asked
-        },
-        create: {
+    const existing = await prisma.modelFile.findFirst({
+        where: { modelId, filename }
+    });
+
+    if (existing) {
+        return await prisma.modelFile.update({
+            where: { id: existing.id },
+            data: {
+                size: size ? BigInt(size) : null,
+                filePath,
+                fileType: fileType ?? existing.fileType,
+                isSupported: isSupported !== undefined ? !!isSupported : existing.isSupported
+            }
+        });
+    }
+
+    return await prisma.modelFile.create({
+        data: {
             modelId,
             filename,
             filePath,
+            fileType,
             size: size ? BigInt(size) : null,
             isPrimary: !!isPrimary,
             isSupported: !!isSupported
-        }
-    }).catch(async (e) => {
-        // Fallback for "Where" failing if we can't use upsert properly without unique
-        // Manual find
-        const existing = await prisma.modelFile.findFirst({
-            where: { modelId, filename }
-        });
-
-        if (existing) {
-            return await prisma.modelFile.update({
-                where: { id: existing.id },
-                data: {
-                    size: size ? BigInt(size) : null,
-                    filePath,
-                    isSupported
-                }
-            });
-        } else {
-            return await prisma.modelFile.create({
-                data: {
-                    modelId,
-                    filename,
-                    filePath,
-                    size: size ? BigInt(size) : null,
-                    isPrimary: !!isPrimary,
-                    isSupported: !!isSupported
-                }
-            });
         }
     });
 }
@@ -123,12 +95,14 @@ async function syncFilesForModel(syncData) {
         // 3. Upsert incoming
         for (const file of files) {
             const existing = existingFiles.find(f => f.filename === file.filename);
+            const fileExt = file.filename ? file.filename.split('.').pop()?.toLowerCase() ?? null : null;
             const fileData = {
                 modelId,
                 filename: file.filename,
                 filePath: file.filePath,
+                fileType: fileExt,
                 size: file.size ? BigInt(file.size) : null,
-                isSupported: file.filename.toLowerCase().endsWith('.stl') || file.filename.toLowerCase().endsWith('.3mf') // Simple logic
+                isSupported: ['stl', '3mf', 'obj'].includes(fileExt ?? '')
             };
 
             if (existing) {

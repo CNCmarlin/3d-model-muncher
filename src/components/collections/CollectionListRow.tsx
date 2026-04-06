@@ -1,13 +1,14 @@
-import { Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
-import type { Category } from "@/types/category";
-import type { Collection } from "@/types/collection";
-import CollectionEditDrawer from "@/components/collections/CollectionEditDrawer";
+import { CollectionEditorDialog } from "@/components/collections/CollectionEditorDialog";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import type { Category } from "@/types/category";
+import type { Collection } from "@/types/collection";
+import { Folder, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface CollectionListRowProps {
   collection: Collection;
@@ -16,11 +17,14 @@ interface CollectionListRowProps {
   onOpen: (id: string) => void;
   onChanged?: () => void;
   onDeleted?: (id: string) => void;
+  // Optional models prop for dialog
+  models?: any[];
 }
 
-export function CollectionListRow({ collection, categories, collections, onOpen, onChanged, onDeleted }: CollectionListRowProps) {
+export function CollectionListRow({ collection, categories, collections, onOpen, onChanged, onDeleted, models = [] }: CollectionListRowProps) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [deletePhysicalFiles, setDeletePhysicalFiles] = useState(false);
 
   const collectionId = collection?.id;
   const modelCount = Array.isArray(collection?.modelIds) ? collection.modelIds.length : 0;
@@ -31,52 +35,41 @@ export function CollectionListRow({ collection, categories, collections, onOpen,
     }
   };
 
-  const handleSaved = () => {
-    setIsEditOpen(false);
-    onChanged?.();
-  };
-
-  const confirmDelete = async () => {
-    if (!collectionId) {
-      setIsDeleteOpen(false);
-      return;
-    }
-
+  const handleDelete = async () => {
+    if (!collectionId) return;
     try {
-      const resp = await fetch(`/api/collections/${encodeURIComponent(collectionId)}`, { method: "DELETE" });
-      if (!resp.ok) {
-        throw new Error("Failed to delete collection");
-      }
-
+      const url = `/api/collections/${encodeURIComponent(collectionId)}${deletePhysicalFiles ? '?deleteFiles=true' : ''}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+      toast.success('Collection deleted');
       onDeleted?.(collectionId);
-      onChanged?.();
-    } catch (error) {
-      console.error("Delete collection failed:", error);
-    } finally {
       setIsDeleteOpen(false);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to delete collection');
     }
   };
 
   return (
     <>
       <div
-        className="flex items-center gap-4 p-3 rounded-xl border hover:bg-accent/50 hover:border-primary/50 cursor-pointer transition-all duration-200 group shadow-sm hover:shadow-md"
-        style={{ backgroundColor: 'var(--card)' }}
+        className="group relative flex items-center p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer mb-2"
         onClick={handleOpen}
       >
-        <div className="flex-shrink-0 pl-1">
-          <div className="relative">
-            <ImageWithFallback
-              src={collection?.images && collection.images.length > 0 ? collection.images[0] : ""}
-              alt={collection?.name || "Collection image"}
-              fallback={<Folder className="w-8 h-8 text-primary/80" />}
-              className="w-20 h-20 object-cover rounded-lg border group-hover:border-primary/30 transition-colors flex items-center justify-center bg-muted/30"
-              draggable={false}
-            />
-            <Badge variant="secondary" className="absolute bottom-1 left-1 text-[10px] px-1.5 py-0.5 h-auto pointer-events-none bg-background/80 backdrop-blur-sm shadow-sm">
-              Collection
-            </Badge>
-          </div>
+        <div className="flex-shrink-0 mr-4">
+          {collection.coverImage || (collection.images && collection.images.length > 0) ? (
+            <div className="h-12 w-12 rounded overflow-hidden bg-muted">
+              <ImageWithFallback
+                src={collection.coverImage || collection.images![0]}
+                alt={collection.name}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ) : (
+            <div className="h-12 w-12 rounded bg-primary/10 flex items-center justify-center text-primary">
+              <Folder className="h-6 w-6" />
+            </div>
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -90,72 +83,99 @@ export function CollectionListRow({ collection, categories, collections, onOpen,
                   {collection.description}
                 </p>
               )}
-              {collection?.category && (
-                <div className="mt-2">
-                  <Badge variant="outline" className="text-xs font-medium">
-                    {collection.category}
-                  </Badge>
-                </div>
-              )}
+
             </div>
 
             <div className="flex flex-col items-end gap-2">
               <Badge variant="secondary" className="whitespace-nowrap">
-                {modelCount} item{modelCount === 1 ? "" : "s"}
+                {modelCount} item{modelCount !== 1 ? "s" : ""}
               </Badge>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={(event) => event.stopPropagation()}
-                    title="Collection actions"
-                    aria-label="Collection actions"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
-                  <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
-                    <Pencil className="h-4 w-4 mr-2" /> Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => setIsDeleteOpen(true)}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
+                      <Pencil className="h-4 w-4 mr-2" /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setIsDeleteOpen(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
+          </div>
+
+          <div className="flex gap-2 mt-2">
+            {collection.category && (
+              <Badge variant="outline" className="text-xs">{collection.category}</Badge>
+            )}
+            {collection.tags && collection.tags.slice(0, 3).map(tag => (
+              <Badge key={tag} variant="secondary" className="text-xs bg-muted text-muted-foreground">{tag}</Badge>
+            ))}
           </div>
         </div>
       </div>
 
-      <CollectionEditDrawer
-        open={isEditOpen}
-        onOpenChange={setIsEditOpen}
-        collection={collection ?? null}
-        collections={collections}
-        categories={categories}
-        onSaved={handleSaved}
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <CollectionEditorDialog
+          open={isEditOpen}
+          onOpenChange={setIsEditOpen}
+          collection={collection}
+          collections={collections}
+          models={models}
+          categories={categories}
+          onSave={async (_updated) => {
+            onChanged?.();
+            // setIsEditOpen(false); // dialog handles this
+          }}
+          onDelete={async (_id) => {
+            setIsDeleteOpen(true);
+          }}
+        />
+      </div>
 
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
-        <AlertDialogContent onClick={(event) => event.stopPropagation()}>
+        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this collection?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Collection?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the collection "{collection?.name || ""}" but won’t delete any models inside it.
+              This will remove "{collection?.name}".
+              <div className="mt-4 flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="del-phys"
+                  className="h-4 w-4 rounded border-gray-300"
+                  checked={deletePhysicalFiles}
+                  onChange={(e) => setDeletePhysicalFiles(e.target.checked)}
+                />
+                <label htmlFor="del-phys" className="text-sm font-medium text-destructive">
+                  Also delete folder from disk?
+                </label>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={confirmDelete}
+              onClick={(e) => {
+                e.preventDefault();
+                handleDelete();
+              }}
+              className="bg-destructive hover:bg-destructive/90"
             >
               Delete
             </AlertDialogAction>
