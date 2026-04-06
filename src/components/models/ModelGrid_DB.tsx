@@ -127,12 +127,44 @@ export function ModelGrid_DB({
     return map;
   }, [models]);
 
+  // Build a lookup of model-folder collections by their own ID so we can
+  // annotate primary models without an extra API call.
+  const modelFolderCollectionById = useMemo(() => {
+    const map = new Map<string, Collection>();
+    allCollections.forEach(c => {
+      if (c.isModelFolder) map.set(c.id, c);
+    });
+    return map;
+  }, [allCollections]);
+
+  // Mirror the annotation logic from CollectionGrid_DB so the "N parts" badge
+  // lights up in the global models view and search results too.
+  // Only primary models (isMainModel=true) whose parent collection is a model
+  // folder get annotated — everything else passes through unchanged.
+  const annotatedModels = useMemo(() => {
+    return models.map((m): Model => {
+      if (!(m as any).isMainModel) return m;
+      const colId = (m as any).collectionId as string | undefined;
+      if (!colId) return m;
+      const folderCol = modelFolderCollectionById.get(colId);
+      if (!folderCol) return m;
+      return {
+        ...m,
+        collection: {
+          ...((m as any).collection || {}),
+          isModelFolder: true,
+          _count: { models: folderCol.modelIds?.length ?? 0 },
+        },
+      } as Model;
+    });
+  }, [models, modelFolderCollectionById]);
+
   const unifiedItems: ({ kind: 'collection'; data: Collection } | { kind: 'model'; data: Model })[] | null = useMemo(() => {
     if (!sortBy || sortBy === 'none') return null;
     type Item = { kind: 'collection'; data: Collection } | { kind: 'model'; data: Model };
     const items: Item[] = [
       ...collections.filter(Boolean).map(c => ({ kind: 'collection', data: c } as Item)),
-      ...models.map(m => ({ kind: 'model', data: m } as Item)),
+      ...annotatedModels.map(m => ({ kind: 'model', data: m } as Item)),
     ];
     const getName = (it: Item) => (it.kind === 'collection' ? it.data.name : it.data.name) || '';
     const getTime = (it: Item) => it.kind === 'collection' ? getCollectionTimestamp(it.data) : getModelTimestamp(it.data);
@@ -154,7 +186,7 @@ export function ModelGrid_DB({
       }
     });
     return items;
-  }, [collections, models, sortBy]);
+  }, [collections, annotatedModels, sortBy]);
 
   return (
     <ViewLayout_DB
@@ -263,7 +295,7 @@ export function ModelGrid_DB({
                     onChanged={() => onCollectionChanged?.()}
                     onDeleted={() => onCollectionChanged?.()} collections={[]} />
                 ))}
-                {models.map((model, index) => (
+                {annotatedModels.map((model, index) => (
                   <ModelCard_DB
                     key={model.id}
                     model={model}
@@ -443,7 +475,7 @@ export function ModelGrid_DB({
                     onChanged={() => onCollectionChanged?.()}
                     onDeleted={() => onCollectionChanged?.()} collections={[]} />
                 ))}
-                {models.map((model, index) => (
+                {annotatedModels.map((model, index) => (
                   <div
                     key={model.id}
                     data-testid={`row-${model.id}`}
