@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.3.0...v1.3.1) (2026-04-06)
+
+
+### Bug Fixes
+
+* automate Prisma initialization in production and resolve legacy routing ([401da73](https://github.com/CNCmarlin/3d-model-muncher/commit/401da73b0bd4d4b2beea1a596a4ac8688b975b87))
+
 # [1.3.0](https://github.com/CNCmarlin/3d-model-muncher/compare/v1.2.0...v1.3.0) (2026-04-06)
 
 
