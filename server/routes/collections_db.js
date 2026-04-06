@@ -481,7 +481,7 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
     try {
         const collection = await prisma.collection.findUnique({
             where: { id: req.params.id },
-            include: { models: { include: { relatedFiles: true } } }
+            include: { models: { include: { relatedFiles: true, images: true } } }
         });
         if (!collection) return res.status(404).json({ success: false, error: 'Collection not found' });
         if (collection.isModelFolder) {
@@ -559,7 +559,12 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
                     allDocPaths.add(rf.path);
                 }
             }
+            // Only crosslink gallery/non-thumbnail images.
+            // NEVER crosslink source='thumbnail' images — each model must display its own
+            // unique thumbnail from its own thumbnailPath column. The heal (library-heal)
+            // was incorrectly adding all sibling thumbnails to every model; we guard here too.
             for (const img of (m.images || [])) {
+                if (img.source === 'thumbnail') continue; // skip — do NOT crosslink thumbnails
                 if (!img.path.endsWith('-thumb.png')) allImagePaths.add(img.path);
             }
         }
@@ -600,46 +605,65 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
                 if (targetModel.images && targetModel.images.length > 0) {
                     maxOrder = Math.max(...targetModel.images.map(img => img.order || 0));
                 }
+                // Tag as 'crosslink' so revert can precisely delete only conversion-created records
                 await Promise.all(imagesToAdd.map((p, idx) => prisma.modelImage.create({
-                    data: { modelId: targetId, path: p, source: 'gallery', order: maxOrder + idx + 1 }
+                    data: { modelId: targetId, path: p, source: 'crosslink', order: maxOrder + idx + 1 }
                 })));
             }
         }
 
-        // Demote secondaries
+        // Promote primary, demote secondaries
         const secondaryIds = secondaryModels.map(m => m.id);
-        if (secondaryIds.length > 0) {
-            await prisma.model.updateMany({
+        const allModelIds = models.map(m => m.id);
+
+        // Atomically persist all model-level DB changes
+        await prisma.$transaction([
+            // Promote primary
+            prisma.model.update({
+                where: { id: primaryModelId },
+                data: { isMainModel: true, isHidden: false, isComponent: false }
+            }),
+            // Demote secondaries
+            ...(secondaryIds.length > 0 ? [prisma.model.updateMany({
                 where: { id: { in: secondaryIds } },
                 data: { isHidden: true, isComponent: true, isMainModel: false }
-            });
-        }
+            })] : []),
+            // Transform collection
+            prisma.collection.update({
+                where: { id: req.params.id },
+                data: {
+                    isModelFolder: true,
+                    pathHash: sharedRelativePath
+                        ? Buffer.from(sharedRelativePath).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+                        : null,
+                    type: 'Auto-Imported'
+                }
+            }),
+        ]);
 
-        // Transform Collection into a Physical Folder Collection the scanner can identify
-        const encodedPath = Buffer.from(sharedRelativePath).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-        await prisma.collection.update({
-            where: { id: req.params.id },
-            data: {
-                isModelFolder: true,
-                pathHash: sharedRelativePath ? encodedPath : null,
-                type: 'Auto-Imported' // Physical folders are managed by scanner
-            }
+        // NOTE: Micro-heal intentionally NOT called here.
+        // The library-heal treats the folder as a single-model directory and incorrectly
+        // crosslinks all thumbnail images from every model to every other model in the
+        // folder (adding source='thumbnail' records). For model folders — which contain
+        // multiple independent models — this corrupts thumbnail display (all show the
+        // same embedded-thumb). The conversion already handles all necessary DB changes
+        // explicitly above, so heal is not needed.
+
+        // Return details including which components are missing thumbnails (for optional gen UI)
+        const missingThumbs = secondaryModels.filter(m => !m.thumbnailPath).map(m => ({
+            id: m.id,
+            name: m.name,
+            modelUrl: m.modelUrl
+        }));
+
+        console.log(`[Convert] "${collection.name}" → model folder. Primary: ${primaryFilename}, crosslinked: ${allDocPaths.size + allImagePaths.size}, demoted: ${secondaryIds.length}, missing thumbs: ${missingThumbs.length}`);
+        return res.json({
+            success: true,
+            primaryModel: primaryFilename,
+            mergedFileCount: allDocPaths.size + allImagePaths.size,
+            secondaryDemotedCount: secondaryIds.length,
+            missingThumbnails: missingThumbs
         });
-
-        // Non-blocking micro-heal
-        try {
-            const healResp = await fetch(`http://localhost:${process.env.PORT || 3001}/api/admin/library-heal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ targetPath: sharedRelativePath })
-            });
-            if (healResp.ok) console.log('[Convert] Micro-heal triggered for:', sharedRelativePath);
-        } catch (healErr) {
-            console.warn('[Convert] Micro-heal failed (non-fatal):', healErr.message);
-        }
-
-        console.log(`[Convert] "${collection.name}" → model folder. Primary: ${primaryFilename}, merged: ${newDocPaths.length + newImagePaths.length}, demoted: ${secondaryIds.length}`);
-        return res.json({ success: true, primaryModel: primaryFilename, mergedFileCount: newDocPaths.length + newImagePaths.length, secondaryDemotedCount: secondaryIds.length });
 
     } catch (error) {
         console.error('[Convert to Model Folder] Error:', error);
@@ -654,30 +678,29 @@ router.post('/collections/:id/revert-to-collection', async (req, res) => {
     try {
         const collection = await prisma.collection.findUnique({
             where: { id: req.params.id },
-            include: { models: { include: { relatedFiles: true } } }
+            include: { models: { include: { relatedFiles: true, images: true } } }
         });
         if (!collection) return res.status(404).json({ success: false, error: 'Collection not found' });
         if (!collection.isModelFolder) {
             return res.status(400).json({ success: false, error: 'Collection is not a model folder' });
         }
 
-        // Delete marker FIRST
         const modelsDir = getAbsoluteModelsPath();
-        const primaryModel = collection.models.find(m => m.isMainModel) || collection.models[0];
+        const allModels = collection.models || [];
+        const allModelIds = allModels.map(m => m.id);
+        const primaryModel = allModels.find(m => m.isMainModel) || allModels[0];
 
+        // ── 1. Delete marker file from disk ───────────────────────────────────
         let sharedRelativePath = '';
         if (primaryModel?.modelUrl) {
             const clean = primaryModel.modelUrl.replace(/^\/models\//, '');
             const parts = clean.split('/');
             parts.pop();
             sharedRelativePath = parts.join('/');
-            const sharedAbsPath = path.join(modelsDir, sharedRelativePath);
-
-            const markerPath = path.join(sharedAbsPath, '_folder.munchie.json');
+            const markerPath = path.join(modelsDir, sharedRelativePath, '_folder.munchie.json');
             if (fs.existsSync(markerPath)) {
-                try {
-                    fs.unlinkSync(markerPath);
-                } catch (err) {
+                try { fs.unlinkSync(markerPath); }
+                catch (err) {
                     return res.status(500).json({ success: false, error: `Failed to delete marker file: ${err.message}` });
                 }
             } else {
@@ -685,42 +708,37 @@ router.post('/collections/:id/revert-to-collection', async (req, res) => {
             }
         }
 
-        // Un-group newly related items (Images and Documents)
-        if (primaryModel && sharedRelativePath) {
-            // Delete auto-linked gallery images
-            await prisma.modelImage.deleteMany({
-                where: {
-                    modelId: primaryModel.id,
-                    source: 'gallery',
-                    path: { startsWith: sharedRelativePath }
-                }
-            });
-            // Delete auto-linked related files
-            await prisma.modelRelatedFile.deleteMany({
-                where: {
-                    modelId: primaryModel.id,
-                    path: { startsWith: sharedRelativePath }
-                }
-            });
-        }
+        // ── 2. Build precise path set to delete: every sibling modelUrl ───────
+        // We target by path rather than sharedRelativePath prefix to be safe
+        // if sharedRelativePath is '' (root-level models).
+        const siblingPaths = allModels
+            .map(m => (m.modelUrl || '').replace(/^\/models\//, ''))
+            .filter(Boolean);
 
-        // Un-demote all secondary component models in this collection
-        const restoreResult = await prisma.model.updateMany({
-            where: { collectionId: req.params.id, isComponent: true, isHidden: true },
-            data: { isHidden: false, isComponent: false }
-        });
+        // ── 3. Atomic cleanup via transaction ─────────────────────────────────
+        await prisma.$transaction([
+            // Delete ALL crosslink-tagged images from ALL models in the folder
+            prisma.modelImage.deleteMany({
+                where: { modelId: { in: allModelIds }, source: 'crosslink' }
+            }),
+            // Delete crosslinked relatedFile rows: only paths that are sibling model URLs
+            // (these are the only paths we wrote during conversion)
+            prisma.modelRelatedFile.deleteMany({
+                where: { modelId: { in: allModelIds }, path: { in: siblingPaths } }
+            }),
+            // Reset ALL models in the folder: no longer main, no longer component, no longer hidden
+            prisma.model.updateMany({
+                where: { id: { in: allModelIds } },
+                data: { isMainModel: false, isComponent: false, isHidden: false }
+            }),
+            // Restore collection to plain manual cloud collection
+            prisma.collection.update({
+                where: { id: req.params.id },
+                data: { isModelFolder: false, pathHash: null, type: 'Manual' }
+            }),
+        ]);
 
-        // Re-create as a Manual Cloud Collection
-        await prisma.collection.update({
-            where: { id: req.params.id },
-            data: {
-                isModelFolder: false,
-                pathHash: null,
-                type: 'Manual'
-            }
-        });
-
-        // Non-blocking micro-heal
+        // ── 4. Non-blocking micro-heal ─────────────────────────────────────────
         try {
             const healResp = await fetch(`http://localhost:${process.env.PORT || 3001}/api/admin/library-heal`, {
                 method: 'POST',
@@ -732,8 +750,8 @@ router.post('/collections/:id/revert-to-collection', async (req, res) => {
             console.warn('[Revert] Micro-heal failed (non-fatal):', healErr.message);
         }
 
-        console.log(`[Revert] "${collection.name}" → cloud collection. Restored: ${restoreResult.count} models.`);
-        return res.json({ success: true, restoredModelCount: restoreResult.count });
+        console.log(`[Revert] "${collection.name}" → cloud collection. Restored ${allModelIds.length} models.`);
+        return res.json({ success: true, restoredModelCount: allModelIds.length });
 
     } catch (error) {
         console.error('[Revert to Collection] Error:', error);

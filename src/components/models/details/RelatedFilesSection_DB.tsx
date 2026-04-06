@@ -76,24 +76,33 @@ const ModelFileCard = ({
                     // 1. Determine "Main" status from database record
                     setIsProjectMain(data.isMainModel === true);
 
-                    // 2. Resolve Thumbnail pointer or direct URL
-                    let rawThumb = data.userDefined?.thumbnail || data.thumbnail || (data.parsedImages?.[0]) || (data.images?.[0]);
-
-                    // Legacy handle both 'parsed:' and 'user:' pointers safely
-                    if (typeof rawThumb === 'string' && (rawThumb.startsWith('parsed:') || rawThumb.startsWith('user:'))) {
-                        const [type, indexStr] = rawThumb.split(':');
-                        const idx = parseInt(indexStr);
-                        if (type === 'parsed') rawThumb = data.parsedImages?.[idx];
-                        else if (type === 'user') rawThumb = data.userDefined?.images?.[idx];
+                    // Prefer the model's own thumbnailPath column from its Prisma row — this is
+                    // the definitive per-model thumbnail set during initial scan. Using it directly
+                    // avoids any influence from crosslinked images in the images[] array.
+                    let rawThumb: string | undefined = undefined;
+                    if (data.thumbnailPath) {
+                        // thumbnailPath is a relative path (without /models/ prefix)
+                        rawThumb = data.thumbnailPath.startsWith('/') ? data.thumbnailPath : `/models/${data.thumbnailPath}`;
+                    } else {
+                        // Fallback: resolved data.thumbnail or first parsedImages entry
+                        rawThumb = data.userDefined?.thumbnail || data.thumbnail || data.parsedImages?.[0];
+                        // Resolve legacy 'parsed:' / 'user:' pointers
+                        if (typeof rawThumb === 'string' && (rawThumb.startsWith('parsed:') || rawThumb.startsWith('user:'))) {
+                            const [type, indexStr] = rawThumb.split(':');
+                            const idx = parseInt(indexStr);
+                            if (type === 'parsed') rawThumb = data.parsedImages?.[idx];
+                            else if (type === 'user') rawThumb = data.userDefined?.images?.[idx];
+                        }
                     }
 
-                    // 3. Final path assembly (only if rawThumb is now a real path string)
+                    // Final path assembly
                     if (rawThumb && typeof rawThumb === 'string' && !rawThumb.includes(':')) {
                         const finalPath = rawThumb.startsWith('/') ? rawThumb : `/models/${rawThumb}`;
                         setThumb(finalPath);
                     } else {
                         setThumb(null);
                     }
+
                 }
             } catch (e) { }
         };
