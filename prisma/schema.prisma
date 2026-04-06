@@ -154,10 +154,11 @@ model ModelFile {
 // 5. Related Files (Arbitrary paths)
 // ---------------------------------------------------------
 model ModelRelatedFile {
-  id      String @id @default(cuid())
-  modelId String @map("model_id")
-  model   Model  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  id      String  @id @default(cuid())
+  modelId String  @map("model_id")
+  model   Model   @relation(fields: [modelId], references: [id], onDelete: Cascade)
   path    String
+  source  String? // null = pre-existing | 'conversion' = added by convert-to-model-folder
 
   @@map("model_related_files")
 }

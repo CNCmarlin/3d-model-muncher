@@ -572,8 +572,13 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
         // Extract from all models in the folder
         models.forEach(extractPaths);
 
-        // Now, cross-link EVERY model to all docs and images in the folder
+        // Cross-link ONLY the primary model to all sibling docs and images.
+        // Component models are hidden (isHidden=true) and accessed exclusively via the
+        // primary's relatedFiles — cross-linking them would cause redundancy and
+        // make the preview dialog balloon with hundreds of duplicate entries.
         for (const targetModel of models) {
+            if (targetModel.id !== primaryModelId) continue; // skip components
+
             const targetId = targetModel.id;
             const targetUrlClean = (targetModel.modelUrl || '').replace(/^\/models\//, '');
             const targetExistingDocs = new Set((targetModel.relatedFiles || []).map(rf => rf.path));
@@ -595,8 +600,9 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
             }
 
             if (docsToAdd.length > 0) {
+                // Tag as 'conversion' so revert can precisely delete only these records
                 await Promise.all(docsToAdd.map(p => prisma.modelRelatedFile.create({
-                    data: { modelId: targetId, path: p }
+                    data: { modelId: targetId, path: p, source: 'conversion' }
                 })));
             }
 
@@ -721,10 +727,10 @@ router.post('/collections/:id/revert-to-collection', async (req, res) => {
             prisma.modelImage.deleteMany({
                 where: { modelId: { in: allModelIds }, source: 'crosslink' }
             }),
-            // Delete crosslinked relatedFile rows: only paths that are sibling model URLs
-            // (these are the only paths we wrote during conversion)
+            // Delete ALL conversion-created relatedFile rows (tagged source='conversion').
+            // Pre-existing relatedFiles (source=null) are untouched.
             prisma.modelRelatedFile.deleteMany({
-                where: { modelId: { in: allModelIds }, path: { in: siblingPaths } }
+                where: { modelId: { in: allModelIds }, source: 'conversion' }
             }),
             // Reset ALL models in the folder: no longer main, no longer component, no longer hidden
             prisma.model.updateMany({
