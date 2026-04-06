@@ -2,7 +2,7 @@ import { ImageWithFallback_DB } from "@/components/common/ImageWithFallback_DB";
 import { Grid3DViewer_DB } from "@/components/models/Grid3DViewer_DB";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useSpoolman } from "@/context/SpoolmanContext";
+import { useSpoolman } from "@/plugins/spoolman/SpoolmanContext";
 import { AppConfig } from "@/types/config";
 import { Model } from "@/types/model_db";
 import { resolveModelThumbnail } from "@/utils/thumbnailUtils_db";
@@ -14,6 +14,7 @@ import {
   DraftingCompass,
   Droplet,
   Folder,
+  FolderOpen,
   HardDrive,
   Layers,
   User,
@@ -44,6 +45,20 @@ export function ModelCard_DB({
   const hoverTimer = useRef<NodeJS.Timeout | null>(null);
 
   const showBadge = config?.settings?.showPrintedBadge !== false;
+
+  // Model folder: this model is the primary of a folder if isMainModel=true.
+  // Count comes from the grid annotation (injected by ModelGrid_DB / CollectionGrid_DB)
+  // when the folder collection still exists ("Keep Collection" path).
+  // For the "Remove Collection" path the collection is gone, so we show the badge
+  // without a count — the isMainModel flag itself is always reliable.
+  const isModelFolderPrimary = !!(model as any).isMainModel;
+  const folderComponentCount = (() => {
+    if (!isModelFolderPrimary) return 0;
+    const col = (model as any).collection;
+    if (!col?.isModelFolder) return 0;
+    const total = col._count?.models ?? 0;
+    return total > 1 ? total : 0;
+  })();
 
   // ─── DB-First 3D URL Resolution ───────────────────────────────────────────
   // Priority:
@@ -277,8 +292,19 @@ export function ModelCard_DB({
           </div>
         )}
 
-        {/* [NEW] TOP LEFT OVERLAY - Stock Badges */}
+        {/* [NEW] TOP LEFT OVERLAY - Stock Badges + Model Folder Badge */}
         <div className="absolute top-2 left-2 flex flex-col gap-1 items-start pointer-events-none z-20">
+          {isModelFolderPrimary && (
+            <Badge
+              variant="secondary"
+              className="gap-1 backdrop-blur-sm shadow-sm bg-primary/80 text-primary-foreground border-none py-0.5"
+            >
+              <FolderOpen className="w-3 h-3" />
+              <span className="text-[10px] font-bold">
+                {folderComponentCount > 0 ? `${folderComponentCount} parts` : 'Model Folder'}
+              </span>
+            </Badge>
+          )}
           {stockStatus === "empty" && (
             <Badge
               variant="destructive"
