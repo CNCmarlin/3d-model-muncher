@@ -52,6 +52,7 @@ export function ConvertToModelFolderDialog_DB({ open, onOpenChange, collection, 
     const [primaryId, setPrimaryId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [generateThumbs, setGenerateThumbs] = useState(false);
+    const [removeCollection, setRemoveCollection] = useState(false);
 
     // Reset and preflight on open
     useEffect(() => {
@@ -60,6 +61,7 @@ export function ConvertToModelFolderDialog_DB({ open, onOpenChange, collection, 
         setPrimaryId(null);
         setError(null);
         setGenerateThumbs(false);
+        setRemoveCollection(false);
 
         (async () => {
             try {
@@ -147,7 +149,7 @@ export function ConvertToModelFolderDialog_DB({ open, onOpenChange, collection, 
             const res = await fetch(`/api/collections/${encodeURIComponent(collection.id)}/convert-to-model-folder`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ primaryModelId: primaryId }),
+                body: JSON.stringify({ primaryModelId: primaryId, removeCollection }),
             });
             const json = await res.json();
             if (!res.ok || !json.success) throw new Error(json.error || 'Conversion failed');
@@ -344,7 +346,30 @@ export function ConvertToModelFolderDialog_DB({ open, onOpenChange, collection, 
                             </div>
                         )}
 
-                        {/* Optional thumbnail generation */}
+                        {/* Collection placement toggle */}
+                        <div
+                            className="flex items-start gap-3 p-3 rounded-lg border border-border/40 hover:border-border/80 cursor-pointer transition-colors"
+                            onClick={() => setRemoveCollection(v => !v)}
+                        >
+                            <Checkbox
+                                id="remove-collection"
+                                checked={removeCollection}
+                                onCheckedChange={(v) => setRemoveCollection(Boolean(v))}
+                                className="mt-0.5 shrink-0"
+                            />
+                            <div className="min-w-0">
+                                <label htmlFor="remove-collection" className="text-sm font-medium cursor-pointer">
+                                    Remove collection wrapper after conversion
+                                </label>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">
+                                    {removeCollection
+                                        ? `Model “${collection.name}” will appear directly in the parent collection.`
+                                        : `Model “${collection.name}” will remain inside this collection (recommended).`
+                                    }
+                                </p>
+                            </div>
+                        </div>
+
                         {(() => {
                             const missingThumbModels = secondaries.filter(m => !m.thumbnailPath);
                             if (missingThumbModels.length === 0) return null;

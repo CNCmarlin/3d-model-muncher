@@ -472,7 +472,7 @@ router.post('/collections/purge-covers', async (req, res) => {
 // ─── POST /api/collections/:id/convert-to-model-folder ───────────────────────
 router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
     const prisma = require('../../server-utils/db');
-    const { primaryModelId } = req.body;
+    const { primaryModelId, removeCollection = false } = req.body;
 
     if (!primaryModelId) {
         return res.status(400).json({ success: false, error: 'primaryModelId is required' });
@@ -539,32 +539,27 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
         // Gather sibling file paths from non-primary models, de-duplicate
         const secondaryModels = models.filter(m => m.id !== primaryModelId);
 
-        // Gather ALL file paths from ALL models (primary + secondary) to cross-link
-        const allDocPaths = new Set();
+        // Gather 3D model file URLs from ALL models for crosslinking.
+        // ONLY model files (STL, 3MF, OBJ, STEP) are crosslinked so every component
+        // can navigate to its siblings. Pre-existing relatedFiles (gcode, docs) are NOT
+        // crosslinked — each model keeps its own private set.
+        // Paths are stored WITH the /models/ prefix to match the modelUrl DB column format,
+        // which is what the ModelFileCard API lookup (GET /api/models?modelUrl=...) uses.
+        const MODEL_EXTS = new Set(['stl', '3mf', 'obj', 'step', 'stp']);
+        const allModelPaths = new Set();
         const allImagePaths = new Set();
 
         function extractPaths(m) {
             if (m.modelUrl) {
-                const clean = m.modelUrl.replace(/^\/models\//, '');
-                if (/\.(jpg|jpeg|png|webp|gif)$/i.test(clean)) {
-                    if (!clean.endsWith('-thumb.png')) allImagePaths.add(clean);
-                } else {
-                    allDocPaths.add(clean);
+                const ext = (m.modelUrl.split('.').pop() || '').toLowerCase();
+                if (MODEL_EXTS.has(ext)) {
+                    allModelPaths.add(m.modelUrl); // Keep full path — matches DB modelUrl format
                 }
             }
-            for (const rf of (m.relatedFiles || [])) {
-                if (/\.(jpg|jpeg|png|webp|gif)$/i.test(rf.path)) {
-                    if (!rf.path.endsWith('-thumb.png')) allImagePaths.add(rf.path);
-                } else {
-                    allDocPaths.add(rf.path);
-                }
-            }
-            // Only crosslink gallery/non-thumbnail images.
-            // NEVER crosslink source='thumbnail' images — each model must display its own
-            // unique thumbnail from its own thumbnailPath column. The heal (library-heal)
-            // was incorrectly adding all sibling thumbnails to every model; we guard here too.
+            // relatedFiles intentionally excluded: gcode/docs stay private to each model.
+            // Only gallery images (non-thumbnail) get shared to all models:
             for (const img of (m.images || [])) {
-                if (img.source === 'thumbnail') continue; // skip — do NOT crosslink thumbnails
+                if (img.source === 'thumbnail') continue;
                 if (!img.path.endsWith('-thumb.png')) allImagePaths.add(img.path);
             }
         }
@@ -572,22 +567,19 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
         // Extract from all models in the folder
         models.forEach(extractPaths);
 
-        // Cross-link ONLY the primary model to all sibling docs and images.
-        // Component models are hidden (isHidden=true) and accessed exclusively via the
-        // primary's relatedFiles — cross-linking them would cause redundancy and
-        // make the preview dialog balloon with hundreds of duplicate entries.
+        // Cross-link ALL models to all sibling 3D model files.
+        // This ensures that when viewing ANY component, the Models tab shows
+        // all other parts in the folder — preventing navigation dead-ends.
         for (const targetModel of models) {
-            if (targetModel.id !== primaryModelId) continue; // skip components
-
             const targetId = targetModel.id;
-            const targetUrlClean = (targetModel.modelUrl || '').replace(/^\/models\//, '');
+            const targetUrl = targetModel.modelUrl; // Full path for self-exclusion
             const targetExistingDocs = new Set((targetModel.relatedFiles || []).map(rf => rf.path));
             const targetExistingImages = new Set((targetModel.images || []).map(img => img.path));
 
             const docsToAdd = [];
-            for (const p of allDocPaths) {
+            for (const p of allModelPaths) {
                 // Don't link a model to itself, and avoid duplicates
-                if (p !== targetUrlClean && !targetExistingDocs.has(p)) {
+                if (p !== targetUrl && !targetExistingDocs.has(p)) {
                     docsToAdd.push(p);
                 }
             }
@@ -611,7 +603,6 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
                 if (targetModel.images && targetModel.images.length > 0) {
                     maxOrder = Math.max(...targetModel.images.map(img => img.order || 0));
                 }
-                // Tag as 'crosslink' so revert can precisely delete only conversion-created records
                 await Promise.all(imagesToAdd.map((p, idx) => prisma.modelImage.create({
                     data: { modelId: targetId, path: p, source: 'crosslink', order: maxOrder + idx + 1 }
                 })));
@@ -623,29 +614,51 @@ router.post('/collections/:id/convert-to-model-folder', async (req, res) => {
         const allModelIds = models.map(m => m.id);
 
         // Atomically persist all model-level DB changes
-        await prisma.$transaction([
-            // Promote primary
-            prisma.model.update({
-                where: { id: primaryModelId },
-                data: { isMainModel: true, isHidden: false, isComponent: false }
-            }),
-            // Demote secondaries
-            ...(secondaryIds.length > 0 ? [prisma.model.updateMany({
-                where: { id: { in: secondaryIds } },
-                data: { isHidden: true, isComponent: true, isMainModel: false }
-            })] : []),
-            // Transform collection
-            prisma.collection.update({
-                where: { id: req.params.id },
-                data: {
-                    isModelFolder: true,
-                    pathHash: sharedRelativePath
-                        ? Buffer.from(sharedRelativePath).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
-                        : null,
-                    type: 'Auto-Imported'
-                }
-            }),
-        ]);
+        if (removeCollection && collection.parentId) {
+            // ─── "Remove collection" path ────────────────────────────────────────────
+            // Move ALL models (primary + components) to the parent collection, then
+            // delete the original collection wrapper.
+            await prisma.$transaction([
+                // Rename primary to the collection name (preserves user's meaningful label)
+                prisma.model.update({
+                    where: { id: primaryModelId },
+                    data: { name: collection.name, isMainModel: true, isHidden: false, isComponent: false, collectionId: collection.parentId }
+                }),
+                // Move + demote all secondaries to parent collection
+                ...(secondaryIds.length > 0 ? [prisma.model.updateMany({
+                    where: { id: { in: secondaryIds } },
+                    data: { isHidden: true, isComponent: true, isMainModel: false, collectionId: collection.parentId }
+                })] : []),
+                // Delete the original collection (it's now empty)
+                prisma.collection.delete({ where: { id: req.params.id } }),
+            ]);
+        } else {
+            // ─── "Keep collection" path (default) ───────────────────────────────────
+            // Models stay inside the collection, which becomes a model folder.
+            await prisma.$transaction([
+                // Rename primary to the collection name
+                prisma.model.update({
+                    where: { id: primaryModelId },
+                    data: { name: collection.name, isMainModel: true, isHidden: false, isComponent: false }
+                }),
+                // Demote secondaries
+                ...(secondaryIds.length > 0 ? [prisma.model.updateMany({
+                    where: { id: { in: secondaryIds } },
+                    data: { isHidden: true, isComponent: true, isMainModel: false }
+                })] : []),
+                // Transform collection to model folder
+                prisma.collection.update({
+                    where: { id: req.params.id },
+                    data: {
+                        isModelFolder: true,
+                        pathHash: sharedRelativePath
+                            ? Buffer.from(sharedRelativePath).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+                            : null,
+                        type: 'Auto-Imported'
+                    }
+                }),
+            ]);
+        }
 
         // NOTE: Micro-heal intentionally NOT called here.
         // The library-heal treats the folder as a single-model directory and incorrectly
