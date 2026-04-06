@@ -173,6 +173,18 @@ export function ConvertToModelFolderDialog_DB({ open, onOpenChange, collection, 
 
             setStep('done');
             toast.success(`"${collection.name}" converted to model folder`);
+
+            // Notify AppContent_DB to refresh models list and navigate if needed.
+            // We fire this immediately (before the dialog closes) so the UI updates
+            // without requiring a manual page refresh.
+            window.dispatchEvent(new CustomEvent('model-folder-converted', {
+                detail: {
+                    collectionId: collection.id,
+                    parentCollectionId: (collection as any).parentId ?? null,
+                    removed: removeCollection,
+                }
+            }));
+
             setTimeout(() => { onOpenChange(false); onConverted(); }, 1200);
         } catch (e: any) {
             setError(e.message);

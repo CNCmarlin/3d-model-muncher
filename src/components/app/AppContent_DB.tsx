@@ -15,8 +15,6 @@ import { PrinterStatusHub_DB } from "@/components/layout/PrinterStatusHub_DB";
 import { ThemeToggle_DB } from "@/components/layout/ThemeToggle_DB";
 import { SettingsPage_DB } from "@/components/management/SettingsPage_DB";
 import { ModelHubView_DB } from "@/components/models/ModelHubView_DB";
-import { ProjectsList_DB } from "@/components/projects/ProjectsList_DB";
-import { ProjectWorkspace_DB } from "@/components/projects/ProjectWorkspace_DB";
 import { GlobalDialogs_DB } from "@/components/shared/GlobalDialogs_DB";
 import { BulkEditView_DB } from "@/components/views/BulkEditView_DB";
 import { CollectionsView_DB } from "@/components/views/CollectionsView_DB";
@@ -34,6 +32,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { OnboardingPage } from "@/pages/Onboarding/OnboardingPage_DB";
+import { PluginSlot } from "@/plugins/PluginSlot";
 
 // ── Context ────────────────────────────────────────────────────────────────────
 import { useConfig } from "@/context/AppConfigContext";
@@ -338,6 +337,43 @@ export default function AppContent_DB() {
         return () => window.removeEventListener("collection-updated", handler);
     }, [activeCollection, lastFilters, currentView]);
 
+    // ── Model Folder Conversion ────────────────────────────────────────────────
+    // Fired by ConvertToModelFolderDialog_DB immediately on success so the UI
+    // updates without a page reload.
+    useEffect(() => {
+        const handler = async (ev: Event) => {
+            const detail = (ev as CustomEvent<{
+                collectionId: string;
+                parentCollectionId: string | null;
+                removed: boolean;
+            }>).detail;
+
+            // Refresh models so the renamed primary model card becomes visible
+            handleRefreshModels();
+
+            // For the "remove collection" path: navigate away from the now-deleted
+            // collection view. The parent collection still exists in the current
+            // state (only the child was deleted).
+            if (detail.removed && currentView === 'collection-view') {
+                if (detail.parentCollectionId) {
+                    const parent = collections.find(
+                        (c) => c.id === detail.parentCollectionId
+                    );
+                    if (parent) {
+                        setActiveCollection(parent as any);
+                        // Stay in collection-view — user lands in the parent folder
+                        return;
+                    }
+                }
+                // No parent found (root-level collection removed): go to models
+                setActiveCollection(null);
+                setCurrentView('models');
+            }
+        };
+        window.addEventListener('model-folder-converted', handler);
+        return () => window.removeEventListener('model-folder-converted', handler);
+    }, [collections, currentView, handleRefreshModels, setActiveCollection, setCurrentView]);
+
     const handleDonationClick = () => {
         dialogs.openDonation();
     };
@@ -635,14 +671,23 @@ export default function AppContent_DB() {
                             onBulkDelete={handleBulkDeleteClick}
                         />
                     ) : currentView === "projects" ? (
-                        <ProjectsList_DB onOpenProject={(id) => {
-                            setSelectedProjectId(id);
-                            setCurrentView("project-workspace");
-                        }} />
+                        <PluginSlot 
+                            name="app.views.projects" 
+                            context={{ 
+                                onOpenProject: (id: string) => {
+                                    setSelectedProjectId(id);
+                                    setCurrentView("project-workspace");
+                                } 
+                            }} 
+                        />
                     ) : currentView === "project-workspace" && selectedProjectId ? (
-                        <ProjectWorkspace_DB
-                            projectId={selectedProjectId}
-                            onBack={() => setCurrentView("projects")}
+                        <PluginSlot 
+                            name="app.views.project_workspace" 
+                            className="w-full h-full overflow-hidden"
+                            context={{ 
+                                projectId: selectedProjectId,
+                                onBack: () => setCurrentView("projects")
+                            }} 
                         />
                     ) : currentView === "settings" ? (
                         <SettingsPage_DB
@@ -705,7 +750,7 @@ export default function AppContent_DB() {
                             onDeselectAll={deselectAllModels}
                             onBulkEdit={handleBulkEdit}
                             onBulkDelete={handleBulkDeleteClick}
-                            onRefresh={refreshCollections}
+                            onRefresh={() => { void refreshCollections(); void handleRefreshModels(); }}
                         />
                     ) : currentView === "model-hero" && selectedModel ? (
                         <ModelHubView_DB
