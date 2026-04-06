@@ -327,7 +327,7 @@ export function ModelCard_DB({
             >
               <FolderOpen className="w-3 h-3" />
               <span className="text-[10px] font-bold">
-                {folderComponentCount > 0 ? `${folderComponentCount} parts` : 'Model Folder'}
+                {folderComponentCount > 0 ? `${folderComponentCount} components` : 'Model Folder'}
               </span>
             </Badge>
           )}
