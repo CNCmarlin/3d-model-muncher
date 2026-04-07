@@ -74,9 +74,9 @@ RUN mkdir -p models
 # Expose port 3001
 EXPOSE 3001
 
-# CRITICAL: Point Prisma to the persistent /app/data volume (relative to /app/prisma)
-# Without this, the SQLite db is stored in the ephemeral /app/prisma folder and lost on rebuilds.
-ENV DATABASE_URL="file:../data/modellibrary.db"
+# CRITICAL: Point Prisma to the persistent /app/data volume using an ABSOLUTE PATH
+# Without this, Prisma CLI and Prisma Client resolve relative paths differently.
+ENV DATABASE_URL="file:/app/data/modellibrary.db"
 
 # Start the server
 CMD ["sh", "-c", "npx prisma db push && node server.js"]
