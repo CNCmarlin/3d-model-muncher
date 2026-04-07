@@ -75,8 +75,8 @@ RUN mkdir -p models
 EXPOSE 3001
 
 # CRITICAL: Point Prisma to the persistent /app/data volume using an ABSOLUTE PATH
-# Without this, Prisma CLI and Prisma Client resolve relative paths differently.
-ENV DATABASE_URL="file:/app/data/modellibrary.db"
+# Three slashes (file:///) are strictly required by Prisma for absolute URIs on Linux.
+ENV DATABASE_URL="file:///app/data/modellibrary.db"
 
 # Start the server
 CMD ["sh", "-c", "npx prisma db push && node server.js"]
