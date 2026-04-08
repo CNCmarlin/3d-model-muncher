@@ -56,16 +56,34 @@ router.post('/system/wipe-and-scan', async (req, res) => {
         const prisma = require('../../server-utils/db'); // Lazy load
 
         if (!isDryRun) {
+            // 0. Ensure DB Schema exists (Critical for first-time Docker migrations where container startup push may have been bypassed)
+            try {
+                const { execSync } = require('child_process');
+                console.log("🔥 [System] Verifying Database schema before wipe...");
+                execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+                console.log("✅ [System] Database schema verified.");
+            } catch (err) {
+                console.warn(`⚠️ [System] Non-fatal error verifying schema: ${err.message}`);
+            }
+
             // 1. Wipe DB (Transactions) - ONLY IN REAL RUN
-            await prisma.$transaction([
-                prisma.modelFile.deleteMany(),
-                prisma.modelTag.deleteMany(),
-                prisma.modelCollection.deleteMany(), // New table
-                prisma.model.deleteMany(),
-                prisma.collection.deleteMany(),
-                prisma.tag.deleteMany(),
-            ]);
-            console.log("✅ [System] Database Wiped");
+            try {
+                await prisma.$transaction([
+                    prisma.modelFile.deleteMany(),
+                    prisma.modelTag.deleteMany(),
+                    prisma.modelCollection.deleteMany(), // New table
+                    prisma.model.deleteMany(),
+                    prisma.collection.deleteMany(),
+                    prisma.tag.deleteMany(),
+                ]);
+                console.log("✅ [System] Database Wiped");
+            } catch (wipeErr) {
+                if (wipeErr.code === 'P2021' || (wipeErr.message && wipeErr.message.includes('does not exist'))) {
+                    console.log("⚠️ [System] Tables did not exist to wipe. Emptiness guaranteed.");
+                } else {
+                    throw wipeErr;
+                }
+            }
         }
 
         // 2. Trigger Migration
