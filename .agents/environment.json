@@ -1,0 +1,3 @@
+{
+  "install": "npm install --no-audit --no-fund && npx prisma generate && npm run build:backend && mkdir -p models data && ([ -f .env ] || cp .env.example .env) && ([ -f prisma/modellibrary.db ] || ([ -f prisma/dev.db ] && cp prisma/dev.db prisma/modellibrary.db) || true)"
+}
